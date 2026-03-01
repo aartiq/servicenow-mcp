@@ -1,5 +1,5 @@
 {
-  "name": "servicenow-mcp",
+  "name": "@aartiq/servicenow-mcp",
   "version": "1.0.0",
   "description": "The most comprehensive ServiceNow MCP server — 400+ tools across all modules. Integrates with Claude, ChatGPT, Gemini, Cursor, GitHub Copilot and any LLM.",
   "main": "dist/server.js",
