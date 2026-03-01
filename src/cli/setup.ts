@@ -243,8 +243,8 @@ async function ensureGlobalCommand(): Promise<void> {
       console.log('');
       console.log(dim('  Fix options (choose one):'));
       console.log(brand('    sudo npm link')                    + dim('              # if using system Node'));
-      console.log(brand('    npm install -g servicenow-mcp')    + dim('   # install from npm registry'));
-      console.log(brand('    npx servicenow-mcp instances list') + dim(' # use npx instead'));
+      console.log(brand('    npm install -g @aartiq/servicenow-mcp')    + dim('   # install from npm registry'));
+      console.log(brand('    npx @aartiq/servicenow-mcp instances list') + dim(' # use npx instead'));
     }
   }
 }

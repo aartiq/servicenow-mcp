@@ -32,10 +32,10 @@ The fastest way to get started — no config file editing required.
 
 ```bash
 # Install globally (Node.js 20+ required)
-npm install -g servicenow-mcp
+npm install -g @aartiq/servicenow-mcp
 
 # Run the wizard
-npx servicenow-mcp setup
+npx @aartiq/servicenow-mcp setup
 ```
 
 The wizard walks you through:
@@ -296,7 +296,7 @@ Full app builder guide → [../clients/lovable/SETUP.md](../clients/lovable/SETU
 
 ### Using the wizard
 
-After `npx servicenow-mcp setup` completes, restart your AI client and test:
+After `npx @aartiq/servicenow-mcp setup` completes, restart your AI client and test:
 
 ```
 List my 5 most recent open incidents

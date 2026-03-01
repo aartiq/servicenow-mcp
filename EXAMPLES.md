@@ -248,7 +248,7 @@ curl http://localhost:3100/api/health
 
 ### First-time setup
 ```bash
-npx servicenow-mcp setup
+npx @aartiq/servicenow-mcp setup
 # Wizard: URL → auth → test connection → tool package → AI client selection → done
 ```
 

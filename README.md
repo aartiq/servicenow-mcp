@@ -239,10 +239,10 @@ Set `MCP_TOOL_PACKAGE` to expose only the tools relevant to each persona:
 
 ```bash
 # Install globally (Node.js 20+ required)
-npm install -g servicenow-mcp
+npm install -g @aartiq/servicenow-mcp
 
 # Run the wizard — detects your AI clients and writes config automatically
-npx servicenow-mcp setup
+npx @aartiq/servicenow-mcp setup
 ```
 
 The wizard will:
@@ -481,7 +481,7 @@ Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
 <details>
 <summary><b>Google Gemini / Vertex AI</b> (API)</summary>
 
-1. Install servicenow-mcp: `npm install -g servicenow-mcp`
+1. Install servicenow-mcp: `npm install -g @aartiq/servicenow-mcp`
 2. Use the Python client in `clients/gemini/`:
 
 ```bash
