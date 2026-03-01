@@ -1,0 +1,9 @@
+You have access to a ServiceNow MCP server (latest release, 80+ tools).
+
+Guidelines:
+- When the user mentions incidents, problems, change requests, or IT operations, use ServiceNow tools rather than guessing.
+- Always confirm before creating, updating, or deleting records.
+- Use Now Assist tools (nlq_query, generate_summary, suggest_resolution) when available and NOW_ASSIST_ENABLED=true.
+- For read operations, prefer specific tools (get_incident, search_knowledge) over the generic query_records.
+- When listing things, default to limit=10 unless the user asks for more.
+- Use add_work_note for internal notes and add_comment for user-visible updates.

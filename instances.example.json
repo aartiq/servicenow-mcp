@@ -1,0 +1,71 @@
+{
+  "_comment": [
+    "Copy this file to instances.json and fill in your credentials.",
+    "Set SN_INSTANCES_CONFIG=./instances.json in your environment or .env file.",
+    "IMPORTANT: Add instances.json to .gitignore — it contains secrets.",
+    "",
+    "Supports three use cases:",
+    "  1. Single organisation: dev / staging / prod environments",
+    "  2. Multi-customer / MSP: one entry per customer tenant",
+    "  3. Mixed: both your own environments and customer instances",
+    "",
+    "Query a specific instance by passing instance=<name> to any tool,",
+    "or use switch_instance to change the active instance for the session.",
+    "Example (AI prompt): 'Get all P1 incidents from prod instance'",
+    "Example (AI prompt): 'Switch to customer_acme and list open changes'"
+  ],
+
+  "default_instance": "dev",
+
+  "instances": {
+
+    "dev": {
+      "instance_url": "https://your-company-dev.service-now.com",
+      "auth_method": "basic",
+      "username": "admin",
+      "password": "YOUR_DEV_PASSWORD",
+      "_comment": "Personal Developer Instance (PDI) or sandbox — safe to enable writes"
+    },
+
+    "staging": {
+      "instance_url": "https://your-company-stg.service-now.com",
+      "auth_method": "oauth",
+      "client_id": "YOUR_STAGING_CLIENT_ID",
+      "client_secret": "YOUR_STAGING_CLIENT_SECRET",
+      "username": "svc_mcp_staging",
+      "password": "YOUR_STAGING_SVC_PASSWORD",
+      "_comment": "Pre-prod validation — OAuth recommended"
+    },
+
+    "prod": {
+      "instance_url": "https://your-company.service-now.com",
+      "auth_method": "oauth",
+      "client_id": "YOUR_PROD_CLIENT_ID",
+      "client_secret": "YOUR_PROD_CLIENT_SECRET",
+      "username": "svc_mcp_prod",
+      "password": "YOUR_PROD_SVC_PASSWORD",
+      "_comment": "Production — use a dedicated read-only service account; only enable WRITE_ENABLED for deliberate changes"
+    },
+
+    "customer_acme": {
+      "instance_url": "https://acmecorp.service-now.com",
+      "auth_method": "oauth",
+      "client_id": "ACME_CLIENT_ID",
+      "client_secret": "ACME_CLIENT_SECRET",
+      "username": "svc_consultant",
+      "password": "ACME_SVC_PASSWORD",
+      "_comment": "MSP/Consultant use case — customer Acme Corp tenant"
+    },
+
+    "customer_globex": {
+      "instance_url": "https://globex.service-now.com",
+      "auth_method": "oauth",
+      "client_id": "GLOBEX_CLIENT_ID",
+      "client_secret": "GLOBEX_CLIENT_SECRET",
+      "username": "svc_consultant",
+      "password": "GLOBEX_SVC_PASSWORD",
+      "_comment": "MSP/Consultant use case — customer Globex tenant"
+    }
+
+  }
+}

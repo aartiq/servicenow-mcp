@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "servicenow": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/servicenow-mcp/dist/server.js"],
+      "env": {
+        "SERVICENOW_INSTANCE_URL": "https://YOUR_INSTANCE.service-now.com",
+        "SERVICENOW_AUTH_METHOD": "basic",
+        "SERVICENOW_BASIC_USERNAME": "YOUR_USERNAME",
+        "SERVICENOW_BASIC_PASSWORD": "YOUR_PASSWORD",
+        "WRITE_ENABLED": "false",
+        "MCP_TOOL_PACKAGE": "service_desk"
+      }
+    }
+  }
+}

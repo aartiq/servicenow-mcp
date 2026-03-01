@@ -1,0 +1,147 @@
+# servicenow-mcp — Smithery registry configuration
+# Install via: smithery install servicenow-mcp
+# https://smithery.ai
+
+name: servicenow-mcp
+displayName: servicenow-mcp — ServiceNow MCP Server
+description: >
+  400+ tools across all ServiceNow modules — ITSM, ITOM, CMDB, HRSD, CSM,
+  Flow Designer, App Studio, ATF, Performance Analytics, Now Assist and more.
+  Multi-instance support, 14 role-based tool packages, 5-tier permissions,
+  slash commands and @ mention resources built in.
+
+version: "1.0.0"
+license: MIT
+homepage: https://github.com/aartiq/servicenow-mcp
+repository: https://github.com/aartiq/servicenow-mcp
+
+categories:
+  - productivity
+  - enterprise
+  - itsm
+  - servicenow
+
+tags:
+  - servicenow
+  - itsm
+  - itom
+  - cmdb
+  - hrsd
+  - csm
+  - now-assist
+  - mcp
+  - enterprise
+
+# ─── Server configuration ─────────────────────────────────────────────────────
+server:
+  type: stdio
+  command: node
+  args:
+    - dist/server.js
+
+# ─── Config schema (shown in Smithery GUI setup) ─────────────────────────────
+config:
+  - id: instanceUrl
+    name: ServiceNow Instance URL
+    description: Your ServiceNow instance URL (no trailing slash)
+    type: string
+    placeholder: https://yourcompany.service-now.com
+    required: true
+
+  - id: authMethod
+    name: Authentication Method
+    description: How to authenticate with ServiceNow
+    type: select
+    options:
+      - value: basic
+        label: Basic Auth (username + password)
+      - value: oauth
+        label: OAuth 2.0 (recommended for production)
+    default: basic
+    required: true
+
+  - id: basicUsername
+    name: Username
+    description: ServiceNow username (Basic Auth)
+    type: string
+    showIf: "authMethod == 'basic'"
+    required: false
+
+  - id: basicPassword
+    name: Password
+    description: ServiceNow password (Basic Auth)
+    type: password
+    showIf: "authMethod == 'basic'"
+    required: false
+
+  - id: oauthClientId
+    name: OAuth Client ID
+    description: OAuth application client ID
+    type: string
+    showIf: "authMethod == 'oauth'"
+    required: false
+
+  - id: oauthClientSecret
+    name: OAuth Client Secret
+    description: OAuth application client secret
+    type: password
+    showIf: "authMethod == 'oauth'"
+    required: false
+
+  - id: oauthUsername
+    name: Service Account Username
+    description: Username for OAuth password grant
+    type: string
+    showIf: "authMethod == 'oauth'"
+    required: false
+
+  - id: oauthPassword
+    name: Service Account Password
+    description: Password for OAuth password grant
+    type: password
+    showIf: "authMethod == 'oauth'"
+    required: false
+
+  - id: toolPackage
+    name: Tool Package
+    description: Load a role-specific subset of tools instead of all 400+
+    type: select
+    options:
+      - value: full
+        label: Full — all tools
+      - value: service_desk
+        label: Service Desk
+      - value: change_coordinator
+        label: Change Coordinator
+      - value: platform_developer
+        label: Platform Developer
+      - value: system_administrator
+        label: System Administrator
+      - value: itom_engineer
+        label: ITOM Engineer
+      - value: agile_manager
+        label: Agile Manager
+      - value: ai_developer
+        label: AI Developer
+    default: full
+    required: false
+
+  - id: writeEnabled
+    name: Enable Write Operations
+    description: Allow create, update, and delete operations
+    type: boolean
+    default: false
+    required: false
+
+# ─── Environment variable mapping ─────────────────────────────────────────────
+envMapping:
+  instanceUrl: SERVICENOW_INSTANCE_URL
+  authMethod: SERVICENOW_AUTH_METHOD
+  basicUsername: SERVICENOW_BASIC_USERNAME
+  basicPassword: SERVICENOW_BASIC_PASSWORD
+  oauthClientId: SERVICENOW_OAUTH_CLIENT_ID
+  oauthClientSecret: SERVICENOW_OAUTH_CLIENT_SECRET
+  oauthUsername: SERVICENOW_OAUTH_USERNAME
+  oauthPassword: SERVICENOW_OAUTH_PASSWORD
+  toolPackage: MCP_TOOL_PACKAGE
+  writeEnabled: WRITE_ENABLED

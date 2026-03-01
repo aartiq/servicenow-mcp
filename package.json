@@ -1,0 +1,107 @@
+{
+  "name": "servicenow-mcp",
+  "version": "1.0.0",
+  "description": "The most comprehensive ServiceNow MCP server — 400+ tools across all modules. Integrates with Claude, ChatGPT, Gemini, Cursor, GitHub Copilot and any LLM.",
+  "main": "dist/server.js",
+  "bin": {
+    "servicenow-mcp": "dist/cli/index.js"
+  },
+  "type": "module",
+  "files": [
+    "dist/",
+    "instances.example.json",
+    ".env.example"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "setup": "node dist/cli/index.js setup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "servicenow",
+    "servicenow-mcp",
+    "servicenow-mcp-server",
+    "servicenow-ai",
+    "servicenow-agent",
+    "servicenow-automation",
+    "servicenow-developer-tools",
+    "servicenow-tools",
+    "servicenow-claude",
+    "servicenow-chatgpt",
+    "servicenow-integration",
+    "servicenow-api",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "itsm",
+    "itom",
+    "hrsd",
+    "csm",
+    "secops",
+    "grc",
+    "cmdb",
+    "now-assist",
+    "atf",
+    "flow-designer",
+    "service-portal",
+    "performance-analytics",
+    "service-catalog",
+    "app-studio",
+    "scoped-app",
+    "ai",
+    "ai-agent",
+    "llm",
+    "autonomous-agent",
+    "multi-agent",
+    "claude",
+    "anthropic",
+    "openai",
+    "gemini",
+    "cursor",
+    "copilot",
+    "typescript",
+    "automation",
+    "agentic"
+  ],
+  "author": "aartiq",
+  "homepage": "https://github.com/aartiq/servicenow-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aartiq/servicenow-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aartiq/servicenow-mcp/issues"
+  },
+  "license": "MIT",
+  "overrides": {
+    "minimatch": "^10.2.2"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^8.2.1",
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "dotenv": "^16.4.5",
+    "ora": "^9.3.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.33",
+    "@typescript-eslint/eslint-plugin": "^8.56.0",
+    "@typescript-eslint/parser": "^8.56.0",
+    "eslint": "^9.39.3",
+    "globals": "^17.3.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.18"
+  }
+}
