@@ -1,0 +1,66 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.habenani/servicenow-mcp",
+  "title": "ServiceNow MCP Server",
+  "description": "400+ ServiceNow tools across all modules — ITSM, CMDB, HRSD, CSM, SecOps, and more.",
+  "version": "1.0.1",
+  "websiteUrl": "https://github.com/aartiq/servicenow-mcp",
+  "repository": {
+    "url": "https://github.com/aartiq/servicenow-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@aartiq/servicenow-mcp",
+      "version": "1.0.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SERVICENOW_INSTANCE_URL",
+          "description": "Your ServiceNow instance URL (e.g. https://yourinstance.service-now.com)",
+          "required": true
+        },
+        {
+          "name": "SERVICENOW_AUTH_METHOD",
+          "description": "Authentication method: 'basic' or 'oauth'",
+          "required": true
+        },
+        {
+          "name": "SERVICENOW_BASIC_USERNAME",
+          "description": "ServiceNow username (for basic auth)"
+        },
+        {
+          "name": "SERVICENOW_BASIC_PASSWORD",
+          "description": "ServiceNow password (for basic auth)"
+        },
+        {
+          "name": "WRITE_ENABLED",
+          "description": "Enable write operations (true/false, default: false)"
+        },
+        {
+          "name": "SCRIPTING_ENABLED",
+          "description": "Enable scripting operations (true/false, default: false)"
+        },
+        {
+          "name": "CMDB_WRITE_ENABLED",
+          "description": "Enable CMDB write operations (true/false, default: false)"
+        },
+        {
+          "name": "NOW_ASSIST_ENABLED",
+          "description": "Enable Now Assist AI features (true/false, default: false)"
+        },
+        {
+          "name": "ATF_ENABLED",
+          "description": "Enable ATF test execution (true/false, default: false)"
+        },
+        {
+          "name": "MCP_TOOL_PACKAGE",
+          "description": "Role-based tool package: full, service_desk, platform_developer, etc."
+        }
+      ]
+    }
+  ]
+}
