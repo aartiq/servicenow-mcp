@@ -36,3 +36,5 @@ coverage/
 
 # Config and token store
 .config/
+.mcpregistry_github_token
+.mcpregistry_registry_token
