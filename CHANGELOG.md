@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.1.4] — 2026-06-24
+
+### Added — Performance Analytics authoring
+- **`create_pa_indicator`** — create a PA indicator/KPI on `pa_indicators` (source facts table, aggregation, conditions, unit, direction). Write-gated.
+- **`create_pa_breakdown`** — create a PA breakdown on `pa_breakdowns` to slice indicators by a dimension. Write-gated.
+
+(Completes the PA write tools alongside the existing `create_dashboard`. Thanks to @b4rk13 for the idea.)
+
+---
+
 ## [4.1.3] — 2026-06-24
 
 ### Fixed

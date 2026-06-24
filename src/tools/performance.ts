@@ -180,6 +180,44 @@ export function getPerformanceToolDefinitions() {
         required: ['sys_id', 'fields'],
       },
     },
+    // ── PA authoring (indicators & breakdowns) ───────────────────────────────
+    {
+      name: 'create_pa_indicator',
+      description:
+        'Create a Performance Analytics (PA) indicator / KPI on `pa_indicators` (requires WRITE_ENABLED=true). ' +
+        'Define the source facts table, aggregation and conditions; collect data via a PA job afterward.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Indicator name (e.g. "Open P1 incidents")' },
+          description: { type: 'string', description: 'What the indicator measures' },
+          facts_table: { type: 'string', description: 'Source/facts table the indicator counts (e.g. "incident")' },
+          aggregate: { type: 'string', description: 'Aggregation function', enum: ['count', 'sum', 'average', 'maximum', 'minimum'] },
+          field: { type: 'string', description: 'Field to aggregate (required for sum/average/max/min; ignored for count)' },
+          conditions: { type: 'string', description: 'Encoded query on the facts table (e.g. "active=true^priority=1")' },
+          unit: { type: 'string', description: 'Unit (pa_units name or sys_id)' },
+          direction: { type: 'string', description: 'Desired trend', enum: ['maximize', 'minimize'] },
+          active: { type: 'boolean', description: 'Activate immediately (default: true)' },
+        },
+        required: ['name'],
+      },
+    },
+    {
+      name: 'create_pa_breakdown',
+      description:
+        'Create a Performance Analytics (PA) breakdown on `pa_breakdowns` (requires WRITE_ENABLED=true). ' +
+        'Breakdowns slice an indicator by a dimension (e.g. by Assignment group or Category).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Breakdown name (e.g. "By Assignment group")' },
+          description: { type: 'string', description: 'What this breakdown slices by' },
+          related_field: { type: 'string', description: 'Optional dotted field path the breakdown maps to (e.g. "assignment_group")' },
+          active: { type: 'boolean', description: 'Activate immediately (default: true)' },
+        },
+        required: ['name'],
+      },
+    },
     // ── Data Quality ─────────────────────────────────────────────────────────
     {
       name: 'check_table_completeness',
@@ -448,6 +486,29 @@ export async function executePerformanceToolCall(
         throw new ServiceNowError('sys_id and fields are required', 'INVALID_REQUEST');
       const result = await client.updateRecord('pa_dashboards', args.sys_id, args.fields);
       return { ...result, summary: `Updated dashboard ${args.sys_id}` };
+    }
+    case 'create_pa_indicator': {
+      requireWrite();
+      if (!args.name) throw new ServiceNowError('name is required', 'INVALID_REQUEST');
+      const data: Record<string, any> = { name: args.name, active: args.active !== false };
+      if (args.description) data.description = args.description;
+      if (args.facts_table) data.facts_table = args.facts_table;
+      if (args.aggregate) data.aggregate = args.aggregate;
+      if (args.field) data.field = args.field;
+      if (args.conditions) data.conditions = args.conditions;
+      if (args.unit) data.unit = args.unit;
+      if (args.direction) data.direction = args.direction;
+      const result = await client.createRecord('pa_indicators', data);
+      return { ...result, summary: `Created PA indicator "${args.name}". Run a PA data-collection job to populate scores.` };
+    }
+    case 'create_pa_breakdown': {
+      requireWrite();
+      if (!args.name) throw new ServiceNowError('name is required', 'INVALID_REQUEST');
+      const data: Record<string, any> = { name: args.name, active: args.active !== false };
+      if (args.description) data.description = args.description;
+      if (args.related_field) data.related_field = args.related_field;
+      const result = await client.createRecord('pa_breakdowns', data);
+      return { ...result, summary: `Created PA breakdown "${args.name}". Configure its breakdown source/elements in the PA UI if required.` };
     }
     case 'compare_record_counts': {
       if (!args.tables || !Array.isArray(args.tables) || args.tables.length === 0) {

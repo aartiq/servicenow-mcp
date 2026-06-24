@@ -170,6 +170,7 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'check_table_completeness', 'get_table_record_count', 'compare_record_counts',
     'list_pa_indicators', 'get_pa_indicator', 'get_pa_scorecard', 'get_pa_time_series',
     'list_pa_dashboards', 'get_pa_dashboard', 'create_dashboard', 'update_dashboard',
+    'create_pa_indicator', 'create_pa_breakdown',
     'list_oauth_applications', 'list_credential_aliases',
     'get_system_property', 'set_system_property', 'list_system_properties', 'search_system_properties',
     'bulk_get_properties', 'bulk_set_properties', 'list_property_categories',
