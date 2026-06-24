@@ -68,6 +68,7 @@ No instance? Grab a free Personal Developer Instance at **[developer.servicenow.
 - *"Create a business rule on the incident table that…"*
 - *"Run the ATF suite for the HR onboarding flow."*
 - *"What's the CMDB health for our prod CIs?"*
+- *"Look up GlideRecord.addEncodedQuery in the ServiceNow docs and show the syntax."*
 
 **Read-only by default.** Write, scripting and CMDB changes are opt-in flags — prod can't be modified by accident.
 

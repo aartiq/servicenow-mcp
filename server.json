@@ -3,7 +3,7 @@
   "name": "io.github.aartiq/nowaikit",
   "title": "NowAIKit — ServiceNow MCP Server",
   "description": "ServiceNow MCP server — 450+ tools (ITSM, ITOM, CMDB, scripting) for Claude, ChatGPT & any AI.",
-  "version": "4.1.5",
+  "version": "4.1.6",
   "websiteUrl": "https://nowaikit.com",
   "repository": {
     "url": "https://github.com/aartiq/nowaikit",
@@ -13,7 +13,7 @@
     {
       "registryType": "npm",
       "identifier": "nowaikit",
-      "version": "4.1.5",
+      "version": "4.1.6",
       "transport": {
         "type": "stdio"
       },

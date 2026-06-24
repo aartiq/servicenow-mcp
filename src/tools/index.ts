@@ -71,6 +71,7 @@ import { getMobileToolDefinitions, executeMobileToolCall } from './mobile.js';
 import { getDeploymentToolDefinitions, executeDeploymentToolCall } from './deployment.js';
 // Fluent / GlideQuery / Batch API
 import { getFluentToolDefinitions, executeFluentToolCall } from './fluent.js';
+import { getDocsToolDefinitions, executeDocsToolCall } from './docs.js';
 // Now Assist Skills
 import { getNowAssistSkillsToolDefinitions, executeNowAssistSkillsToolCall } from './now-assist-skills.js';
 // AI Agents & Agentic Workflows
@@ -198,6 +199,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     // @servicenow/sdk 4.8 parity
     'fluent_sdk_query', 'fluent_version',
     'discover_table',
+    // ServiceNow product documentation
+    'search_servicenow_docs', 'fetch_servicenow_doc',
   ],
   itom_engineer: [
     'query_records', 'get_record', 'get_table_schema',
@@ -229,6 +232,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'create_playbook', 'execute_playbook', 'list_playbooks',
     'ml_similar_incidents', 'ml_auto_categorize',
     'discover_table',
+    // ServiceNow product documentation
+    'search_servicenow_docs', 'fetch_servicenow_doc',
   ],
 };
 
@@ -268,6 +273,7 @@ const ALL_TOOLS = [
   ...getMobileToolDefinitions(),
   ...getDeploymentToolDefinitions(),
   ...getFluentToolDefinitions(),
+  ...getDocsToolDefinitions(),
   ...getNowAssistSkillsToolDefinitions(),
   ...getAiAgentsToolDefinitions(),
   ...getCmdbReconciliationToolDefinitions(),
@@ -419,6 +425,7 @@ export async function executeTool(
     () => executeMobileToolCall(client, name, args),
     () => executeDeploymentToolCall(client, name, args),
     () => executeFluentToolCall(client, name, args),
+    () => executeDocsToolCall(name, args),
     () => executeNowAssistSkillsToolCall(client, name, args),
     () => executeAiAgentsToolCall(client, name, args),
     () => executeCmdbReconciliationToolCall(client, name, args),

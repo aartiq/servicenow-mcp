@@ -40,6 +40,16 @@ function isDestructiveTool(name: string): boolean {
   return DESTRUCTIVE_TOOLS.has(name) || /^delete_|^retire_/.test(name);
 }
 
+// Tools that can take a while — emit MCP progress notifications (only when the
+// client supplies a progressToken; otherwise nothing changes).
+const LONG_RUNNING_TOOLS = new Set([
+  'run_discovery_scan', 'run_atf_suite', 'run_atf_test', 'cmdb_reconcile', 'cmdb_impact_analysis',
+  'bulk_create_records', 'import_cmdb_data', 'run_transform_map', 'scan_vulnerabilities',
+  'run_security_playbook', 'execute_playbook', 'trigger_agentic_playbook', 'compare_instances',
+  'export_update_set', 'preview_update_set', 'check_table_completeness', 'analyze_data_quality',
+  'ml_train_incident_classifier', 'ml_train_change_risk', 'ml_train_anomaly_detector', 'ml_forecast_incidents',
+]);
+
 export function createServer(): Server {
   const server = new Server(
     {
@@ -101,7 +111,39 @@ export function createServer(): Server {
       }
 
       const { executeTool } = await import('./tools/index.js');
-      const result = await executeTool(client, name, toolArgs);
+
+      // MCP progress notifications: if the client passed a progressToken and this
+      // is a long-running tool, emit periodic heartbeats so the UI shows activity.
+      // Purely additive — when no token is sent the path below behaves as before.
+      const progressToken = (request.params as { _meta?: { progressToken?: string | number } })._meta?.progressToken;
+      const trackProgress = progressToken !== undefined && LONG_RUNNING_TOOLS.has(name);
+      let heartbeat: ReturnType<typeof setInterval> | undefined;
+      if (trackProgress) {
+        let pct = 0;
+        const sendProgress = (progress: number, message: string) =>
+          server.notification({
+            method: 'notifications/progress',
+            params: { progressToken, progress, total: 100, message },
+          }).catch(() => { /* client may not track this token; ignore */ });
+        await sendProgress(0, `Starting ${name}…`);
+        heartbeat = setInterval(() => {
+          pct = Math.min(pct + 7, 92);
+          void sendProgress(pct, `Running ${name}…`);
+        }, 1500);
+      }
+
+      let result: unknown;
+      try {
+        result = await executeTool(client, name, toolArgs);
+      } finally {
+        if (heartbeat) clearInterval(heartbeat);
+        if (trackProgress) {
+          await server.notification({
+            method: 'notifications/progress',
+            params: { progressToken, progress: 100, total: 100, message: `${name} complete` },
+          }).catch(() => { /* ignore */ });
+        }
+      }
 
       // Structured output: include the raw object so capable clients get typed
       // content, while keeping the text block for backward compatibility.

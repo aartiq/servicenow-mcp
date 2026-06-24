@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.1.6] — 2026-06-24
+
+### Added — ServiceNow product-documentation search
+- **`search_servicenow_docs`** — full-text search over the official ServiceNow documentation (servicenow.com/docs): API references (GlideRecord, GlideSystem…), admin/developer guides, encoded-query operators, release notes. Returns ranked results with title, breadcrumb, URL, snippet, and a `ref`.
+- **`fetch_servicenow_doc`** — fetch the full readable text of a docs page (by `ref` from search, or by URL). Lets an AI ground answers in current docs instead of training-data guesses.
+- Backed by the public Fluid Topics REST API that powers servicenow.com/docs. Read-only, no instance credentials required, SSRF-guarded to ServiceNow domains. Complements the existing `fluent_explain` (live SDK docs) and `search_knowledge` (instance KB).
+
+### Added — Progress notifications for long-running tools
+- Long operations (discovery scans, ATF suites/tests, CMDB reconcile/impact, bulk creates, imports, transform maps, vulnerability scans, instance compares, ML training) now emit MCP **progress notifications** when the client supplies a `progressToken`, so UIs show live activity instead of a silent hang. Fully backward-compatible — clients that don't request progress see no change.
+
+---
+
 ## [4.1.5] — 2026-06-24
 
 ### Added — MCP tool annotations

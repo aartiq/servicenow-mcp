@@ -2084,6 +2084,28 @@ Get deployment frequency, failure rate, and lead time metrics.
 
 ---
 
+## ServiceNow Documentation (2 tools)
+
+Search and read the official ServiceNow product documentation (servicenow.com/docs) so an AI can ground answers in current docs instead of training-data guesses. Read-only; uses the public docs site, **no instance credentials required**. Complements `fluent_explain` (live SDK docs) and `search_knowledge` (instance Knowledge Base).
+
+### search_servicenow_docs
+Full-text search over servicenow.com/docs — API references (GlideRecord, GlideSystem…), admin/developer guides, encoded-query operators, release notes. Returns ranked results with `title`, `breadcrumb`, `url`, `snippet`, and a `ref` for fetching the full page.
+
+**Parameters**:
+- `query` (required) — what to look up (e.g., "GlideRecord addEncodedQuery", "flow designer rest step")
+- `limit` — max results (default 6, max 20)
+- `product` — optional product/area to bias the search (e.g., "CMDB", "Flow Designer")
+
+### fetch_servicenow_doc
+Fetch the full readable text of a docs page. Pass the `ref` from a search result (preferred, exact) or a servicenow.com/docs URL.
+
+**Parameters**:
+- `ref` — the `ref` returned by `search_servicenow_docs` (preferred)
+- `url` — a servicenow.com/docs page URL (resolved via docs search; SSRF-guarded to ServiceNow domains)
+- `maxChars` — truncate returned text (default 9000, max 30000)
+
+---
+
 ## See Also
 
 - [TOOL_PACKAGES.md](TOOL_PACKAGES.md) — Role-based packages
