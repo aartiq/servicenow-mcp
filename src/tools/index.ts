@@ -317,6 +317,32 @@ export function searchTools(query: string, limit = 25): Array<{ name: string; de
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+// ─── MCP tool annotations (read/write/destructive hints) ─────────────────────
+// Lets clients (Claude, Cursor, …) auto-approve safe reads and prompt before
+// writes/deletes — makes NowAIKit's "read-only by default" promise machine-readable.
+const DESTRUCTIVE_PREFIX = /^(delete_|retire_|remove_|close_|cancel_|reject_|rollback_)/;
+const DESTRUCTIVE_NAMED = new Set([
+  'delete_record', 'delete_attachment', 'delete_system_property', 'delete_uib_page',
+  'retire_asset', 'retire_knowledge_article', 'rollback_deployment', 'execute_background_script',
+  'execute_script', 'send_emergency_broadcast', 'send_push_notification',
+]);
+const WRITE_PREFIX = /^(create_|update_|add_|set_|order_|submit_|publish_|commit_|trigger_|fire_|run_|execute_|bulk_|import_|upload_|assign_|approve_|resolve_|complete_|move_|switch_|configure_|register_|clone_|schedule_|send_|track_|ensure_|provision_|preview_|reconcile_|scan_|train_|ml_train)/;
+const IDEMPOTENT_PREFIX = /^(update_|set_|configure_|switch_|ensure_)/;
+
+interface ToolAnnotations { readOnlyHint: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint: boolean }
+function toolAnnotations(name: string): ToolAnnotations {
+  if (DESTRUCTIVE_PREFIX.test(name) || DESTRUCTIVE_NAMED.has(name)) {
+    return { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
+  }
+  if (WRITE_PREFIX.test(name)) {
+    return { readOnlyHint: false, destructiveHint: false, idempotentHint: IDEMPOTENT_PREFIX.test(name), openWorldHint: true };
+  }
+  return { readOnlyHint: true, openWorldHint: true };
+}
+function withAnnotations<T extends { name: string; annotations?: unknown }>(tool: T): T {
+  return tool.annotations ? tool : { ...tool, annotations: toolAnnotations(tool.name) };
+}
+
 export function getTools() {
   const packageName = (process.env.MCP_TOOL_PACKAGE || 'full').toLowerCase();
   const discovery = (process.env.MCP_TOOL_DISCOVERY || '').toLowerCase();
@@ -325,21 +351,21 @@ export function getTools() {
   // Lean discovery mode: expose only a small core set + search_tools to keep
   // the tool list small; the model uses search_tools to find the rest.
   if (discovery === 'lean') {
-    return [SEARCH_TOOLS_DEF, ...ALL_TOOLS.filter((t) => LEAN_CORE_TOOL_NAMES.has(t.name)), ...dynamicTools];
+    return [SEARCH_TOOLS_DEF, ...ALL_TOOLS.filter((t) => LEAN_CORE_TOOL_NAMES.has(t.name)), ...dynamicTools].map(withAnnotations);
   }
 
   if (packageName === 'full') {
-    return [SEARCH_TOOLS_DEF, ...ALL_TOOLS, ...dynamicTools];
+    return [SEARCH_TOOLS_DEF, ...ALL_TOOLS, ...dynamicTools].map(withAnnotations);
   }
 
   const allowed = PACKAGE_TOOL_NAMES[packageName];
   if (!allowed) {
     console.error(`[WARN] Unknown MCP_TOOL_PACKAGE "${packageName}". Using "full".`);
-    return [SEARCH_TOOLS_DEF, ...ALL_TOOLS, ...dynamicTools];
+    return [SEARCH_TOOLS_DEF, ...ALL_TOOLS, ...dynamicTools].map(withAnnotations);
   }
 
   const allowedSet = new Set(allowed);
-  return [SEARCH_TOOLS_DEF, ...ALL_TOOLS.filter(t => allowedSet.has(t.name)), ...dynamicTools];
+  return [SEARCH_TOOLS_DEF, ...ALL_TOOLS.filter(t => allowedSet.has(t.name)), ...dynamicTools].map(withAnnotations);
 }
 
 export async function executeTool(

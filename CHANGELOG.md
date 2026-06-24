@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.1.5] — 2026-06-24
+
+### Added — MCP tool annotations
+- Every tool now ships MCP **annotations** (`readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`), derived from the read/write/destructive tier system. Clients (Claude, Cursor, …) can auto-approve safe reads and prompt before writes/deletes — making "read-only by default" machine-readable. (Most MCP servers don't implement these.)
+
+---
+
 ## [4.1.4] — 2026-06-24
 
 ### Added — Performance Analytics authoring
