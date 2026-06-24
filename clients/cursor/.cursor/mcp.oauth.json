@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "servicenow": {
+    "nowaikit": {
       "command": "node",
       "args": ["./dist/server.js"],
       "env": {

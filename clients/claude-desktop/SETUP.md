@@ -11,8 +11,8 @@ Configure the ServiceNow MCP server with Claude Desktop.
 ## Step 1: Build the Server
 
 ```bash
-git clone https://github.com/aartiq/servicenow-mcp.git
-cd servicenow-mcp
+git clone https://github.com/aartiq/nowaikit.git
+cd nowaikit
 npm install
 npm run build
 ```
@@ -38,7 +38,7 @@ Use the ready-to-edit file at [`claude_desktop_config.basic.json`](claude_deskto
 ```json
 {
   "mcpServers": {
-    "servicenow": {
+    "nowaikit": {
       "command": "node",
       "args": ["/ABSOLUTE/PATH/TO/servicenow-mcp/dist/server.js"],
       "env": {
@@ -61,7 +61,7 @@ Use the ready-to-edit file at [`claude_desktop_config.oauth.json`](claude_deskto
 ```json
 {
   "mcpServers": {
-    "servicenow": {
+    "nowaikit": {
       "command": "node",
       "args": ["/ABSOLUTE/PATH/TO/servicenow-mcp/dist/server.js"],
       "env": {

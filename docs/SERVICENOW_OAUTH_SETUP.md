@@ -1,6 +1,6 @@
 # ServiceNow OAuth 2.0 Setup Guide
 
-This guide walks you through creating an OAuth 2.0 application profile in ServiceNow for use with servicenow-mcp.
+This guide walks you through creating an OAuth 2.0 application profile in ServiceNow for use with NowAIKit.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ This guide walks you through creating an OAuth 2.0 application profile in Servic
 2. You'll see a prompt asking "What kind of OAuth application?"
 3. Select **Create an OAuth API endpoint for external clients**
 
-   This option allows external applications (like servicenow-mcp) to authenticate to ServiceNow.
+   This option allows external applications (like NowAIKit) to authenticate to ServiceNow.
 
 ---
 
@@ -38,7 +38,7 @@ Fill in the following fields:
 
 | Field | Value | Description |
 |-------|-------|-------------|
-| **Name** | `servicenow-mcp` | Descriptive name for your OAuth app |
+| **Name** | `NowAIKit` | Descriptive name for your OAuth app |
 | **Client ID** | *Auto-generated* | Will be generated automatically (save this!) |
 | **Client Secret** | *Auto-generated* | Will be generated automatically (save this!) |
 | **Active** | ✅ Checked | Must be active to use |
@@ -62,7 +62,7 @@ Enable the following grant types:
 
 ### Redirect URL
 
-For servicenow-mcp, you can leave this blank or set to:
+For NowAIKit, you can leave this blank or set to:
 ```
 http://localhost:3000/callback
 ```
@@ -84,7 +84,7 @@ This is typically not used for password grant flows but may be required by some 
 
 ## Step 5: Configure .env File
 
-Add the OAuth credentials to your servicenow-mcp `.env` file:
+Add the OAuth credentials to your NowAIKit `.env` file:
 
 ```bash
 # ServiceNow Instance
@@ -140,10 +140,10 @@ curl -X POST "https://dev12345.service-now.com/oauth_token.do" \
 
 ### Using the MCP Server
 
-Start servicenow-mcp and verify OAuth authentication:
+Start NowAIKit and verify OAuth authentication:
 
 ```bash
-cd servicenow-mcp
+cd nowaikit
 npm run build
 npm start
 ```
@@ -167,7 +167,7 @@ Depending on your ServiceNow instance configuration, you may need to configure O
 | `read` | Read-only access | ✅ Recommended for read-only mode |
 | `write` | Write access | ⚠️ Only if WRITE_ENABLED=true |
 
-Most ServiceNow instances use the default `useraccount` scope which provides appropriate access for servicenow-mcp.
+Most ServiceNow instances use the default `useraccount` scope which provides appropriate access for NowAIKit.
 
 ---
 
@@ -223,7 +223,7 @@ Most ServiceNow instances use the default `useraccount` scope which provides app
 
 ### 1. Use Service Accounts
 
-Create a dedicated ServiceNow service account for servicenow-mcp:
+Create a dedicated ServiceNow service account for NowAIKit:
 
 ```
 Username: svc_mcp_server
@@ -268,7 +268,7 @@ SCRIPTING_ENABLED=false
 ALLOW_ANY_TABLE=false
 ```
 
-This limits servicenow-mcp to read operations only, reducing security risk.
+This limits NowAIKit to read operations only, reducing security risk.
 
 ---
 
@@ -316,7 +316,7 @@ If you encounter issues:
 
 1. Check the [Troubleshooting](#troubleshooting) section above
 2. Review ServiceNow system logs: **System Logs > System Log > All**
-3. Open an issue on GitHub: https://github.com/aartiq/servicenow-mcp/issues
+3. Open an issue on GitHub: https://github.com/aartiq/nowaikit/issues
 4. Consult your ServiceNow administrator
 
 ---

@@ -1,6 +1,6 @@
-# servicenow-mcp — Installation Guide
+# nowaikit — Installation Guide
 
-Complete setup instructions for connecting servicenow-mcp to ServiceNow and any AI client.
+Complete setup instructions for connecting nowaikit to ServiceNow and any AI client.
 
 **Estimated Time**: 5 minutes (wizard) or 20-30 minutes (manual)
 **Difficulty**: Beginner-friendly
@@ -32,16 +32,16 @@ The fastest way to get started — no config file editing required.
 
 ```bash
 # Install globally (Node.js 20+ required)
-npm install -g @aartiq/servicenow-mcp
+npm install -g nowaikit
 
 # Run the wizard
-npx @aartiq/servicenow-mcp setup
+npx nowaikit setup
 ```
 
 The wizard walks you through:
 
 ```
-Welcome to servicenow-mcp
+Welcome to nowaikit
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Step 1/5 — ServiceNow Instance
@@ -70,24 +70,24 @@ Step 5/5 — Install into AI client
 **Additional commands:**
 
 ```bash
-servicenow-mcp setup --add         # Add a second instance
-servicenow-mcp instances list      # List configured instances
-servicenow-mcp instances remove dev # Remove an instance
-servicenow-mcp auth login          # Per-user OAuth login
-servicenow-mcp auth whoami         # Show active ServiceNow user
+nowaikit setup --add         # Add a second instance
+nowaikit instances list      # List configured instances
+nowaikit instances remove dev # Remove an instance
+nowaikit auth login          # Per-user OAuth login
+nowaikit auth whoami         # Show active ServiceNow user
 ```
 
 ---
 
 ## Option B: Desktop App
 
-Download the **servicenow-mcp Desktop** app — includes an 8-step visual wizard, instance manager, tool browser, and audit log viewer. The bundled server starts automatically.
+Download the **nowaikit Desktop** app — includes an 8-step visual wizard, instance manager, tool browser, and audit log viewer. The bundled server starts automatically.
 
 | Platform | Download |
 |----------|----------|
-| **macOS** | [servicenow-mcp.dmg](https://github.com/aartiq/servicenow-mcp/releases/latest) |
-| **Windows** | [servicenow-mcp-Setup.exe](https://github.com/aartiq/servicenow-mcp/releases/latest) |
-| **Linux** | [servicenow-mcp.AppImage](https://github.com/aartiq/servicenow-mcp/releases/latest) · [servicenow-mcp.deb](https://github.com/aartiq/servicenow-mcp/releases/latest) |
+| **macOS** | [nowaikit.dmg](https://github.com/aartiq/nowaikit/releases/latest) |
+| **Windows** | [nowaikit-Setup.exe](https://github.com/aartiq/nowaikit/releases/latest) |
+| **Linux** | [nowaikit.AppImage](https://github.com/aartiq/nowaikit/releases/latest) · [nowaikit.deb](https://github.com/aartiq/nowaikit/releases/latest) |
 
 The app auto-updates when new releases are published.
 
@@ -100,8 +100,8 @@ For building from source, see [desktop/BUILDING.md](../desktop/BUILDING.md).
 ### Step 1: Clone and build
 
 ```bash
-git clone https://github.com/aartiq/servicenow-mcp.git
-cd servicenow-mcp
+git clone https://github.com/aartiq/nowaikit.git
+cd nowaikit
 npm install
 npm run build
 ```
@@ -128,9 +128,9 @@ Add to your AI client config (`dist/server.js` is the MCP entry point):
 ```json
 {
   "mcpServers": {
-    "servicenow": {
+    "nowaikit": {
       "command": "node",
-      "args": ["/absolute/path/to/servicenow-mcp/dist/server.js"],
+      "args": ["/absolute/path/to/nowaikit/dist/server.js"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://yourcompany.service-now.com",
         "SERVICENOW_AUTH_METHOD": "basic",
@@ -175,7 +175,7 @@ OAuth 2.0 is the recommended authentication method for production deployments.
 ### Quick Setup
 
 1. In ServiceNow: **System OAuth > Application Registry > New > Create an OAuth API endpoint for external clients**
-2. Set **Name**: `servicenow-mcp`, **Refresh Token Lifespan**: `8640000`, **Access Token Lifespan**: `1800`
+2. Set **Name**: `nowaikit`, **Refresh Token Lifespan**: `8640000`, **Access Token Lifespan**: `1800`
 3. Enable **Password Grant** and **Refresh Token** grant types
 4. Copy the **Client ID** and **Client Secret** (shown only once)
 
@@ -193,7 +193,7 @@ curl -X POST "https://YOUR-INSTANCE.service-now.com/oauth_token.do" \
 
 ### SSO / OIDC
 
-Connect to Okta, Azure AD (Entra), Ping Identity, or any OIDC-compatible IdP. On login, servicenow-mcp exchanges the OIDC ID token for a ServiceNow OAuth token automatically.
+Connect to Okta, Azure AD (Entra), Ping Identity, or any OIDC-compatible IdP. On login, nowaikit exchanges the OIDC ID token for a ServiceNow OAuth token automatically.
 
 Add to `.env`:
 
@@ -206,7 +206,7 @@ OIDC_REDIRECT_URI=http://localhost:3100/auth/callback
 
 Start the HTTP server and open `http://localhost:3100/auth/login` — users are redirected to your IdP and then back to the dashboard.
 
-For IdP setup: register servicenow-mcp as an OAuth client with redirect URI `http://localhost:3100/auth/callback` and scopes `openid profile email`.
+For IdP setup: register nowaikit as an OAuth client with redirect URI `http://localhost:3100/auth/callback` and scopes `openid profile email`.
 
 ### Audit Logging
 
@@ -215,11 +215,11 @@ Every tool call, resource read, and prompt resolve is automatically logged.
 ```env
 AUDIT_ENABLED=true
 
-# JSONL log file (default: ~/.config/servicenow-mcp/audit.jsonl)
-AUDIT_LOG_PATH=/var/log/servicenow-mcp/audit.jsonl
+# JSONL log file (default: ~/.config/nowaikit/audit.jsonl)
+AUDIT_LOG_PATH=/var/log/nowaikit/audit.jsonl
 
 # Webhook for SIEM / Splunk / Datadog integration
-AUDIT_WEBHOOK_URL=https://your-siem.example.com/servicenow-mcp/audit
+AUDIT_WEBHOOK_URL=https://your-siem.example.com/nowaikit/audit
 
 # Also write to stdout
 AUDIT_LOG_STDOUT=false
@@ -242,7 +242,7 @@ Log record format:
 
 ### Org / Team Policy
 
-Admins can deploy a `servicenow-mcp.org.json` file via MDM, GPO, or configuration management to enforce policy across all team members:
+Admins can deploy a `nowaikit.org.json` file via MDM, GPO, or configuration management to enforce policy across all team members:
 
 ```json
 {
@@ -255,24 +255,24 @@ Admins can deploy a `servicenow-mcp.org.json` file via MDM, GPO, or configuratio
   "write_enabled": false,
   "max_records": 50,
   "audit_enabled": true,
-  "audit_webhook_url": "https://siem.acme.com/servicenow-mcp"
+  "audit_webhook_url": "https://siem.acme.com/nowaikit"
 }
 ```
 
-Search order: `SERVICENOW_MCP_ORG_CONFIG` env var → `/etc/servicenow-mcp/org.json` → `./servicenow-mcp.org.json`
+Search order: `NOWAIKIT_ORG_CONFIG` env var → `/etc/nowaikit/org.json` → `./nowaikit.org.json`
 
 ---
 
 ## HTTP API Server
 
-Use `servicenow-mcp serve` to expose all tools as a REST API for web apps:
+Use `nowaikit serve` to expose all tools as a REST API for web apps:
 
 ```bash
 npm run serve
 # or: node dist/http-server.js --port 3100
 
 # With API key auth:
-SERVICENOW_MCP_API_KEY=my-secret-key npm run serve
+NOWAIKIT_API_KEY=my-secret-key npm run serve
 ```
 
 Open `http://localhost:3100` for the web dashboard.
@@ -296,7 +296,7 @@ Full app builder guide → [../clients/lovable/SETUP.md](../clients/lovable/SETU
 
 ### Using the wizard
 
-After `npx @aartiq/servicenow-mcp setup` completes, restart your AI client and test:
+After `npx nowaikit setup` completes, restart your AI client and test:
 
 ```
 List my 5 most recent open incidents
@@ -313,7 +313,7 @@ The AI should call `list_incidents` and return results.
 
 ### Verify slash commands and @ mentions
 
-In Claude Desktop or Cursor, type `/` — you should see the servicenow-mcp slash commands appear in the command palette.
+In Claude Desktop or Cursor, type `/` — you should see the nowaikit slash commands appear in the command palette.
 
 Type `@my-incidents` in a message to pull your open incidents into context.
 
@@ -328,7 +328,7 @@ Type `@my-incidents` in a message to pull your open incidents into context.
 **Solution**:
 1. Navigate to repository:
    ```bash
-   cd /path/to/servicenow-mcp
+   cd /path/to/nowaikit
    ```
 2. Rebuild:
    ```bash
@@ -414,7 +414,7 @@ Type `@my-incidents` in a message to pull your open incidents into context.
 - Full client setup for every AI tool: [CLIENT_SETUP.md](CLIENT_SETUP.md)
 - App builder (Lovable/Bolt/v0): [../clients/lovable/SETUP.md](../clients/lovable/SETUP.md)
 - Desktop app build guide: [../desktop/BUILDING.md](../desktop/BUILDING.md)
-- Issues: https://github.com/aartiq/servicenow-mcp/issues
+- Issues: https://github.com/aartiq/nowaikit/issues
 
 ---
 
@@ -475,7 +475,7 @@ Full reference also in `.env.example`.
 |----------|---------|-------------|
 | `HTTP_PORT` | `3100` | HTTP server port |
 | `HTTP_HOST` | `127.0.0.1` | Bind address |
-| `SERVICENOW_MCP_API_KEY` | (none) | Bearer token for API auth |
+| `NOWAIKIT_API_KEY` | (none) | Bearer token for API auth |
 | `CORS_ORIGIN` | `*` | Allowed CORS origin |
 
 ### Audit Logging
@@ -483,7 +483,7 @@ Full reference also in `.env.example`.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AUDIT_ENABLED` | `true` | Enable/disable audit logging |
-| `AUDIT_LOG_PATH` | `~/.config/servicenow-mcp/audit.jsonl` | JSONL file path |
+| `AUDIT_LOG_PATH` | `~/.config/nowaikit/audit.jsonl` | JSONL file path |
 | `AUDIT_WEBHOOK_URL` | (none) | POST audit records to SIEM |
 | `AUDIT_LOG_STDOUT` | `false` | Also write to stdout |
 
@@ -500,8 +500,8 @@ Full reference also in `.env.example`.
 
 | Variable | Description |
 |----------|-------------|
-| `SERVICENOW_MCP_ORG_CONFIG` | Path to `servicenow-mcp.org.json` |
+| `NOWAIKIT_ORG_CONFIG` | Path to `nowaikit.org.json` |
 
 ---
 
-**Need help?** Check [Troubleshooting](#troubleshooting) above or file an issue at https://github.com/aartiq/servicenow-mcp/issues
+**Need help?** Check [Troubleshooting](#troubleshooting) above or file an issue at https://github.com/aartiq/nowaikit/issues

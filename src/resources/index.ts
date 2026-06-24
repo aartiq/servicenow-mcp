@@ -60,6 +60,12 @@ export function getResources(): McpResource[] {
       description: 'Knowledge Base article by title (e.g. @kb:VPN-setup)',
       mimeType: 'application/json',
     },
+    {
+      uri: 'servicenow://query-syntax',
+      name: 'query-syntax',
+      description: 'ServiceNow encoded query syntax reference — operators, patterns, date functions, anti-patterns',
+      mimeType: 'text/markdown',
+    },
   ];
 }
 
@@ -122,6 +128,11 @@ export async function readResource(client: ServiceNowClient, uri: string): Promi
       limit: 5,
       fields: 'number,short_description,text,category,sys_id',
     });
+  }
+
+  if (uri === 'servicenow://query-syntax') {
+    const { QUERY_SYNTAX_REFERENCE } = await import('./query-syntax.js');
+    return QUERY_SYNTAX_REFERENCE;
   }
 
   return { error: `Unknown resource URI: ${uri}` };

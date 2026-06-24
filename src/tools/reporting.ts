@@ -1,5 +1,5 @@
 /**
- * Reporting & Analytics tools — ServiceNow Reporting API.
+ * Reporting & Analytics tools — ServiceNow Reporting API + branded report generation.
  * All tools are Tier 0 (read-only) unless noted.
  * ServiceNow API: GET /api/now/reporting, /api/now/stats/{table}, /api/now/pa/widget/{sys_id}
  */
@@ -261,6 +261,33 @@ export function getReportingToolDefinitions() {
         required: ['name', 'table', 'aggregate'],
       },
     },
+    {
+      name: 'generate_report',
+      description: 'Generate a branded PDF or PPTX report from capability analysis results. Call this after completing a scan, review, or audit to create a management-ready document with charts, tables, and ServiceNow links. Supports single capability (content) or multiple capabilities (sections) in one combined report.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: 'Full markdown analysis to convert into a branded report (for single capability)' },
+          sections: {
+            type: 'array',
+            description: 'Multiple capability analyses to combine into one report. Each section becomes a chapter. Use this instead of content for multi-capability reports.',
+            items: {
+              type: 'object',
+              properties: {
+                content: { type: 'string', description: 'Markdown analysis for this capability' },
+                title: { type: 'string', description: 'Section title (e.g. "Instance Health Scan")' },
+                capability: { type: 'string', description: 'Capability name (e.g. "scan-health")' },
+              },
+              required: ['content', 'title'],
+            },
+          },
+          format: { type: 'string', enum: ['pdf', 'pptx'], description: 'Output format: pdf (branded document) or pptx (slide deck)' },
+          title: { type: 'string', description: 'Report title (e.g. "Instance Health Scan", "Comprehensive Instance Audit")' },
+          capability: { type: 'string', description: 'Capability name that produced the analysis (e.g. "scan-health", "review-code", "combined-audit")' },
+        },
+        required: ['format', 'title'],
+      },
+    },
   ];
 }
 
@@ -443,6 +470,45 @@ export async function executeReportingToolCall(
         unit: args.unit || '',
       });
       return { ...result, summary: `Created KPI "${args.name}" (${args.aggregate} on ${args.table})` };
+    }
+    case 'generate_report': {
+      if (!args.format || !args.title)
+        throw new ServiceNowError('format and title are required', 'INVALID_REQUEST');
+      if (!args.content && !args.sections)
+        throw new ServiceNowError('Either content (single capability) or sections (multiple capabilities) is required', 'INVALID_REQUEST');
+      if (args.format !== 'pdf' && args.format !== 'pptx')
+        throw new ServiceNowError('format must be "pdf" or "pptx"', 'INVALID_REQUEST');
+
+      // Combine sections into a single markdown document if multiple capabilities provided
+      let combinedContent: string;
+      let capabilityName: string;
+      if (args.sections && Array.isArray(args.sections) && args.sections.length > 0) {
+        combinedContent = args.sections
+          .map((s: { content: string; title: string; capability?: string }) =>
+            `\n\n---\n\n# ${s.title}\n\n${s.content}`)
+          .join('\n');
+        capabilityName = args.capability || (args.sections.length > 1 ? 'combined-audit' : args.sections[0].capability || 'report');
+      } else {
+        combinedContent = args.content;
+        capabilityName = args.capability || 'report';
+      }
+
+      const { generateReport } = await import('../reports/index.js');
+      const reportResult = await generateReport(combinedContent, args.format, {
+        title: args.title,
+        instanceUrl: (client as any).baseUrl || '',
+        instanceName: capabilityName,
+        capability: capabilityName,
+      });
+      const sectionCount = args.sections ? args.sections.length : 1;
+      return {
+        success: true,
+        file_path: reportResult.filePath,
+        size_bytes: reportResult.sizeBytes,
+        format: args.format,
+        sections: sectionCount,
+        message: `Report saved to ${reportResult.filePath} (${Math.round(reportResult.sizeBytes / 1024)} KB, ${sectionCount} capability${sectionCount > 1 ? 'ies' : ''})`,
+      };
     }
     default:
       return null;

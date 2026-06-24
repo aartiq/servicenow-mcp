@@ -11,14 +11,14 @@ Set `MCP_TOOL_PACKAGE` in your environment to load a role-specific subset of too
 | `change_coordinator` | Change manager | 18 |
 | `knowledge_author` | KB content creator | 12 |
 | `catalog_builder` | Catalog administrator | 11 |
-| `system_administrator` | SysAdmin | 52 |
-| `platform_developer` | Platform developer | 38 |
+| `system_administrator` | SysAdmin | 55 |
+| `platform_developer` | Platform developer | 41 |
 | `itom_engineer` | ITOM/CMDB engineer | 12 |
 | `agile_manager` | Agile team lead | 12 |
-| `ai_developer` | Now Assist/AI developer | 15 |
-| `portal_developer` | Portal/UI Builder developer | 32 |
-| `integration_engineer` | Integration specialist | 26 |
-| `devops_engineer` | DevOps/pipeline engineer | 21 |
+| `ai_developer` | Now Assist/AI developer | 18 |
+| `portal_developer` | Portal/UI Builder developer | 35 |
+| `integration_engineer` | Integration specialist | 29 |
+| `devops_engineer` | DevOps/pipeline engineer | 24 |
 | `itam_analyst` | IT Asset Management analyst | 10 |
 
 ## Usage

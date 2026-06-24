@@ -180,7 +180,7 @@ AI uses: query_records { "table": "incident", "query": "priority=1^state!=6", "i
 - Add `instances.json` to `.gitignore` — never commit credentials
 - Use **OAuth** for production and customer instances — Basic Auth is for dev/PDI only
 - `WRITE_ENABLED` and `SCRIPTING_ENABLED` apply globally; set carefully when targeting prod
-- Consider running separate servicenow-mcp processes per customer for strict isolation
+- Consider running separate NowAIKit processes per customer for strict isolation
 
 ---
 

@@ -1,6 +1,6 @@
-# servicenow-mcp — Usage Examples
+# NowAIKit — Usage Examples
 
-This document provides real-world examples of using the servicenow-mcp server (400+ tools across all ServiceNow modules).
+This document provides real-world examples of using the NowAIKit ServiceNow MCP server (400+ tools across all ServiceNow modules).
 
 ## Table of Contents
 
@@ -113,7 +113,7 @@ Slash commands appear in Claude Desktop, Cursor, and any MCP-aware client when y
 → Returns top matching KB articles for the query
 ```
 
-### Custom slash command (`servicenow-mcp.commands.json`)
+### Custom slash command (`nowaikit.commands.json`)
 ```json
 [
   {
@@ -248,31 +248,31 @@ curl http://localhost:3100/api/health
 
 ### First-time setup
 ```bash
-npx @aartiq/servicenow-mcp setup
+npx nowaikit setup
 # Wizard: URL → auth → test connection → tool package → AI client selection → done
 ```
 
 ### Add a second instance
 ```bash
-servicenow-mcp setup --add
+nowaikit setup --add
 # Prompts for the new instance name, URL, credentials
 ```
 
 ### Per-user login (enterprise, runs queries in user's own ACL context)
 ```bash
-servicenow-mcp auth login
+nowaikit auth login
 # Opens browser → ServiceNow OAuth consent → token stored
-servicenow-mcp auth whoami
+nowaikit auth whoami
 # → Logged in as john.doe@acme.com (roles: itil, admin)
 ```
 
 ### List and switch instances
 ```bash
-servicenow-mcp instances list
+nowaikit instances list
 # → default (https://dev12345.service-now.com) [active]
 # → prod    (https://acme.service-now.com)
 
-servicenow-mcp instances remove dev
+nowaikit instances remove dev
 ```
 
 ---
@@ -546,7 +546,7 @@ Add to your MCP client (e.g., Claude Desktop config):
   "mcpServers": {
     "servicenow": {
       "command": "node",
-      "args": ["/path/to/servicenow-mcp/dist/server.js"],
+      "args": ["/path/to/nowaikit/dist/server.js"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://dev12345.service-now.com",
         "SERVICENOW_AUTH_METHOD": "oauth",

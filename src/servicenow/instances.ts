@@ -1,5 +1,5 @@
 /**
- * Multi-instance manager for servicenow-mcp.
+ * Multi-instance manager for NowAIKit.
  *
  * Supports connecting to multiple ServiceNow instances (e.g. dev, staging, prod,
  * or multiple customers) from a single MCP session.
@@ -59,10 +59,10 @@ class InstanceManager {
       }
     }
 
-    // 2. Try the wizard config store (~/.config/servicenow-mcp/instances.json)
-    //    Written by `servicenow-mcp setup` — allows the HTTP server and MCP server
+    // 2. Try the wizard config store (~/.config/nowaikit/instances.json)
+    //    Written by `nowaikit setup` — allows the HTTP server and MCP server
     //    to work without a .env file after running the setup wizard.
-    const wizardConfigPath = join(homedir(), '.config', 'servicenow-mcp', 'instances.json');
+    const wizardConfigPath = join(homedir(), '.config', 'nowaikit', 'instances.json');
     if (existsSync(wizardConfigPath)) {
       try {
         const raw = JSON.parse(readFileSync(wizardConfigPath, 'utf8'));
@@ -85,6 +85,26 @@ class InstanceManager {
           }, (c['group'] as string) || 'Default', (c['environment'] as string) || '');
         }
         if (this.instances.has(defaultName)) this.currentName = defaultName;
+
+        // Apply permission flags from the default instance to process.env
+        // so permissions.ts can read them. Only set if not already provided
+        // by the client config (env vars from Claude Desktop, Cursor, etc.).
+        const defaultCfg = raw.instances?.[defaultName] as Record<string, unknown> | undefined;
+        if (defaultCfg) {
+          const permMap: Record<string, string> = {
+            writeEnabled: 'WRITE_ENABLED',
+            scriptingEnabled: 'SCRIPTING_ENABLED',
+            cmdbWriteEnabled: 'CMDB_WRITE_ENABLED',
+            atfEnabled: 'ATF_ENABLED',
+            nowAssistEnabled: 'NOW_ASSIST_ENABLED',
+          };
+          for (const [jsonKey, envKey] of Object.entries(permMap)) {
+            if (process.env[envKey] === undefined && defaultCfg[jsonKey] !== undefined) {
+              process.env[envKey] = defaultCfg[jsonKey] ? 'true' : 'false';
+            }
+          }
+        }
+
         return;
       } catch {
         // fall through to env vars

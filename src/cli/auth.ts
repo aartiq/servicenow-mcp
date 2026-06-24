@@ -1,5 +1,5 @@
 /**
- * `servicenow-mcp auth` subcommands — per-user OAuth / login management.
+ * `nowaikit auth` subcommands — per-user OAuth / login management.
  *
  * login  — opens browser to ServiceNow OAuth consent, stores token
  * logout — removes stored token
@@ -27,7 +27,7 @@ interface TokenStore {
 }
 
 function tokenPath(): string {
-  const dir = join(homedir(), '.config', 'servicenow-mcp');
+  const dir = join(homedir(), '.config', 'nowaikit');
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return join(dir, 'tokens.json');
 }
@@ -53,7 +53,7 @@ function tokenKey(instanceUrl: string): string {
 export async function authLogin(): Promise<void> {
   const instances = listInstances();
   if (instances.length === 0) {
-    console.log(chalk.yellow('No instances configured. Run `servicenow-mcp setup` first.'));
+    console.log(chalk.yellow('No instances configured. Run `nowaikit setup` first.'));
     return;
   }
 
@@ -197,7 +197,7 @@ export function authWhoami(): void {
   const store = loadTokens();
   const tokens = Object.values(store.tokens);
   if (tokens.length === 0) {
-    console.log(chalk.dim('Not authenticated. Run `servicenow-mcp auth login`'));
+    console.log(chalk.dim('Not authenticated. Run `nowaikit auth login`'));
     return;
   }
   for (const t of tokens) {

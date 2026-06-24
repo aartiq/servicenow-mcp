@@ -371,11 +371,23 @@ export function getScriptToolDefinitions() {
   ];
 }
 
+const SCRIPT_TOOL_NAMES = new Set([
+  'list_business_rules', 'get_business_rule', 'create_business_rule', 'update_business_rule',
+  'list_script_includes', 'get_script_include', 'create_script_include', 'update_script_include',
+  'list_client_scripts', 'get_client_script', 'create_client_script', 'update_client_script',
+  'list_changesets', 'get_changeset', 'commit_changeset', 'publish_changeset',
+  'list_ui_policies', 'get_ui_policy', 'create_ui_policy',
+  'list_ui_actions', 'get_ui_action', 'create_ui_action', 'update_ui_action',
+  'list_acls', 'get_acl', 'create_acl', 'update_acl',
+]);
+
 export async function executeScriptToolCall(
   client: ServiceNowClient,
   name: string,
   args: Record<string, any>
 ): Promise<any> {
+  // Only gate scripting tools — return null for unrelated tools so dispatch continues
+  if (!SCRIPT_TOOL_NAMES.has(name)) return null;
   requireScripting();
 
   switch (name) {

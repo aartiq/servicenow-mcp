@@ -1,5 +1,5 @@
 /**
- * User-defined custom slash commands loaded from servicenow-mcp.commands.json
+ * User-defined custom slash commands loaded from nowaikit.commands.json
  * in the current working directory.
  *
  * File format:
@@ -16,7 +16,7 @@ import { join } from 'path';
 import type { PromptDefinition } from './itsm.js';
 
 export function loadUserPrompts(): PromptDefinition[] {
-  const commandsFile = join(process.cwd(), 'servicenow-mcp.commands.json');
+  const commandsFile = join(process.cwd(), 'nowaikit.commands.json');
   if (!existsSync(commandsFile)) return [];
 
   try {

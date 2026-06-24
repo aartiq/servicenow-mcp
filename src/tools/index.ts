@@ -12,6 +12,7 @@ import { ServiceNowError } from '../utils/errors.js';
 
 // Core (existing 15 tools)
 import { getCoreToolDefinitions, executeCoreToolCall } from './core.js';
+import { getGovernanceToolDefinitions, executeGovernanceToolCall } from './governance.js';
 // ITSM
 import { getIncidentToolDefinitions, executeIncidentToolCall } from './incident.js';
 import { getProblemToolDefinitions, executeProblemToolCall } from './problem.js';
@@ -68,12 +69,25 @@ import { getWorkspaceToolDefinitions, executeWorkspaceToolCall } from './workspa
 import { getMobileToolDefinitions, executeMobileToolCall } from './mobile.js';
 // Deployment & Artifacts
 import { getDeploymentToolDefinitions, executeDeploymentToolCall } from './deployment.js';
+// Fluent / GlideQuery / Batch API
+import { getFluentToolDefinitions, executeFluentToolCall } from './fluent.js';
+// Now Assist Skills
+import { getNowAssistSkillsToolDefinitions, executeNowAssistSkillsToolCall } from './now-assist-skills.js';
+// AI Agents & Agentic Workflows
+import { getAiAgentsToolDefinitions, executeAiAgentsToolCall } from './ai-agents.js';
+// CMDB Reconciliation (duplicates, orphans, stale)
+import { getCmdbReconciliationToolDefinitions, executeCmdbReconciliationToolCall } from './cmdb-reconciliation.js';
+// Orchestration (playbooks)
+import { getOrchestrationToolDefinitions, executeOrchestrationToolCall } from './orchestration.js';
+// Dynamic Schema Discovery
+import { getDiscoveryToolDefinitions, executeDiscoveryToolCall, executeDynamicToolCall } from './discovery.js';
+import { schemaCache } from './schema-cache.js';
 
 // ─── Package Definitions ──────────────────────────────────────────────────────
 
 const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
   devops_engineer: [
-    'query_records', 'get_record', 'get_table_schema',
+    'query_records', 'get_record', 'get_table_schema', 'create_record', 'update_record', 'delete_record',
     'list_devops_pipelines', 'get_devops_pipeline', 'list_deployments', 'get_deployment',
     'create_devops_change', 'track_deployment', 'get_devops_insights',
     'create_update_set', 'switch_update_set', 'get_current_update_set', 'list_update_sets',
@@ -87,7 +101,7 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'track_asset_lifecycle', 'get_license_optimization',
   ],
   portal_developer: [
-    'query_records', 'get_record', 'get_table_schema',
+    'query_records', 'get_record', 'get_table_schema', 'create_record', 'update_record', 'delete_record',
     'list_portals', 'get_portal', 'create_portal', 'list_portal_pages', 'get_portal_page', 'create_portal_page',
     'list_portal_widgets', 'get_portal_widget', 'create_portal_widget', 'update_portal_widget',
     'list_widget_instances',
@@ -99,7 +113,7 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'list_changesets', 'get_changeset', 'commit_changeset', 'publish_changeset',
   ],
   integration_engineer: [
-    'query_records', 'get_record', 'get_table_schema',
+    'query_records', 'get_record', 'get_table_schema', 'create_record', 'update_record', 'delete_record',
     'list_rest_messages', 'get_rest_message', 'list_rest_message_functions', 'create_rest_message',
     'list_transform_maps', 'get_transform_map', 'run_transform_map', 'list_transform_field_maps',
     'list_import_sets', 'get_import_set', 'create_import_set_row', 'list_data_sources',
@@ -145,7 +159,7 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'create_catalog_variable', 'create_catalog_ui_policy',
   ],
   system_administrator: [
-    'query_records', 'get_record', 'get_user', 'get_group', 'get_table_schema',
+    'query_records', 'get_record', 'get_user', 'get_group', 'get_table_schema', 'create_record', 'update_record', 'delete_record',
     'list_users', 'create_user', 'update_user', 'list_groups', 'create_group', 'update_group', 'add_user_to_group', 'remove_user_from_group',
     'list_reports', 'get_report', 'create_report', 'update_report', 'run_aggregate_query', 'trend_query', 'export_report_data', 'get_sys_log',
     'list_scheduled_jobs', 'get_scheduled_job', 'create_scheduled_job', 'update_scheduled_job', 'trigger_scheduled_job', 'list_job_run_history',
@@ -161,10 +175,13 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'bulk_get_properties', 'bulk_set_properties', 'list_property_categories',
     'get_current_update_set', 'list_update_sets',
     'create_update_set', 'switch_update_set', 'complete_update_set', 'preview_update_set', 'ensure_active_update_set',
-    'create_scheduled_report', 'create_kpi',
+    'create_scheduled_report', 'create_kpi', 'generate_report',
+    // v4.0 additions
+    'cmdb_find_duplicates', 'cmdb_find_orphans', 'cmdb_find_stale', 'cmdb_reconcile',
+    'discover_table',
   ],
   platform_developer: [
-    'query_records', 'get_record', 'get_table_schema',
+    'query_records', 'get_record', 'get_table_schema', 'create_record', 'update_record', 'delete_record',
     'list_scoped_apps', 'get_scoped_app', 'create_scoped_app', 'update_scoped_app',
     'list_business_rules', 'get_business_rule', 'create_business_rule', 'update_business_rule',
     'list_script_includes', 'get_script_include', 'create_script_include', 'update_script_include',
@@ -174,6 +191,12 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'list_acls', 'get_acl', 'create_acl', 'update_acl',
     'list_changesets', 'get_changeset', 'commit_changeset', 'publish_changeset',
     'list_atf_suites', 'get_atf_suite', 'run_atf_suite', 'list_atf_tests', 'get_atf_test', 'run_atf_test', 'get_atf_suite_result', 'list_atf_test_results', 'get_atf_failure_insight',
+    'fluent_query', 'batch_request', 'execute_script', 'generate_report',
+    // v4.0 Fluent SDK + discovery
+    'fluent_explain', 'fluent_init', 'fluent_build', 'fluent_validate',
+    // @servicenow/sdk 4.8 parity
+    'fluent_sdk_query', 'fluent_version',
+    'discover_table',
   ],
   itom_engineer: [
     'query_records', 'get_record', 'get_table_schema',
@@ -181,6 +204,9 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'list_discovery_schedules', 'list_mid_servers', 'list_active_events',
     'run_aggregate_query', 'trend_query',
     'create_ci_relationship', 'cmdb_impact_analysis', 'run_discovery_scan',
+    // v4.0 CMDB reconciliation
+    'cmdb_find_duplicates', 'cmdb_find_orphans', 'cmdb_find_stale', 'cmdb_reconcile',
+    'discover_table',
   ],
   agile_manager: [
     'query_records', 'get_record', 'get_user',
@@ -190,10 +216,18 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'list_users',
   ],
   ai_developer: [
-    'query_records', 'get_record', 'natural_language_search',
+    'query_records', 'get_record', 'natural_language_search', 'create_record', 'update_record', 'delete_record',
     'nlq_query', 'ai_search', 'generate_summary', 'suggest_resolution', 'categorize_incident',
     'get_virtual_agent_topics', 'trigger_agentic_playbook', 'get_ms_copilot_topics', 'generate_work_notes', 'get_pi_models',
     'search_knowledge', 'get_knowledge_article',
+    'fluent_query', 'batch_request', 'execute_script', 'generate_report',
+    'fluent_sdk_query', 'fluent_version',
+    // v4.0 additions
+    'create_now_assist_skill', 'list_now_assist_skills', 'get_now_assist_skill', 'test_now_assist_skill',
+    'create_ai_agent', 'list_ai_agents', 'get_ai_agent', 'create_agentic_workflow',
+    'create_playbook', 'execute_playbook', 'list_playbooks',
+    'ml_similar_incidents', 'ml_auto_categorize',
+    'discover_table',
   ],
 };
 
@@ -201,6 +235,7 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
 
 const ALL_TOOLS = [
   ...getCoreToolDefinitions(),
+  ...getGovernanceToolDefinitions(),
   ...getIncidentToolDefinitions(),
   ...getProblemToolDefinitions(),
   ...getChangeToolDefinitions(),
@@ -231,25 +266,79 @@ const ALL_TOOLS = [
   ...getWorkspaceToolDefinitions(),
   ...getMobileToolDefinitions(),
   ...getDeploymentToolDefinitions(),
+  ...getFluentToolDefinitions(),
+  ...getNowAssistSkillsToolDefinitions(),
+  ...getAiAgentsToolDefinitions(),
+  ...getCmdbReconciliationToolDefinitions(),
+  ...getOrchestrationToolDefinitions(),
+  ...getDiscoveryToolDefinitions(),
 ];
+
+// ─── Dynamic tool discovery (search_tools) ──────────────────────────────────────
+
+const SEARCH_TOOLS_DEF = {
+  name: 'search_tools',
+  description: 'Search the full NowAIKit tool catalog (400+ tools) by keyword to discover the right tool without loading every definition. Returns matching tool names + descriptions ranked by relevance. Use this FIRST when you are unsure which tool to call. Especially useful with MCP_TOOL_DISCOVERY=lean, which exposes only a small core set plus this search.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Keywords to match against tool names and descriptions, e.g. "create incident", "cmdb health", "run atf"' },
+      limit: { type: 'number', description: 'Max results to return (default 25)' },
+    },
+    required: ['query'],
+  },
+};
+
+/** A minimal always-available core set used when MCP_TOOL_DISCOVERY=lean. */
+const LEAN_CORE_TOOL_NAMES = new Set([
+  'search_tools', 'query_records', 'get_record', 'get_table_schema', 'validate_query',
+  'create_record', 'update_record', 'delete_record', 'get_current_instance',
+  'list_instances', 'switch_instance', 'natural_language_search',
+]);
+
+/** Search the full catalog by keyword, returning ranked matches. */
+export function searchTools(query: string, limit = 25): Array<{ name: string; description: string; score: number }> {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const scored = ALL_TOOLS.map((t) => {
+    const name = t.name.toLowerCase();
+    const desc = (t.description || '').toLowerCase();
+    let score = 0;
+    for (const term of terms) {
+      if (name === term) score += 10;
+      if (name.includes(term)) score += 5;
+      if (desc.includes(term)) score += 2;
+    }
+    return { name: t.name, description: t.description || '', score };
+  }).filter((t) => t.score > 0);
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit);
+}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function getTools() {
   const packageName = (process.env.MCP_TOOL_PACKAGE || 'full').toLowerCase();
+  const discovery = (process.env.MCP_TOOL_DISCOVERY || '').toLowerCase();
+  const dynamicTools = schemaCache.getGeneratedTools();
+
+  // Lean discovery mode: expose only a small core set + search_tools to keep
+  // the tool list small; the model uses search_tools to find the rest.
+  if (discovery === 'lean') {
+    return [SEARCH_TOOLS_DEF, ...ALL_TOOLS.filter((t) => LEAN_CORE_TOOL_NAMES.has(t.name)), ...dynamicTools];
+  }
 
   if (packageName === 'full') {
-    return ALL_TOOLS;
+    return [SEARCH_TOOLS_DEF, ...ALL_TOOLS, ...dynamicTools];
   }
 
   const allowed = PACKAGE_TOOL_NAMES[packageName];
   if (!allowed) {
     console.error(`[WARN] Unknown MCP_TOOL_PACKAGE "${packageName}". Using "full".`);
-    return ALL_TOOLS;
+    return [SEARCH_TOOLS_DEF, ...ALL_TOOLS, ...dynamicTools];
   }
 
   const allowedSet = new Set(allowed);
-  return ALL_TOOLS.filter(t => allowedSet.has(t.name));
+  return [SEARCH_TOOLS_DEF, ...ALL_TOOLS.filter(t => allowedSet.has(t.name)), ...dynamicTools];
 }
 
 export async function executeTool(
@@ -257,9 +346,21 @@ export async function executeTool(
   name: string,
   args: Record<string, any>
 ): Promise<any> {
+  // Meta-tool: catalog search (operates on the registry, not the instance).
+  if (name === 'search_tools') {
+    const matches = searchTools(String(args.query || ''), typeof args.limit === 'number' ? args.limit : 25);
+    return {
+      query: args.query,
+      count: matches.length,
+      tools: matches.map(({ name, description }) => ({ name, description })),
+      hint: matches.length === 0 ? 'No tools matched. Try broader keywords.' : 'Call the most relevant tool by name.',
+    };
+  }
+
   // Try each domain handler in order; first non-null result wins
   const handlers = [
     () => executeCoreToolCall(client, name, args),
+    () => executeGovernanceToolCall(client, name, args),
     () => executeIncidentToolCall(client, name, args),
     () => executeProblemToolCall(client, name, args),
     () => executeChangeToolCall(client, name, args),
@@ -290,6 +391,13 @@ export async function executeTool(
     () => executeWorkspaceToolCall(client, name, args),
     () => executeMobileToolCall(client, name, args),
     () => executeDeploymentToolCall(client, name, args),
+    () => executeFluentToolCall(client, name, args),
+    () => executeNowAssistSkillsToolCall(client, name, args),
+    () => executeAiAgentsToolCall(client, name, args),
+    () => executeCmdbReconciliationToolCall(client, name, args),
+    () => executeOrchestrationToolCall(client, name, args),
+    () => executeDiscoveryToolCall(client, name, args),
+    () => executeDynamicToolCall(client, name, args),
   ];
 
   for (const handler of handlers) {

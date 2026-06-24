@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.aartiq/servicenow-mcp",
-  "title": "ServiceNow MCP Server",
-  "description": "400+ ServiceNow tools across all modules — ITSM, CMDB, HRSD, CSM, SecOps, and more.",
-  "version": "1.0.2",
-  "websiteUrl": "https://github.com/aartiq/servicenow-mcp",
+  "name": "io.github.aartiq/nowaikit",
+  "title": "NowAIKit — ServiceNow AI Toolkit",
+  "description": "400+ ServiceNow MCP tools + 26 AI capabilities + multi-transport (stdio/SSE/HTTP) + A2A protocol + dynamic schema discovery + BYOK mode.",
+  "version": "4.0.0",
+  "websiteUrl": "https://github.com/aartiq/nowaikit",
   "repository": {
-    "url": "https://github.com/aartiq/servicenow-mcp",
+    "url": "https://github.com/aartiq/nowaikit",
     "source": "github"
   },
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "@aartiq/servicenow-mcp",
-      "version": "1.0.2",
+      "identifier": "nowaikit",
+      "version": "4.0.0",
       "transport": {
         "type": "stdio"
       },
@@ -59,6 +59,22 @@
         {
           "name": "MCP_TOOL_PACKAGE",
           "description": "Role-based tool package: full, service_desk, platform_developer, etc."
+        },
+        {
+          "name": "TRANSPORT",
+          "description": "Transport mode: stdio (default), sse, or http"
+        },
+        {
+          "name": "PORT",
+          "description": "HTTP server port (default: 3000, for sse/http transport)"
+        },
+        {
+          "name": "NOWAIKIT_API_KEY",
+          "description": "Bearer token for API authentication (sse/http transport)"
+        },
+        {
+          "name": "FLUENT_ENABLED",
+          "description": "Enable Fluent SDK tools (true/false, default: false)"
         }
       ]
     }

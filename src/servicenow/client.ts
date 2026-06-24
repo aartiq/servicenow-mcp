@@ -32,7 +32,7 @@ function validateSysId(sysId: string): string {
 const SAFE_GS_PATTERN = /^javascript:gs\.(getUserID|beginningOfToday|endOfToday|beginningOfYesterday|endOfYesterday|beginningOfLastMonth|endOfLastMonth|beginningOfThisMonth|endOfThisMonth|beginningOfThisQuarter|endOfThisQuarter|beginningOfThisYear|endOfThisYear|beginningOfNextMonth|endOfNextMonth|beginningOfLast7Days|endOfLast7Days|beginningOfLastYear|endOfLastYear|daysAgo|hoursAgo|minutesAgo|monthsAgo|quartersAgo|yearsAgo|now|dateGenerate)\([\d,\s'":-]*\)$/i;
 
 /** Validate and sanitize ServiceNow encoded query strings */
-function validateQuery(query: string): string {
+export function validateQuery(query: string): string {
   if (!query) return query;
   // Validate javascript: expressions against safe GlideSystem function allowlist
   const jsMatches = query.match(/javascript:[^@^]*/gi);
@@ -339,7 +339,7 @@ export class ServiceNowClient {
       queryParams.set('sysparm_fields', params.fields);
     }
 
-    if (params.limit !== undefined) {
+    if (params.limit !== undefined && params.limit > 0) {
       queryParams.set('sysparm_limit', Math.min(params.limit, 1000).toString());
     } else {
       queryParams.set('sysparm_limit', '10'); // Default limit
@@ -985,6 +985,127 @@ export class ServiceNowClient {
       throw new ServiceNowError(
         `Failed to upload attachment: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'ATTACHMENT_UPLOAD_FAILED'
+      );
+    }
+  }
+
+  /**
+   * Execute multiple REST API operations in a single HTTP call (Batch API).
+   * Uses /api/now/v1/batch endpoint. Up to 50 operations per batch.
+   */
+  async batchRequest(operations: Array<{ id: string; method: string; url: string; body?: any }>): Promise<any> {
+    await this.authenticate();
+    logger.info(`Executing batch request with ${operations.length} operations`);
+
+    if (operations.length > 50) {
+      throw new ServiceNowError('Maximum 50 operations per batch request', 'INVALID_REQUEST');
+    }
+
+    const batchPayload = {
+      batch_request_id: `nowaikit_${Date.now()}`,
+      rest_requests: operations.map(op => ({
+        id: op.id,
+        method: op.method,
+        url: op.url.startsWith('/') ? op.url : `/${op.url}`,
+        headers: [
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'Accept', value: 'application/json' },
+        ],
+        ...(op.body ? { body: JSON.stringify(op.body) } : {}),
+      })),
+    };
+
+    const url = `${this.baseUrl}/api/now/v1/batch`;
+
+    try {
+      const response = await this.request<any>(url, {
+        method: 'POST',
+        body: JSON.stringify(batchPayload),
+      });
+
+      // Parse individual responses
+      const results = (response.serviced_requests || []).map((r: any) => {
+        let parsedBody: any;
+        try {
+          parsedBody = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;
+        } catch {
+          parsedBody = r.body;
+        }
+        return {
+          id: r.id,
+          status_code: r.status_code,
+          body: parsedBody,
+        };
+      });
+
+      return {
+        batch_id: batchPayload.batch_request_id,
+        total: operations.length,
+        results,
+      };
+    } catch (error) {
+      if (error instanceof ServiceNowError) throw error;
+      throw new ServiceNowError(
+        `Batch request failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'BATCH_FAILED'
+      );
+    }
+  }
+
+  /**
+   * Execute a server-side script via the Background Script API.
+   * Useful for GlideQuery, GlideAggregate, and complex operations.
+   */
+  async executeScript(script: string, scope?: string): Promise<any> {
+    await this.authenticate();
+    logger.info('Executing server-side script');
+
+    try {
+      // Use the standard script execution endpoint
+      const response = await this.request<any>(
+        `${this.baseUrl}/api/now/v1/batch`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            batch_request_id: `script_${Date.now()}`,
+            rest_requests: [{
+              id: 'script_exec',
+              method: 'POST',
+              url: '/api/now/table/sys_script_execution',
+              headers: [
+                { name: 'Content-Type', value: 'application/json' },
+                { name: 'Accept', value: 'application/json' },
+              ],
+              body: JSON.stringify({
+                script,
+                scope: scope || 'global',
+              }),
+            }],
+          }),
+        }
+      );
+
+      const results = response.serviced_requests || [];
+      if (results.length > 0) {
+        let body: any;
+        try {
+          body = typeof results[0].body === 'string' ? JSON.parse(results[0].body) : results[0].body;
+        } catch {
+          body = results[0].body;
+        }
+        return {
+          status: results[0].status_code,
+          output: body,
+          scope: scope || 'global',
+        };
+      }
+
+      return { status: 200, output: 'Script executed (no output captured)', scope: scope || 'global' };
+    } catch (error) {
+      if (error instanceof ServiceNowError) throw error;
+      throw new ServiceNowError(
+        `Script execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'SCRIPT_FAILED'
       );
     }
   }

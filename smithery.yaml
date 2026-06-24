@@ -1,19 +1,20 @@
-# servicenow-mcp — Smithery registry configuration
-# Install via: smithery install servicenow-mcp
+# nowaikit — Smithery registry configuration
+# Install via: smithery install nowaikit
 # https://smithery.ai
 
-name: servicenow-mcp
-displayName: servicenow-mcp — ServiceNow MCP Server
+name: nowaikit
+displayName: nowaikit — ServiceNow MCP
 description: >
   400+ tools across all ServiceNow modules — ITSM, ITOM, CMDB, HRSD, CSM,
   Flow Designer, App Studio, ATF, Performance Analytics, Now Assist and more.
-  Multi-instance support, 14 role-based tool packages, 5-tier permissions,
+  Multi-transport (stdio, SSE, HTTP), A2A protocol, dynamic schema discovery,
+  multi-instance support, 14 role-based tool packages, 5-tier permissions,
   slash commands and @ mention resources built in.
 
-version: "1.0.0"
+version: "4.0.0"
 license: MIT
-homepage: https://github.com/aartiq/servicenow-mcp
-repository: https://github.com/aartiq/servicenow-mcp
+homepage: https://github.com/aartiq/nowaikit
+repository: https://github.com/aartiq/nowaikit
 
 categories:
   - productivity

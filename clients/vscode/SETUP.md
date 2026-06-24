@@ -17,10 +17,10 @@ Copy the config file to your workspace `.vscode/` directory:
 mkdir -p .vscode
 
 # Basic Auth
-cp /path/to/servicenow-mcp/clients/vscode/.vscode/mcp.basic.json .vscode/mcp.json
+cp /path/to/nowaikit/clients/vscode/.vscode/mcp.basic.json .vscode/mcp.json
 
 # OR: OAuth
-cp /path/to/servicenow-mcp/clients/vscode/.vscode/mcp.oauth.json .vscode/mcp.json
+cp /path/to/nowaikit/clients/vscode/.vscode/mcp.oauth.json .vscode/mcp.json
 ```
 
 ## Step 2: Edit the Config
@@ -31,7 +31,7 @@ Edit `.vscode/mcp.json`:
 ```json
 {
   "servers": {
-    "servicenow": {
+    "nowaikit": {
       "type": "stdio",
       "command": "node",
       "args": ["/ABSOLUTE/PATH/TO/servicenow-mcp/dist/server.js"],
@@ -53,7 +53,7 @@ Edit `.vscode/mcp.json`:
 ```json
 {
   "servers": {
-    "servicenow": {
+    "nowaikit": {
       "type": "stdio",
       "command": "node",
       "args": ["/ABSOLUTE/PATH/TO/servicenow-mcp/dist/server.js"],
@@ -77,7 +77,7 @@ Edit `.vscode/mcp.json`:
 
 Copy the extensions recommendation file:
 ```bash
-cp /path/to/servicenow-mcp/clients/vscode/.vscode/extensions.json .vscode/extensions.json
+cp /path/to/nowaikit/clients/vscode/.vscode/extensions.json .vscode/extensions.json
 ```
 
 VS Code will prompt you to install: GitHub Copilot, GitHub Copilot Chat.
@@ -109,7 +109,7 @@ You can use VS Code workspace variables in the config:
 "args": ["${workspaceFolder}/dist/server.js"]
 ```
 
-This is useful if the servicenow-mcp repo is the workspace root.
+This is useful if the nowaikit repo is the workspace root.
 
 ## Using Environment Variables for Credentials
 

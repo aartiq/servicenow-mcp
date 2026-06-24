@@ -1,15 +1,37 @@
 {
-  "name": "@aartiq/servicenow-mcp",
-  "mcpName": "io.github.aartiq/servicenow-mcp",
-  "version": "1.0.2",
-  "description": "The most comprehensive ServiceNow MCP server — 400+ tools across all modules. Integrates with Claude, ChatGPT, Gemini, Cursor, GitHub Copilot and any LLM.",
+  "name": "nowaikit",
+  "mcpName": "io.github.aartiq/nowaikit",
+  "version": "4.1.2",
+  "description": "The Most Comprehensive ServiceNow AI Toolkit \u2014 400+ MCP tools + 26 AI capabilities (scan, review, build, ops, docs) + direct BYOK mode. Integrates with Claude, ChatGPT, Gemini, Cursor, GitHub Copilot and any LLM.",
   "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    },
+    "./sdk": {
+      "types": "./dist/sdk/index.d.ts",
+      "import": "./dist/sdk/index.js"
+    },
+    "./client": {
+      "types": "./dist/servicenow/client.d.ts",
+      "import": "./dist/servicenow/client.js"
+    },
+    "./reports": {
+      "types": "./dist/reports/index.d.ts",
+      "import": "./dist/reports/index.js"
+    }
+  },
   "bin": {
-    "servicenow-mcp": "dist/cli/index.js"
+    "nowaikit": "dist/cli/index.js"
   },
   "type": "module",
   "files": [
     "dist/",
+    "desktop/serve.cjs",
+    "desktop/renderer/dist/",
+    "skills/",
     "instances.example.json",
     ".env.example"
   ],
@@ -17,7 +39,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/extract-tools.mjs",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "setup": "node dist/cli/index.js setup",
@@ -43,6 +65,7 @@
     "mcp",
     "mcp-server",
     "model-context-protocol",
+    "nowaikit",
     "itsm",
     "itom",
     "hrsd",
@@ -71,10 +94,20 @@
     "copilot",
     "typescript",
     "automation",
-    "agentic"
+    "agentic",
+    "apex",
+    "scan",
+    "review",
+    "code-review",
+    "security-audit",
+    "technical-debt",
+    "direct-mode",
+    "byok",
+    "sdk",
+    "servicenow-sdk"
   ],
   "author": "aartiq",
-  "homepage": "https://github.com/aartiq/servicenow-mcp#readme",
+  "homepage": "https://nowaikit.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/aartiq/servicenow-mcp.git"
@@ -82,7 +115,7 @@
   "bugs": {
     "url": "https://github.com/aartiq/servicenow-mcp/issues"
   },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "overrides": {
     "minimatch": "^10.2.2"
   },
@@ -93,6 +126,8 @@
     "commander": "^14.0.3",
     "dotenv": "^16.4.5",
     "ora": "^9.3.0",
+    "pdfmake": "^0.3.7",
+    "pptxgenjs": "^4.0.1",
     "zod": "^3.22.4"
   },
   "devDependencies": {

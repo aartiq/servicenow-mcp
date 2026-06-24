@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" />
+    <title>NowAIKit — The Most Advanced ServiceNow MCP Server</title>
+    <meta name="description" content="400+ tools across all ServiceNow modules. Model Context Protocol (MCP) integration for Claude, ChatGPT, Gemini, Cursor, GitHub Copilot and any LLM.">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #050810;
+            --surface: #0B1020;
+            --surface2: #111828;
+            --border: #162A3A;
+            --text: #F1F3F8;
+            --text2: #7E8DA8;
+            --dim: #4A5670;
+            --accent: #00D4AA;
+            --accent2: #0F4C81;
+            --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body {
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+        /* ── Logo ── */
+        .logo-mark {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logo-icon {
+            width: 36px; height: 36px; border-radius: 8px;
+            background: linear-gradient(135deg, #00F0C0 0%, #00D4AA 50%, #0F4C81 100%);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 14px; color: #fff;
+            letter-spacing: -0.5px; flex-shrink: 0;
+        }
+        .logo-text {
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: var(--text);
+        }
+        .logo-accent {
+            background: linear-gradient(135deg, #00D4AA 0%, #0F4C81 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 800;
+        }
+
+        /* ── Nav ── */
+        nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-links { display: flex; gap: 28px; align-items: center; }
+        .nav-links a {
+            color: var(--text2);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 10px 22px; border-radius: 8px;
+            font-weight: 600; font-size: 0.9rem;
+            text-decoration: none; transition: all 0.2s;
+            border: none; cursor: pointer;
+        }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { opacity: 0.85; }
+        .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+        .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* ── Hero ── */
+        .hero {
+            text-align: center;
+            padding: 80px 0 60px;
+        }
+        .hero h1 {
+            font-size: 3.2rem;
+            font-weight: 800;
+            letter-spacing: -1.5px;
+            line-height: 1.15;
+            margin-bottom: 20px;
+        }
+        .hero h1 .gradient {
+            background: linear-gradient(135deg, #00D4AA 0%, #0F4C81 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero .tagline {
+            font-size: 1.15rem;
+            color: var(--text2);
+            max-width: 640px;
+            margin: 0 auto 36px;
+            line-height: 1.7;
+        }
+        .hero-buttons { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
+
+        /* ── Stats row ── */
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 48px;
+            padding: 40px 0;
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+        }
+        .stat { text-align: center; }
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #00D4AA, #0F4C81);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .stat-label { font-size: 0.78rem; color: var(--dim); text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; margin-top: 2px; }
+
+        /* ── Features grid ── */
+        .features { padding: 60px 0; }
+        .features h2 { text-align: center; font-size: 2rem; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .features .subtitle { text-align: center; color: var(--text2); margin-bottom: 48px; font-size: 1rem; }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .feature-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 28px;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+        .feature-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+        .feature-card h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+        .feature-card h3 .icon { font-size: 1.3rem; }
+        .feature-card p { color: var(--text2); font-size: 0.9rem; line-height: 1.6; }
+        .feature-card ul { list-style: none; margin-top: 10px; }
+        .feature-card li { padding: 4px 0; color: var(--text2); font-size: 0.88rem; }
+        .feature-card li::before { content: "→ "; color: var(--accent); font-weight: 600; }
+
+        /* ── Providers ── */
+        .providers { padding: 60px 0; border-top: 1px solid var(--border); }
+        .providers h2 { text-align: center; font-size: 2rem; font-weight: 700; margin-bottom: 12px; }
+        .providers .subtitle { text-align: center; color: var(--text2); margin-bottom: 36px; }
+        .provider-row {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .provider-badge {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            font-size: 0.92rem;
+            transition: border-color 0.2s;
+        }
+        .provider-badge:hover { border-color: var(--accent); }
+        .provider-badge .icon { font-size: 1.2rem; }
+        .provider-badge .free { font-size: 0.7rem; background: #14532d; color: #86efac; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+
+        /* ── Install ── */
+        .install { padding: 60px 0; border-top: 1px solid var(--border); text-align: center; }
+        .install h2 { font-size: 2rem; font-weight: 700; margin-bottom: 24px; }
+        .install-cmd {
+            display: inline-block;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 28px;
+            font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 1rem;
+            color: #80E8D0;
+            margin-bottom: 16px;
+        }
+        .install-cmd .prompt { color: var(--dim); }
+
+        /* ── Footer ── */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 32px 0;
+            text-align: center;
+            color: var(--dim);
+            font-size: 0.85rem;
+        }
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        /* ── Responsive ── */
+        @media (max-width: 640px) {
+            .hero h1 { font-size: 2.2rem; }
+            .stats { gap: 24px; }
+            .nav-links { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Nav -->
+        <nav>
+            <div class="logo-mark">
+                <div class="logo-icon">
+                    <svg width="20" height="20" viewBox="0 0 32 32" fill="none">
+                        <path d="M9 23V9l7 10V9" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="23" cy="12" r="2.5" fill="#fff" opacity="0.9"/>
+                        <circle cx="23" cy="20" r="2.5" fill="#fff" opacity="0.9"/>
+                        <line x1="23" y1="14.5" x2="23" y2="17.5" stroke="#fff" stroke-width="1.5" opacity="0.6"/>
+                    </svg>
+                </div>
+                <span class="logo-text">Now<span class="logo-accent">AI</span>Kit</span>
+            </div>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#providers">AI Providers</a>
+                <a href="#install">Install</a>
+                <a href="https://github.com/aartiq/nowaikit" class="btn btn-outline">GitHub</a>
+            </div>
+        </nav>
+
+        <!-- Hero -->
+        <section class="hero">
+            <h1>The Most Advanced<br><span class="gradient">ServiceNow MCP Server</span></h1>
+            <p class="tagline">
+                400+ tools across all ServiceNow modules. Connect Claude, ChatGPT, Gemini, Cursor, GitHub Copilot
+                and any LLM to your ServiceNow instance with full ITSM, ITOM, HRSD, CSM, SecOps, and platform coverage.
+            </p>
+            <div class="hero-buttons">
+                <a href="https://github.com/aartiq/nowaikit" class="btn btn-primary">Get Started</a>
+                <a href="https://github.com/aartiq/nowaikit/releases" class="btn btn-outline">Download Desktop App</a>
+            </div>
+        </section>
+
+        <!-- Stats -->
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-number">400+</div>
+                <div class="stat-label">Tools</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">25+</div>
+                <div class="stat-label">Modules</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">5</div>
+                <div class="stat-label">AI Providers</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">2</div>
+                <div class="stat-label">Free Providers</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">MIT</div>
+                <div class="stat-label">License</div>
+            </div>
+        </div>
+
+        <!-- Features -->
+        <section class="features" id="features">
+            <h2>Full ServiceNow Coverage</h2>
+            <p class="subtitle">Every module, every workflow — one MCP server to rule them all.</p>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3><span class="icon">📝</span> ITSM</h3>
+                    <ul>
+                        <li>Incident, Problem, Change management</li>
+                        <li>Task lifecycle & approvals</li>
+                        <li>SLA tracking & work notes</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3><span class="icon">🔧</span> ITOM & CMDB</h3>
+                    <ul>
+                        <li>CI search & relationship mapping</li>
+                        <li>Discovery schedules & MID servers</li>
+                        <li>Service mapping & health dashboard</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3><span class="icon">👥</span> HRSD & CSM</h3>
+                    <ul>
+                        <li>HR case & lifecycle management</li>
+                        <li>Customer cases & accounts</li>
+                        <li>Service contracts & entitlements</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3><span class="icon">🔒</span> SecOps & GRC</h3>
+                    <ul>
+                        <li>Security incidents & vulnerabilities</li>
+                        <li>Threat intelligence & compliance</li>
+                        <li>Risk assessment & policies</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3><span class="icon">⚡</span> Flow Designer</h3>
+                    <ul>
+                        <li>Flow & subflow management</li>
+                        <li>Actions & triggers</li>
+                        <li>Process automation engine</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3><span class="icon">🌐</span> Portal & UI Builder</h3>
+                    <ul>
+                        <li>Service Portal pages & widgets</li>
+                        <li>UX apps & themes</li>
+                        <li>Client scripts & UI policies</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3><span class="icon">📊</span> Analytics & Reporting</h3>
+                    <ul>
+                        <li>Performance Analytics indicators</li>
+                        <li>Dashboards & scorecards</li>
+                        <li>Aggregate queries & trend analysis</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3><span class="icon">💻</span> Platform Development</h3>
+                    <ul>
+                        <li>Scoped apps & App Studio</li>
+                        <li>Business rules & script includes</li>
+                        <li>ATF tests & update sets</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <h3><span class="icon">🔗</span> Integration & DevOps</h3>
+                    <ul>
+                        <li>REST messages & transform maps</li>
+                        <li>CI/CD pipelines & deployments</li>
+                        <li>Import sets & event registry</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- AI Providers -->
+        <section class="providers" id="providers">
+            <h2>Works With Every AI Provider</h2>
+            <p class="subtitle">Bring your own key — or use a free provider to get started instantly.</p>
+
+            <div class="provider-row">
+                <div class="provider-badge"><span class="icon">◈</span> Claude (Anthropic)</div>
+                <div class="provider-badge"><span class="icon">◎</span> ChatGPT (OpenAI)</div>
+                <div class="provider-badge"><span class="icon">◇</span> Gemini (Google) <span class="free">Free Tier</span></div>
+                <div class="provider-badge"><span class="icon">⚡</span> Groq <span class="free">Free</span></div>
+                <div class="provider-badge"><span class="icon">⊕</span> OpenRouter <span class="free">Free Models</span></div>
+            </div>
+        </section>
+
+        <!-- Install -->
+        <section class="install" id="install">
+            <h2>Get Started in Seconds</h2>
+            <div class="install-cmd">
+                <span class="prompt">$</span> npx nowaikit setup
+            </div>
+            <p style="color: var(--text2); margin-bottom: 24px;">Or download the desktop app for a visual GUI experience.</p>
+            <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
+                <a href="https://github.com/aartiq/nowaikit/releases" class="btn btn-primary">Download for macOS</a>
+                <a href="https://github.com/aartiq/nowaikit/releases" class="btn btn-outline">Download for Windows</a>
+                <a href="https://github.com/aartiq/nowaikit/releases" class="btn btn-outline">Download for Linux</a>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer>
+            <p>Built for the ServiceNow &amp; AI community &middot; <a href="https://github.com/aartiq/nowaikit">GitHub</a></p>
+        </footer>
+    </div>
+</body>
+</html>

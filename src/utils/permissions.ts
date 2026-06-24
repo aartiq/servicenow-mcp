@@ -1,7 +1,7 @@
 import { ServiceNowError } from './errors.js';
 
 /**
- * Permission tier utilities for servicenow-mcp tools.
+ * Permission tier utilities for NowAIKit tools.
  *
  * Tier 0 – Always available (all read tools)
  * Tier 1 – WRITE_ENABLED=true (standard ITSM writes)
@@ -56,6 +56,19 @@ export function requireAtf(): void {
       'ATF_NOT_ENABLED'
     );
   }
+}
+
+export function requireFluent(): void {
+  if (process.env.FLUENT_ENABLED !== 'true') {
+    throw new ServiceNowError(
+      'Fluent/now-sdk operations are disabled. Set FLUENT_ENABLED=true to enable.',
+      'FLUENT_NOT_ENABLED'
+    );
+  }
+}
+
+export function isFluentEnabled(): boolean {
+  return process.env.FLUENT_ENABLED === 'true';
 }
 
 export function isWriteEnabled(): boolean {

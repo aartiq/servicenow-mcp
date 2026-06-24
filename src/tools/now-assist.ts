@@ -139,11 +139,19 @@ export function getNowAssistToolDefinitions() {
   ];
 }
 
+const NOW_ASSIST_TOOL_NAMES = new Set([
+  'nlq_query', 'ai_search', 'generate_summary', 'suggest_resolution',
+  'categorize_incident', 'get_virtual_agent_topics', 'trigger_agentic_playbook',
+  'get_ms_copilot_topics', 'generate_work_notes', 'get_pi_models',
+]);
+
 export async function executeNowAssistToolCall(
   client: ServiceNowClient,
   name: string,
   args: Record<string, any>
 ): Promise<any> {
+  // Only gate Now Assist tools — return null for unrelated tools so dispatch continues
+  if (!NOW_ASSIST_TOOL_NAMES.has(name)) return null;
   requireNowAssist();
 
   switch (name) {

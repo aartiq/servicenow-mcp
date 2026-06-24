@@ -135,6 +135,37 @@ export function getMlToolDefinitions() {
         required: ['table'],
       },
     },
+    {
+      name: 'ml_similar_incidents',
+      description:
+        'Find similar past incidents using keyword-based matching. Provide either an incident sys_id ' +
+        '(to find similar incidents) or a short_description (for free-text matching). ' +
+        'Returns resolved incidents ranked by keyword match count.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          incident_sys_id: { type: 'string', description: 'Sys_id of an existing incident to find similar ones for' },
+          short_description: { type: 'string', description: 'Free-text description to match against (required if no sys_id)' },
+          limit: { type: 'number', description: 'Max results to return (default 10)' },
+        },
+        required: [],
+      },
+    },
+    {
+      name: 'ml_auto_categorize',
+      description:
+        'Auto-categorize a record based on its description by analysing resolved records of the same table. ' +
+        'Queries the last 500 resolved records, groups by category, and matches input keywords to suggest a category.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          short_description: { type: 'string', description: 'Short description of the record to categorize' },
+          description: { type: 'string', description: 'Full description (optional, improves accuracy)' },
+          table: { type: 'string', description: 'Table to analyse (default "incident")' },
+        },
+        required: ['short_description'],
+      },
+    },
   ];
 }
 
@@ -253,6 +284,130 @@ export async function executeMlToolCall(
       const avgDuration = durations.length > 0 ? durations.reduce((a: number, b: number) => a + b, 0) / durations.length : 0;
       const avgReassign = resp.records.reduce((sum: number, r: any) => sum + (parseInt(r.reassignment_count) || 0), 0) / (resp.count || 1);
       return { table: args.table, period_days: days, resolved_records: resp.count, avg_resolution_hours: Math.round(avgDuration * 10) / 10, avg_reassignments: Math.round(avgReassign * 10) / 10, bottleneck_indicator: avgReassign > 2 ? 'HIGH' : avgReassign > 1 ? 'MODERATE' : 'LOW' };
+    }
+
+    case 'ml_similar_incidents': {
+      const limit = args.limit || 10;
+      let description = args.short_description || '';
+
+      // If sys_id provided, fetch the incident's short_description first
+      if (args.incident_sys_id) {
+        const incident = await client.getRecord('incident', args.incident_sys_id);
+        description = incident.short_description || description;
+      }
+
+      if (!description) {
+        throw new ServiceNowError('Either incident_sys_id or short_description is required', 'INVALID_REQUEST');
+      }
+
+      // Tokenize into keywords (remove stop words and short tokens)
+      const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'shall', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'out', 'off', 'over', 'under', 'again', 'further', 'then', 'once', 'and', 'but', 'or', 'nor', 'not', 'no', 'so', 'if', 'it', 'its', 'this', 'that', 'these', 'those', 'i', 'me', 'my', 'we', 'our', 'you', 'your', 'he', 'she', 'they', 'them', 'their']);
+      const keywords = description
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter((w: string) => w.length > 2 && !stopWords.has(w));
+
+      if (keywords.length === 0) {
+        return { error: 'Could not extract meaningful keywords from the description' };
+      }
+
+      // Build LIKE query for each keyword (up to 5 keywords to avoid query overload)
+      const topKeywords = keywords.slice(0, 5);
+      const likeConditions = topKeywords.map((kw: string) => `short_descriptionLIKE${kw}`).join('^OR');
+      const query = `stateIN6,7^(${likeConditions})`;
+
+      const resp = await client.queryRecords({
+        table: 'incident',
+        query,
+        limit: 200,
+        fields: 'sys_id,number,short_description,category,priority,resolved_at,resolution_code,close_notes',
+      });
+
+      // Rank by keyword match count
+      const ranked = resp.records
+        .map((r: any) => {
+          const desc = (r.short_description || '').toLowerCase();
+          const matchCount = topKeywords.filter((kw: string) => desc.includes(kw)).length;
+          return { ...r, _match_score: matchCount };
+        })
+        .sort((a: any, b: any) => b._match_score - a._match_score)
+        .slice(0, limit);
+
+      return {
+        source_description: description,
+        keywords_used: topKeywords,
+        total_candidates: resp.count,
+        similar_incidents: ranked,
+      };
+    }
+
+    case 'ml_auto_categorize': {
+      const shortDesc = args.short_description;
+      if (!shortDesc) throw new ServiceNowError('short_description is required', 'INVALID_REQUEST');
+      const table = args.table || 'incident';
+      const fullText = `${shortDesc} ${args.description || ''}`.toLowerCase();
+
+      // Tokenize input
+      const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as', 'and', 'but', 'or', 'not', 'no', 'it', 'its', 'this', 'that', 'i', 'me', 'my', 'we', 'you', 'your', 'they', 'them', 'their']);
+      const inputKeywords = fullText
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter((w: string) => w.length > 2 && !stopWords.has(w));
+
+      // Query last 500 resolved records with categories
+      const resp = await client.queryRecords({
+        table,
+        query: 'stateIN6,7^categoryISNOTEMPTY',
+        limit: 500,
+        fields: 'short_description,category,subcategory',
+      });
+
+      if (resp.count === 0) {
+        return { error: `No resolved records with categories found in ${table}` };
+      }
+
+      // Build category -> keyword frequency map
+      const categoryData: Record<string, { count: number; keywords: Record<string, number> }> = {};
+      for (const r of resp.records as any[]) {
+        const cat = r.category;
+        if (!cat) continue;
+        if (!categoryData[cat]) categoryData[cat] = { count: 0, keywords: {} };
+        categoryData[cat].count++;
+        const words = (r.short_description || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, ' ')
+          .split(/\s+/)
+          .filter((w: string) => w.length > 2 && !stopWords.has(w));
+        for (const w of words) {
+          categoryData[cat].keywords[w] = (categoryData[cat].keywords[w] || 0) + 1;
+        }
+      }
+
+      // Score each category by matching input keywords
+      const scored = Object.entries(categoryData).map(([category, data]) => {
+        let score = 0;
+        for (const kw of inputKeywords) {
+          if (data.keywords[kw]) {
+            score += data.keywords[kw];
+          }
+        }
+        return { category, score, record_count: data.count };
+      })
+        .filter(c => c.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+      const topCategory = scored.length > 0 ? scored[0] : null;
+
+      return {
+        table,
+        input: shortDesc,
+        keywords_extracted: inputKeywords.slice(0, 10),
+        total_resolved_analysed: resp.count,
+        suggested_category: topCategory ? topCategory.category : 'unknown',
+        confidence: topCategory ? (topCategory.score > 10 ? 'high' : topCategory.score > 3 ? 'medium' : 'low') : 'none',
+        top_categories: scored.slice(0, 5),
+      };
     }
 
     default:

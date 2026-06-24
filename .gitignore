@@ -34,7 +34,20 @@ coverage/
 *.seed
 *.pid.lock
 
-# Config and token store
+# Desktop app build output (installers distributed via GitHub Releases)
+desktop/release/
+desktop/node_modules/
+desktop/dist/
+
+# nowaikit config and token store
 .config/
+nowaikit.org.json
 .mcpregistry_github_token
 .mcpregistry_registry_token
+homebrew-tap/
+
+# Dev session files
+CLAUDE.md
+PROGRESS.md
+LEARNINGS.md
+.claude/

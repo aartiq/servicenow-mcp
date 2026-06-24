@@ -2,11 +2,12 @@
 
 **Last updated:** March 2026
 
-## 1. Open-Source Software
+## 1. Source Available Software
 
-servicenow-mcp ("the Software") is free, open-source software distributed under the
-[MIT License](./LICENSE). You may use, copy, modify, and distribute the Software
-in accordance with the terms of that license.
+NowAIKit ("the Software") is source available software distributed under the
+[NowAIKit Source Available License](./LICENSE). You may use the Software free of
+charge for personal and commercial purposes. Copying, modification, redistribution,
+and derivative works are not permitted. See the LICENSE file for full terms.
 
 ## 2. Disclaimer of Warranties
 
@@ -28,29 +29,29 @@ PROFITS).
 
 ## 4. Third-Party Services
 
-servicenow-mcp integrates with third-party services including, but not limited to,
+NowAIKit integrates with third-party services including, but not limited to,
 ServiceNow, Anthropic (Claude), OpenAI, Google (Gemini), Groq, and OpenRouter.
 Your use of these services is governed by their respective terms of service and
-privacy policies. servicenow-mcp is not affiliated with, endorsed by, or sponsored by
+privacy policies. NowAIKit is not affiliated with, endorsed by, or sponsored by
 any of these providers.
 
 **You are solely responsible for:**
 - Securing and managing your own API keys
 - Complying with the terms of service of each third-party provider
-- Any costs incurred from API usage through servicenow-mcp
+- Any costs incurred from API usage through NowAIKit
 - Ensuring your use of the Software complies with your organization's policies
 
 ## 5. Data & Privacy
 
-servicenow-mcp does not collect, transmit, or store telemetry, analytics, or personal
+NowAIKit does not collect, transmit, or store telemetry, analytics, or personal
 data. API keys and configuration are stored locally on your device. When you use
 AI features, your prompts and data are sent directly to the AI provider you
-selected -- servicenow-mcp does not proxy, log, or retain this data beyond the local
+selected -- NowAIKit does not proxy, log, or retain this data beyond the local
 session.
 
 ## 6. ServiceNow Disclaimer
 
-servicenow-mcp is an independent open-source project and is **not an official
+NowAIKit is an independent project and is **not an official
 ServiceNow product**. "ServiceNow" is a trademark of ServiceNow, Inc. Use of
 this software with ServiceNow instances is at your own risk and subject to your
 ServiceNow license agreement.
@@ -70,4 +71,5 @@ from your use of the Software or your violation of these terms.
 ## 9. Contact
 
 For questions about these terms or for support:
-- **GitHub:** https://github.com/aartiq/servicenow-mcp/issues
+- **Email:** support@nowaikit.com
+- **GitHub:** https://github.com/aartiq/nowaikit/issues

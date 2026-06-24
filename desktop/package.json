@@ -1,0 +1,48 @@
+{
+  "name": "nowaikit-desktop",
+  "version": "3.0.3",
+  "description": "NowAIKit Desktop — visual setup wizard, dashboard, tool browser, and audit log viewer",
+  "main": "dist/main/index.js",
+  "author": {
+    "name": "aartiq",
+    "email": "habenani@gmail.com"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://nowaitkit.com",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\"",
+    "dev:renderer": "vite",
+    "dev:main": "tsx watch main/index.ts -- --dev",
+    "dev:web": "vite --open",
+    "build": "npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:web": "vite build",
+    "serve": "node serve.cjs",
+    "preview:web": "node serve.cjs",
+    "package": "npm run build && electron-builder",
+    "package:win": "npm run build && electron-builder --win",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:linux": "npm run build && electron-builder --linux"
+  },
+  "dependencies": {
+    "electron-store": "^10.0.0",
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^41.1.0",
+    "electron-builder": "^26.8.1",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.1.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vite": "^6.0.7",
+    "vite-plugin-electron": "^0.28.8"
+  }
+}

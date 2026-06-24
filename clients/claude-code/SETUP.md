@@ -11,8 +11,8 @@ Set up the ServiceNow MCP server with Claude Code (the CLI).
 ## Step 1: Build the Server
 
 ```bash
-git clone https://github.com/aartiq/servicenow-mcp.git
-cd servicenow-mcp
+git clone https://github.com/aartiq/nowaikit.git
+cd nowaikit
 npm install
 npm run build
 ```
@@ -24,7 +24,7 @@ npm run build
 ```bash
 claude mcp add servicenow \
   --command "node" \
-  --args "/absolute/path/to/servicenow-mcp/dist/server.js" \
+  --args "/absolute/path/to/nowaikit/dist/server.js" \
   --env SERVICENOW_INSTANCE_URL="https://yourinstance.service-now.com" \
   --env SERVICENOW_AUTH_METHOD="basic" \
   --env SERVICENOW_BASIC_USERNAME="your_username" \
@@ -37,7 +37,7 @@ claude mcp add servicenow \
 ```bash
 claude mcp add servicenow \
   --command "node" \
-  --args "/absolute/path/to/servicenow-mcp/dist/server.js" \
+  --args "/absolute/path/to/nowaikit/dist/server.js" \
   --env SERVICENOW_INSTANCE_URL="https://yourinstance.service-now.com" \
   --env SERVICENOW_AUTH_METHOD="oauth" \
   --env SERVICENOW_OAUTH_CLIENT_ID="your_client_id" \
@@ -78,7 +78,7 @@ To create and update records:
 claude mcp remove servicenow
 claude mcp add servicenow \
   --command "node" \
-  --args "/absolute/path/to/servicenow-mcp/dist/server.js" \
+  --args "/absolute/path/to/nowaikit/dist/server.js" \
   --env SERVICENOW_INSTANCE_URL="https://yourinstance.service-now.com" \
   --env SERVICENOW_AUTH_METHOD="basic" \
   --env SERVICENOW_BASIC_USERNAME="your_username" \

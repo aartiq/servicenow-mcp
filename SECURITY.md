@@ -2,7 +2,7 @@
 
 ## Data Handling
 
-servicenow-mcp is designed with security as a priority:
+NowAIKit is designed with security as a priority:
 
 ### Authentication
 - Supports OAuth 2.0 (preferred) and Basic authentication

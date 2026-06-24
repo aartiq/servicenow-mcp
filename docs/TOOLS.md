@@ -1,13 +1,13 @@
-# Tool Reference — servicenow-mcp v2.4 (Latest Release)
+# Tool Reference — NowAIKit v2.6.0 (Latest Release)
 
-Complete reference for all tools across all ServiceNow modules. All tools accept a `table` parameter override where applicable.
+Complete reference for all 400+ tools across all ServiceNow modules. All tools accept a `table` parameter override where applicable.
 
 ## Permission Tiers
 
 | Tier | Requirement | Applies To |
 |------|-------------|------------|
 | Read | None (default) | All query/get/list tools |
-| Write | `WRITE_ENABLED=true` | Create, update, resolve, order, approve |
+| Write | `WRITE_ENABLED=true` | create_record, update_record, delete_record, resolve, order, approve |
 | CMDB Write | `WRITE_ENABLED=true` + `CMDB_WRITE_ENABLED=true` | CI create/update/relate |
 | Scripting | `WRITE_ENABLED=true` + `SCRIPTING_ENABLED=true` | Business rules, script includes, changesets |
 | Now Assist | `NOW_ASSIST_ENABLED=true` | AI summaries, NLQ, agentic playbooks |
@@ -15,7 +15,7 @@ Complete reference for all tools across all ServiceNow modules. All tools accept
 
 ---
 
-## Core & CMDB (16 tools)
+## Core & CMDB (19 tools)
 
 ### query_records
 Query records from any ServiceNow table with filtering, sorting and pagination.
@@ -33,6 +33,28 @@ Retrieve a single record by sys_id.
 **Parameters**:
 - `table` (required) — Table name
 - `sys_id` (required) — Record sys_id
+
+### create_record
+Create a new record in any ServiceNow table. Requires `WRITE_ENABLED=true`.
+
+**Parameters**:
+- `table` (required) — Table name (e.g. `incident`, `sys_user_preference`)
+- `fields` (required) — Key-value pairs for the new record fields
+
+### update_record
+Update an existing record in any ServiceNow table. Requires `WRITE_ENABLED=true`.
+
+**Parameters**:
+- `table` (required) — Table name
+- `sys_id` (required) — 32-character system ID of the record
+- `fields` (required) — Key-value pairs of fields to update
+
+### delete_record
+Delete a record from any ServiceNow table. Requires `WRITE_ENABLED=true`.
+
+**Parameters**:
+- `table` (required) — Table name
+- `sys_id` (required) — 32-character system ID of the record
 
 ### get_table_schema
 Get field definitions and metadata for a table.

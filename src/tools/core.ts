@@ -3,6 +3,7 @@
  * These are always available (Tier 0).
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
+import { validateQuery } from '../servicenow/client.js';
 import type {
   QueryRecordsParams,
   GetRecordParams,
@@ -17,6 +18,19 @@ import type {
 import { ServiceNowError } from '../utils/errors.js';
 import { requireWrite } from '../utils/permissions.js';
 import { instanceManager } from '../servicenow/instances.js';
+import { assertWriteAllowed, assertDeleteAllowed } from '../utils/guardrails.js';
+import { appendAudit } from '../utils/audit.js';
+
+/** Compute a before→after diff for the fields being changed. */
+function computeDiff(before: Record<string, any>, fields: Record<string, any>) {
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  for (const [key, to] of Object.entries(fields)) {
+    const from = before ? before[key] : undefined;
+    const fromVal = from && typeof from === 'object' && 'value' in from ? (from as any).value : from;
+    if (String(fromVal ?? '') !== String(to ?? '')) diff[key] = { from: fromVal, to };
+  }
+  return diff;
+}
 
 export function getCoreToolDefinitions() {
   return [
@@ -57,6 +71,57 @@ export function getCoreToolDefinitions() {
           fields: { type: 'string', description: 'Optional comma-separated fields' },
         },
         required: ['table', 'sys_id'],
+      },
+    },
+    {
+      name: 'create_record',
+      description: 'Create a new record in any ServiceNow table (requires WRITE_ENABLED=true). Pass dry_run=true to preview the resolved payload without writing.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          table: { type: 'string', description: 'Table name (e.g., "incident", "sys_user_preference")' },
+          fields: { type: 'object', description: 'Key-value pairs for the new record fields' },
+          dry_run: { type: 'boolean', description: 'Preview only — return the resolved payload without creating the record' },
+        },
+        required: ['table', 'fields'],
+      },
+    },
+    {
+      name: 'update_record',
+      description: 'Update an existing record in any ServiceNow table (requires WRITE_ENABLED=true). Pass dry_run=true to preview a before→after field diff without writing.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          table: { type: 'string', description: 'Table name (e.g., "incident", "sys_user_preference")' },
+          sys_id: { type: 'string', description: '32-character system ID of the record to update' },
+          fields: { type: 'object', description: 'Key-value pairs of fields to update' },
+          dry_run: { type: 'boolean', description: 'Preview only — return a before→after diff without updating the record' },
+        },
+        required: ['table', 'sys_id', 'fields'],
+      },
+    },
+    {
+      name: 'delete_record',
+      description: 'Delete a record from any ServiceNow table (requires WRITE_ENABLED=true). Pass dry_run=true to preview the record that would be deleted without deleting it.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          table: { type: 'string', description: 'Table name' },
+          sys_id: { type: 'string', description: '32-character system ID of the record to delete' },
+          dry_run: { type: 'boolean', description: 'Preview only — return the record that would be deleted without deleting it' },
+        },
+        required: ['table', 'sys_id'],
+      },
+    },
+    {
+      name: 'validate_query',
+      description: 'Lint-check a ServiceNow encoded query BEFORE running it: validates javascript: expressions against the safe function allowlist, length limits, and common mistakes (e.g. using = instead of ^, raw spaces). Returns { valid, issues, suggestions }.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The encoded query to validate, e.g. "active=true^priority=1^ORDERBYDESCsys_created_on"' },
+        },
+        required: ['query'],
       },
     },
     {
@@ -267,11 +332,95 @@ export async function executeCoreToolCall(
       if (!args.table) throw new ServiceNowError('Table name is required', 'INVALID_REQUEST');
       return await client.getTableSchema(args.table);
 
+    case 'validate_query': {
+      if (typeof args.query !== 'string') throw new ServiceNowError('query is required', 'INVALID_REQUEST');
+      const issues: string[] = [];
+      const suggestions: string[] = [];
+      let valid = true;
+      try {
+        validateQuery(args.query);
+      } catch (err) {
+        valid = false;
+        issues.push(err instanceof Error ? err.message : String(err));
+      }
+      // Heuristic lint for common encoded-query mistakes.
+      if (/\s(AND|OR)\s/i.test(args.query)) {
+        issues.push('Uses SQL-style AND/OR. ServiceNow encoded queries join conditions with "^" (AND) and "^OR" (OR).');
+        suggestions.push('Replace " AND " with "^" and " OR " with "^OR".');
+      }
+      if (args.query.includes(' ') && !/LIKE|ORDERBY|javascript:/i.test(args.query)) {
+        suggestions.push('Raw spaces are usually unintended in encoded queries (except inside values). Verify field/operator spacing.');
+      }
+      if (/ORDER BY/i.test(args.query)) {
+        issues.push('Uses "ORDER BY". The encoded-query form is "^ORDERBYfield" / "^ORDERBYDESCfield".');
+      }
+      if (valid && issues.length === 0) suggestions.push('Query looks syntactically valid.');
+      return { valid: valid && issues.length === 0, query: args.query, issues, suggestions };
+    }
+
     case 'get_record': {
       const p = args as GetRecordParams;
       if (!p.table || !p.sys_id) throw new ServiceNowError('table and sys_id are required', 'INVALID_REQUEST');
       return await client.getRecord(p.table, p.sys_id, p.fields);
     }
+    case 'create_record': {
+      requireWrite();
+      if (!args.table || !args.fields) throw new ServiceNowError('table and fields are required', 'INVALID_REQUEST');
+      assertWriteAllowed(args.table, args.fields);
+      const instance = instanceManager.getCurrentName();
+      if (args.dry_run) {
+        return { action: 'dry_run', would: 'create', table: args.table, payload: args.fields, note: 'No record was created. Re-run without dry_run to apply.' };
+      }
+      try {
+        const created = await client.createRecord(args.table, args.fields);
+        await appendAudit({ instance, tool: 'create_record', action: 'create', table: args.table, sys_id: (created as any)?.sys_id, result: 'ok' }, args.fields);
+        return { action: 'created', table: args.table, ...created };
+      } catch (err) {
+        await appendAudit({ instance, tool: 'create_record', action: 'create', table: args.table, result: 'error', error: err instanceof Error ? err.message : String(err) }, args.fields);
+        throw err;
+      }
+    }
+
+    case 'update_record': {
+      requireWrite();
+      if (!args.table || !args.sys_id || !args.fields) throw new ServiceNowError('table, sys_id, and fields are required', 'INVALID_REQUEST');
+      assertWriteAllowed(args.table, args.fields);
+      const instance = instanceManager.getCurrentName();
+      if (args.dry_run) {
+        let before: Record<string, any> = {};
+        try { before = await client.getRecord(args.table, args.sys_id, Object.keys(args.fields).join(',')); } catch { /* record may not be readable */ }
+        return { action: 'dry_run', would: 'update', table: args.table, sys_id: args.sys_id, diff: computeDiff(before, args.fields), note: 'No record was updated. Re-run without dry_run to apply.' };
+      }
+      try {
+        const updated = await client.updateRecord(args.table, args.sys_id, args.fields);
+        await appendAudit({ instance, tool: 'update_record', action: 'update', table: args.table, sys_id: args.sys_id, result: 'ok' }, args.fields);
+        return { action: 'updated', table: args.table, sys_id: args.sys_id, ...updated };
+      } catch (err) {
+        await appendAudit({ instance, tool: 'update_record', action: 'update', table: args.table, sys_id: args.sys_id, result: 'error', error: err instanceof Error ? err.message : String(err) }, args.fields);
+        throw err;
+      }
+    }
+
+    case 'delete_record': {
+      requireWrite();
+      if (!args.table || !args.sys_id) throw new ServiceNowError('table and sys_id are required', 'INVALID_REQUEST');
+      assertDeleteAllowed(args.table);
+      const instance = instanceManager.getCurrentName();
+      if (args.dry_run) {
+        let current: Record<string, any> | undefined;
+        try { current = await client.getRecord(args.table, args.sys_id); } catch { /* not readable */ }
+        return { action: 'dry_run', would: 'delete', table: args.table, sys_id: args.sys_id, current_record: current, note: 'No record was deleted. Re-run without dry_run to apply.' };
+      }
+      try {
+        await client.deleteRecord(args.table, args.sys_id);
+        await appendAudit({ instance, tool: 'delete_record', action: 'delete', table: args.table, sys_id: args.sys_id, result: 'ok' });
+        return { action: 'deleted', table: args.table, sys_id: args.sys_id };
+      } catch (err) {
+        await appendAudit({ instance, tool: 'delete_record', action: 'delete', table: args.table, sys_id: args.sys_id, result: 'error', error: err instanceof Error ? err.message : String(err) });
+        throw err;
+      }
+    }
+
     case 'get_user':
       if (!args.user_identifier) throw new ServiceNowError('user_identifier is required', 'INVALID_REQUEST');
       return await client.getUser(args.user_identifier);

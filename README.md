@@ -1,28 +1,47 @@
 <div align="center">
 
-[![AI-Powered](https://img.shields.io/badge/AI--Powered-Claude%20%7C%20ChatGPT%20%7C%20Gemini%20%7C%20Groq%20%7C%20OpenRouter-00D4AA?style=flat-square)](https://github.com/aartiq/servicenow-mcp)
+<img src="docs/assets/banner.svg" alt="NowAIKit — The Complete ServiceNow AI Kit" width="100%"/>
+
+<br/>
+
+[![AI-Powered](https://img.shields.io/badge/AI--Powered-Claude%20%7C%20ChatGPT%20%7C%20Gemini%20%7C%20Groq%20%7C%20OpenRouter-00D4AA?style=flat-square)](https://github.com/aartiq/nowaikit)
 [![Tools](https://img.shields.io/badge/400%2B%20Tools-All%20Modules-0F4C81?style=flat-square)](docs/TOOLS.md)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-f59e0b?style=flat-square)](LICENSE)
+[![License: Source Available](https://img.shields.io/badge/license-Source%20Available-f59e0b?style=flat-square)](LICENSE)
 [![ServiceNow](https://img.shields.io/badge/ServiceNow-Latest%20Release-00D4AA?style=flat-square)](https://developer.servicenow.com)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-0F4C81?style=flat-square)](https://modelcontextprotocol.io)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 
 <br/>
 
-# servicenow-mcp
+# NowAIKit — ServiceNow MCP Server
 
-## The Most Comprehensive ServiceNow MCP Server
+## The Most Comprehensive ServiceNow AI Toolkit
 
-> **400+ tools · 31+ ServiceNow modules · 5-minute setup · MIT licensed · Works with any AI**
+> **400+ tools · 31+ ServiceNow modules · 5-minute setup · Free to use · Works with any AI**
 
-**servicenow-mcp** is the most comprehensive, production-ready MCP server for ServiceNow — and the only one that truly does it all.
+**NowAIKit** is the most comprehensive, production-ready AI toolkit for ServiceNow — and the only one that truly does it all.
 
 Connect **Claude**, **ChatGPT**, **Gemini**, **Cursor**, **GitHub Copilot**, or any MCP-compatible AI in under 5 minutes. Then let your AI read, build, deploy, and automate across every ServiceNow module — incidents, changes, scripts, flows, portals, integrations, HRSD, CSM, and more.
 
 Ask in plain English. Deploy business rules from chat. Run ATF suites on demand. Query dev, staging, and prod simultaneously. Automate across multiple customer tenants without switching tabs. **Your AI, your instance, your rules.**
 
-**Any AI. Any instance. Any scale. 100% open-source.**
+**Any AI. Any instance. Any scale. Free to use.**
+
+---
+
+### 🧩 Part of the NowAIKit suite
+
+This repo is the **core MCP server**. NowAIKit is a full ServiceNow + AI suite:
+
+- 🌐 **[nowaikit.com](https://nowaikit.com)** — product home, docs & setup guides
+- ☁️ **[NowAIKit Cloud](https://cloud.nowaikit.com)** — use the toolkit in your browser, no install
+- 📦 **[`nowaikit-sdk`](https://www.npmjs.com/package/nowaikit-sdk)** — TypeScript ServiceNow client library
+- 🧰 **NowAIKit Builder** (VS Code extension) · **NowAIKit Utils** (browser extension)
+
+> **⚠️ Official distribution only:** install from **npm (`nowaikit`)** or **[nowaikit.com](https://nowaikit.com)**. NowAIKit is **never** shipped as a downloadable GitHub `.zip` — beware copycat repos with "Download" buttons.
+
+---
 
 > **Keywords:** ServiceNow MCP server · Model Context Protocol · ServiceNow AI · ITSM automation · ServiceNow Claude · ServiceNow ChatGPT · ServiceNow Cursor · ServiceNow Copilot · ServiceNow LLM · ServiceNow agent · MCP tools · ServiceNow API · agentic AI · ServiceNow developer tools
 
@@ -79,7 +98,7 @@ Trigger Agentic Playbooks, orchestrate multi-step ITSM/HRSD/CSM processes, compa
 
 ---
 
-## Why servicenow-mcp
+## Why NowAIKit
 
 <table>
 <tr>
@@ -94,7 +113,7 @@ Your AI doesn't just answer questions — it *acts*. Create incidents, write and
 
 ### Works With Every AI, Out of the Box
 
-**Claude, ChatGPT, Gemini, Grok, Cursor, Windsurf, GitHub Copilot, Amazon Q, JetBrains, Continue.dev, Cline, Zed, Google AI Studio, Ollama** — all supported out of the box. Any MCP-compatible client. Any custom Python or TypeScript agent. One server, every AI platform, zero lock-in.
+**Claude, ChatGPT, Gemini, Grok, Cursor, Windsurf, GitHub Copilot, Amazon Q, JetBrains, Continue.dev, Cline, Zed, Google AI Studio, Ollama** — all supported out of the box. Any MCP-compatible client. Any custom Python or TypeScript agent. One toolkit, every AI platform, zero lock-in.
 
 </td>
 <td width="33%" valign="top">
@@ -124,7 +143,7 @@ A five-tier permission model keeps your instance protected. **Read is always on.
 
 ### True Multi-Instance & Multi-Customer
 
-Connect to **unlimited ServiceNow instances** from one session — dev, staging, prod, *and* multiple customer tenants simultaneously. Pass `instance: "acme_prod"` on any tool call, or `switch_instance` globally. MSPs, consultants, and enterprise teams can compare, query, and automate across every environment at once. No other ServiceNow MCP server does this.
+Connect to **unlimited ServiceNow instances** from one session — dev, staging, prod, *and* multiple customer tenants simultaneously. Pass `instance: "acme_prod"` on any tool call, or `switch_instance` globally. MSPs, consultants, and enterprise teams can compare, query, and automate across every environment at once. No other ServiceNow AI toolkit does this.
 
 </td>
 </tr>
@@ -194,13 +213,15 @@ Two authentication methods are supported:
 | **Basic Auth** | Development, personal instances, quick setup |
 | **OAuth 2.0** (client credentials / password grant) | Production deployments, service accounts |
 
+SSO / OIDC authentication (Okta, Azure AD / Entra, Ping Identity) is available in the Enterprise edition — see [nowaikit.com/#pricing](https://nowaikit.com/#pricing).
+
 For OAuth setup in ServiceNow, see [docs/SERVICENOW_OAUTH_SETUP.md](docs/SERVICENOW_OAUTH_SETUP.md).
 
 ---
 
 ## Permission System
 
-A five-tier permission model keeps your instance safe by default:
+A four-tier permission model keeps your instance safe by default:
 
 | Tier | Environment Variable | Covers |
 |------|---------------------|--------|
@@ -239,10 +260,10 @@ Set `MCP_TOOL_PACKAGE` to expose only the tools relevant to each persona:
 
 ```bash
 # Install globally (Node.js 20+ required)
-npm install -g @aartiq/servicenow-mcp
+npm install -g nowaikit
 
 # Run the wizard — detects your AI clients and writes config automatically
-npx @aartiq/servicenow-mcp setup
+npx nowaikit setup
 ```
 
 The wizard will:
@@ -254,16 +275,39 @@ The wizard will:
 
 ```
 # Add a second instance later
-servicenow-mcp setup --add
+nowaikit setup --add
 
 # Manage instances
-servicenow-mcp instances list
+nowaikit instances list
 ```
 
-### Option B — Manual Setup
+### Option B — Web Dashboard (one command)
 
 ```bash
-git clone https://github.com/aartiq/servicenow-mcp.git && cd servicenow-mcp
+npx nowaikit web
+```
+
+Opens the NowAIKit dashboard at **http://localhost:4175** — includes instance management, settings, and an audit log viewer.
+
+```bash
+# Custom port
+npx nowaikit web --port 3000
+
+# Expose to network (use with caution)
+npx nowaikit web --host 0.0.0.0
+
+# Don't auto-open browser
+npx nowaikit web --no-open
+```
+
+### Option C — Desktop App
+
+Download the native desktop app (macOS, Windows, Linux) from [GitHub Releases](https://github.com/aartiq/nowaikit/releases). Includes a visual setup wizard, tool browser, and audit log viewer.
+
+### Option D — Manual Setup
+
+```bash
+git clone https://github.com/aartiq/nowaikit.git && cd nowaikit
 npm install && npm run build
 cp .env.example .env   # fill in your ServiceNow credentials
 ```
@@ -333,6 +377,39 @@ Show me all transform maps that target the incident table.
 Fire the custom event "myapp.ticket.escalated" on incident INC0012345.
 ```
 
+**Notifications & Attachments:**
+```
+List all email notifications that trigger on the incident table when a comment is added.
+```
+```
+Upload a screenshot of the error (base64) as an attachment to incident INC0012345.
+```
+```
+Show me all failed email log entries from the last 24 hours.
+```
+
+**Performance Analytics & Data Quality:**
+```
+Get the current scorecard for the "Mean Time to Resolve" PA indicator with a 30-day trend.
+```
+```
+Check the data completeness of the incident table — how many incidents are missing assignment_group or category?
+```
+```
+Compare record counts across incident, change_request, and problem tables.
+```
+
+**ATF, Reporting & Scheduled Jobs:**
+```
+Run the Regression Test Suite and show me any failures with ATF Failure Insight details.
+```
+```
+Summarise the last 30 days of incident trends by category.
+```
+```
+Create a scheduled job that runs daily at 3am to archive closed incidents older than 90 days.
+```
+
 For 120+ real-world examples with inputs, outputs, and advanced workflows, see [EXAMPLES.md](EXAMPLES.md).
 
 ---
@@ -366,7 +443,7 @@ Type `@` to pull live ServiceNow data into your AI context:
 | `@ci:<name>` | CMDB CI by name |
 | `@kb:<title>` | Knowledge article by title |
 
-Add your own commands in `servicenow-mcp.commands.json`:
+Add your own commands in `nowaikit.commands.json`:
 
 ```json
 [
@@ -387,11 +464,73 @@ Add your own commands in `servicenow-mcp.commands.json`:
 | Role-based tool packages | [docs/TOOL_PACKAGES.md](docs/TOOL_PACKAGES.md) |
 | All environment variables reference | [docs/INSTALLATION.md](docs/INSTALLATION.md) |
 
+### Pro / Enterprise Features
+
+The following features are available in **NowAIKit Pro** and **Enterprise** editions:
+
+| Feature | Edition |
+|---------|---------|
+| HTTP API server & web dashboard | Pro |
+| Desktop app (macOS, Windows, Linux) | Pro |
+| SSO / OIDC (Okta, Azure AD / Entra, Ping Identity) | Enterprise |
+| Audit logging (JSONL + SIEM webhooks) | Enterprise |
+| Org policy governance (MDM / GPO deployment) | Enterprise |
+
+Learn more at [nowaikit.com/#pricing](https://nowaikit.com/#pricing).
+
+---
+
+## See It In Action
+
+These are real interactions you can have with your AI once NowAIKit is connected:
+
+**Operations — plain English:**
+```
+You: "Show me all P1 incidents opened this week that are still unresolved"
+You: "Which assignment groups have the most open incidents right now?"
+You: "Find all change requests scheduled for this weekend"
+You: "Is any SLA about to breach in the next 2 hours?"
+```
+
+**Development — AI writes and deploys for you:**
+```
+You: "Create a business rule that auto-assigns high-priority incidents to the NOC group"
+You: "Write a client script that validates email format on the contact form"
+You: "Create a Service Portal widget that shows my team's open tasks"
+You: "Set up a REST Message integration to send alerts to our Slack channel"
+```
+
+**AI-powered intelligence:**
+```
+You: "Summarise this incident and suggest a resolution based on similar past cases"
+You: "Use Predictive Intelligence to categorise this new incident description"
+You: "Trigger the SOC Agentic Playbook for this security incident"
+You: "What's the trend in P2 incidents over the last 6 months?"
+```
+
+**Advanced automation:**
+```
+You: "Compare record counts between prod and dev for the incident table"
+You: "Check data completeness on the cmdb_ci_server table — which fields are mostly empty?"
+You: "Run the nightly sync transform map on the latest import set"
+You: "Create a scheduled job that emails the on-call team daily at 7am"
+```
+
+**Multi-instance & multi-customer:**
+```
+You: "List all configured instances"
+You: "Switch to customer_acme and show me their open P1 incidents"
+You: "Compare open change counts between prod and staging"
+You: "Get SLA breach risk from customer_globex prod instance"
+```
+
+See [EXAMPLES.md](EXAMPLES.md) for 120+ real-world examples across all ServiceNow modules.
+
 ---
 
 ## Supported AI Clients
 
-**Any MCP-compatible AI works.** servicenow-mcp has been tested with every major AI assistant, editor, and agent framework. Pick yours and follow the 3-step setup below.
+**Any MCP-compatible AI works.** NowAIKit has been tested with every major AI assistant, editor, and agent framework. Pick yours and follow the 3-step setup below.
 
 ### AI Assistants & Chat
 
@@ -407,9 +546,9 @@ Add your own commands in `servicenow-mcp.commands.json`:
 ```json
 {
   "mcpServers": {
-    "servicenow-mcp": {
+    "nowaikit": {
       "command": "node",
-      "args": ["/absolute/path/to/servicenow-mcp/dist/server.js"],
+      "args": ["/absolute/path/to/nowaikit/dist/server.js"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://yourinstance.service-now.com",
         "SERVICENOW_AUTH_METHOD": "basic",
@@ -427,9 +566,9 @@ Or use **multi-instance** (dev + staging + prod, or multiple customer tenants):
 ```json
 {
   "mcpServers": {
-    "servicenow-mcp": {
+    "nowaikit": {
       "command": "node",
-      "args": ["/absolute/path/to/servicenow-mcp/dist/server.js"],
+      "args": ["/absolute/path/to/nowaikit/dist/server.js"],
       "env": {
         "SN_INSTANCES_CONFIG": "/absolute/path/to/instances.json"
       }
@@ -456,9 +595,9 @@ OpenAI supports MCP via the **Responses API** (`mcp` tool type) in the latest SD
 from openai import OpenAI
 import os, subprocess
 
-# Start servicenow-mcp as a subprocess MCP server
+# Start NowAIKit as a subprocess MCP server
 proc = subprocess.Popen(
-    ["node", "/path/to/servicenow-mcp/dist/server.js"],
+    ["node", "/path/to/nowaikit/dist/server.js"],
     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     env={**os.environ,
          "SERVICENOW_INSTANCE_URL": "https://yourinstance.service-now.com",
@@ -468,9 +607,10 @@ proc = subprocess.Popen(
 )
 
 client = OpenAI()
+# Use with Responses API tool type "mcp" or via function calling
 response = client.responses.create(
     model="gpt-4o",
-    tools=[{"type": "mcp", "server_label": "servicenow-mcp"}],
+    tools=[{"type": "mcp", "server_label": "nowaikit"}],
     input="Show me all open P1 incidents"
 )
 ```
@@ -481,7 +621,7 @@ Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
 <details>
 <summary><b>Google Gemini / Vertex AI</b> (API)</summary>
 
-1. Install servicenow-mcp: `npm install -g @aartiq/servicenow-mcp`
+1. Install NowAIKit: `npm install -g nowaikit`
 2. Use the Python client in `clients/gemini/`:
 
 ```bash
@@ -490,6 +630,64 @@ python clients/gemini/servicenow_gemini_client.py
 ```
 
 Full guide → [clients/gemini/SETUP.md](clients/gemini/SETUP.md)
+</details>
+
+<details>
+<summary><b>Google AI Studio</b> — Gemini 2.5 Flash / Pro / Gemini 3 (MCP Preview)</summary>
+
+Google AI Studio supports MCP servers via its agent execution environment (currently in preview).
+
+1. Go to [aistudio.google.com](https://aistudio.google.com) and open **Build → Agent**
+2. In the **Tools** panel, add an MCP Server and point it to your NowAIKit instance:
+
+```json
+{
+  "name": "nowaikit",
+  "transport": "stdio",
+  "command": "node",
+  "args": ["/absolute/path/to/nowaikit/dist/server.js"],
+  "env": {
+    "SERVICENOW_INSTANCE_URL": "https://yourinstance.service-now.com",
+    "SERVICENOW_AUTH_METHOD": "basic",
+    "SERVICENOW_BASIC_USERNAME": "admin",
+    "SERVICENOW_BASIC_PASSWORD": "your_password",
+    "WRITE_ENABLED": "false"
+  }
+}
+```
+
+3. Alternatively, use the **Gemini API** directly with function calling by mapping NowAIKit tool definitions:
+
+```python
+import google.generativeai as genai
+import subprocess, json, os
+
+# Start NowAIKit MCP server
+proc = subprocess.Popen(
+    ["node", "/path/to/nowaikit/dist/server.js"],
+    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    env={**os.environ,
+         "SERVICENOW_INSTANCE_URL": "https://yourinstance.service-now.com",
+         "SERVICENOW_AUTH_METHOD": "basic",
+         "SERVICENOW_BASIC_USERNAME": "admin",
+         "SERVICENOW_BASIC_PASSWORD": "your_password"}
+)
+
+genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+model = genai.GenerativeModel("gemini-3.1-pro")  # or gemini-3-flash, gemini-2.5-flash
+# Use model.generate_content() with tools= mapped from NowAIKit definitions
+```
+
+Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
+</details>
+
+<details>
+<summary><b>Grok (xAI)</b> — via OpenAI-compatible API</summary>
+
+1. Grok uses the OpenAI-compatible API format. Follow the OpenAI setup above
+2. Set `base_url="https://api.x.ai/v1"` and your `XAI_API_KEY`
+
+Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
 </details>
 
 ---
@@ -505,9 +703,9 @@ Full guide → [clients/gemini/SETUP.md](clients/gemini/SETUP.md)
 ```json
 {
   "mcpServers": {
-    "servicenow-mcp": {
+    "nowaikit": {
       "command": "node",
-      "args": ["/absolute/path/to/servicenow-mcp/dist/server.js"],
+      "args": ["/absolute/path/to/nowaikit/dist/server.js"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://yourinstance.service-now.com",
         "SERVICENOW_AUTH_METHOD": "basic",
@@ -546,8 +744,8 @@ Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
 ```json
 {
   "context_servers": {
-    "servicenow-mcp": {
-      "command": { "path": "node", "args": ["/path/to/servicenow-mcp/dist/server.js"] },
+    "nowaikit": {
+      "command": { "path": "node", "args": ["/path/to/nowaikit/dist/server.js"] },
       "settings": {
         "SERVICENOW_INSTANCE_URL": "https://yourinstance.service-now.com",
         "SERVICENOW_AUTH_METHOD": "basic",
@@ -577,10 +775,10 @@ VS Code 1.99 and later includes built-in MCP support — no extension or subscri
 ```json
 {
   "servers": {
-    "servicenow-mcp": {
+    "nowaikit": {
       "type": "stdio",
       "command": "node",
-      "args": ["/absolute/path/to/servicenow-mcp/dist/server.js"],
+      "args": ["/absolute/path/to/nowaikit/dist/server.js"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://yourinstance.service-now.com",
         "SERVICENOW_AUTH_METHOD": "basic",
@@ -595,7 +793,7 @@ VS Code 1.99 and later includes built-in MCP support — no extension or subscri
 ```
 
 3. Open the Command Palette (`Cmd/Ctrl+Shift+P`) → **MCP: List Servers** to verify the connection
-4. Open Copilot Chat (or any AI assistant in VS Code) and use `@servicenow-mcp` or just ask naturally
+4. Open Copilot Chat (or any AI assistant in VS Code) and use `@nowaikit` or just ask naturally
 
 > **Tip:** Add `.vscode/mcp.json` to `.gitignore` if it contains credentials, or use environment variables from a `.env` file.
 
@@ -611,10 +809,10 @@ Full guide → [clients/vscode/SETUP.md](clients/vscode/SETUP.md)
 ```json
 {
   "servers": {
-    "servicenow-mcp": {
+    "nowaikit": {
       "type": "stdio",
       "command": "node",
-      "args": ["${workspaceFolder}/../../servicenow-mcp/dist/server.js"],
+      "args": ["${workspaceFolder}/../../nowaikit/dist/server.js"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://yourinstance.service-now.com",
         "SERVICENOW_AUTH_METHOD": "basic",
@@ -625,7 +823,7 @@ Full guide → [clients/vscode/SETUP.md](clients/vscode/SETUP.md)
   }
 }
 ```
-3. Open Copilot Chat → Agent mode → `@servicenow-mcp`
+3. Open Copilot Chat → Agent mode → `@nowaikit`
 
 Full guide → [clients/vscode/SETUP.md](clients/vscode/SETUP.md)
 </details>
@@ -640,9 +838,9 @@ Full guide → [clients/vscode/SETUP.md](clients/vscode/SETUP.md)
 {
   "mcpServers": [
     {
-      "name": "servicenow-mcp",
+      "name": "nowaikit",
       "command": "node",
-      "args": ["/path/to/servicenow-mcp/dist/server.js"],
+      "args": ["/path/to/nowaikit/dist/server.js"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://yourinstance.service-now.com",
         "SERVICENOW_AUTH_METHOD": "basic",
@@ -662,7 +860,7 @@ Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
 
 1. Install [Cline](https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev) from VS Code Marketplace
 2. Open Cline → MCP Servers → Add Server
-3. Enter the path to `servicenow-mcp/dist/server.js` and your environment variables
+3. Enter the path to `nowaikit/dist/server.js` and your environment variables
 
 Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
 </details>
@@ -672,7 +870,7 @@ Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
 
 1. Install JetBrains AI Assistant plugin
 2. Go to Settings → Tools → AI Assistant → MCP Servers
-3. Add a new server with the path to `servicenow-mcp/dist/server.js`
+3. Add a new server with the path to `nowaikit/dist/server.js`
 4. Set environment variables in the server configuration dialog
 
 Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
@@ -687,9 +885,9 @@ Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
 ```json
 {
   "mcpServers": {
-    "servicenow-mcp": {
+    "nowaikit": {
       "command": "node",
-      "args": ["/path/to/servicenow-mcp/dist/server.js"],
+      "args": ["/path/to/nowaikit/dist/server.js"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://yourinstance.service-now.com",
         "SERVICENOW_AUTH_METHOD": "basic",
@@ -715,8 +913,8 @@ Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
 # Install Claude Code
 npm install -g @anthropic-ai/claude-code
 
-# Register servicenow-mcp as an MCP server
-claude mcp add servicenow-mcp node /absolute/path/to/servicenow-mcp/dist/server.js \
+# Register NowAIKit as an MCP server
+claude mcp add nowaikit node /absolute/path/to/nowaikit/dist/server.js \
   --env SERVICENOW_INSTANCE_URL=https://yourinstance.service-now.com \
   --env SERVICENOW_AUTH_METHOD=basic \
   --env SERVICENOW_BASIC_USERNAME=admin \
@@ -737,9 +935,48 @@ Full guide → [clients/claude-code/SETUP.md](clients/claude-code/SETUP.md)
 
 1. Install [Ollama](https://ollama.ai) and pull a model: `ollama pull llama3`
 2. Use an MCP-compatible client (e.g. Cline or Continue) configured to use Ollama as the model
-3. Point the MCP server at `servicenow-mcp/dist/server.js`
+3. Point the MCP server at `nowaikit/dist/server.js`
 
 Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
+</details>
+
+---
+
+### Programmatic / Agent SDK
+
+<details>
+<summary><b>OpenAI Codex / Custom Python Agent</b></summary>
+
+```bash
+cd clients/codex
+pip install -r requirements.txt
+cp .env.basic.example .env  # fill in your credentials
+python servicenow_openai_client.py
+```
+
+Full guide → [clients/codex/SETUP.md](clients/codex/SETUP.md)
+</details>
+
+<details>
+<summary><b>Anthropic Agent SDK (Claude API)</b></summary>
+
+```python
+import anthropic, subprocess, json
+
+# Start NowAIKit subprocess
+proc = subprocess.Popen(
+    ["node", "/path/to/nowaikit/dist/server.js"],
+    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    env={**os.environ,
+         "SERVICENOW_INSTANCE_URL": "https://yourinstance.service-now.com",
+         "SERVICENOW_AUTH_METHOD": "basic",
+         "SERVICENOW_BASIC_USERNAME": "admin",
+         "SERVICENOW_BASIC_PASSWORD": "your_password"}
+)
+# Then use with the Anthropic MCP client SDK
+```
+
+See [Anthropic MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) for full integration.
 </details>
 
 ---
@@ -768,9 +1005,112 @@ Full guide → [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)
 
 ---
 
-## What's New in v1.0
+## What's New in v2.5
 
-Initial public release of **servicenow-mcp** — 400+ ServiceNow MCP tools, full CLI, multi-instance support, and 14 role-based tool packages. See [CHANGELOG.md](CHANGELOG.md) for details.
+### Multi-provider AI chat in the Desktop app & Web Dashboard
+
+The nowaikit Desktop and Web Dashboard support **5 AI providers** side-by-side — with full agentic tool-use for all providers. All model lists are kept current with each provider's latest releases.
+
+- **Provider switcher** — one-click toggle between providers in the Chat header; per-provider model dropdown updates automatically
+- **Claude (Anthropic)** — Opus 4.6 · Sonnet 4.6 · Haiku 4.5
+- **ChatGPT / OpenAI** — GPT-5.2 · GPT-5.2 Pro · GPT-5.1 · GPT-5 mini · GPT-5 nano · GPT-4.1 · GPT-4o · o3 · o4 mini
+- **Gemini (Google AI)** — Gemini 3.1 Pro · Gemini 3 Pro · Gemini 3 Flash · 2.5 Pro · 2.5 Flash · 2.5 Flash Lite
+- **Groq (free)** — Llama 4 Maverick · Llama 4 Scout · Llama 3.3 70B · Llama 3.1 8B — ultra-fast inference, no credit card required
+- **OpenRouter (200+ models)** — unified gateway to OpenAI o1 Pro · xAI Grok 4 · Claude Opus 4.6 · Gemini 2.5 Flash · DeepSeek R1 · Llama 4 Maverick · and more — many free tiers available
+- **o3/o4 reasoning model support** — automatic detection skips system messages and switches to `max_completion_tokens`; tools not sent to models that don't support them
+
+### In-app provider sign-in
+
+Settings → AI Providers now shows a unified **"Sign in to {Provider}"** flow per provider:
+
+1. Click **Sign in to Claude / ChatGPT / Gemini / Groq / OpenRouter** — the provider's API key portal opens in your system browser
+2. Sign in to your account and create/copy an API key
+3. Paste it directly into the focused input that appears
+4. Click **Verify Key** — a lightweight validation call confirms the key is valid before you save
+
+Each provider panel shows a clear **subscription note** explaining that API access is separate from consumer subscriptions (Claude.ai Pro, ChatGPT Plus, Gemini Advanced). Groq and OpenRouter offer generous free tiers — no credit card required.
+
+### Slash-command tool picker in Chat
+
+Type `/` in the chat input to open a floating picker over all 400+ ServiceNow tools:
+
+- Filter by tool name or description as you type
+- `↑` / `↓` to navigate · **Tab** or **Enter** to select · **Esc** to close
+- Inserts `/toolname` into your message — the AI knows to invoke that specific tool
+
+### Other Desktop improvements
+
+- **Test Key button** — inline on the API key input; calls the provider's model-list endpoint to validate without sending a chat message
+- **Server health auto-recovery** — polls every 8 seconds; "offline" status recovers automatically without restarting the app
+- **Dashboard URL truncation** — long instance URLs are truncated with `…` (full URL on hover)
+- **Bug fix: ChatGPT and Gemini responses now display correctly** — responses were being silently dropped due to a content-format mismatch between provider response conversion and the renderer; now fully fixed for both providers and the HTTP API server
+
+[Full changelog](CHANGELOG.md)
+
+## What's New in v2.4
+
+### Zero-config setup & desktop experience
+- **`npx nowaikit setup`** — interactive wizard detects and writes config for every AI client automatically. No JSON editing.
+- **nowaikit Desktop** — cross-platform Electron app (macOS, Windows, Linux) with 8-step visual wizard, dashboard, tool browser, and audit log. No separate server install needed.
+- **Web dashboard** — served at `http://localhost:3100` by the HTTP server. Browse tools, view health, tail audit logs.
+
+### Slash commands & @ mentions
+- **11 built-in `/` slash commands** — `/morning-standup`, `/p1-alerts`, `/my-tickets`, `/create-incident`, `/sla-breaches`, `/ci-health`, `/run-atf`, `/switch-instance`, `/deploy-updateset`, and more
+- **6 `@` mention resources** — `@my-incidents`, `@open-changes`, `@sla-breaches`, `@instance:info`, `@ci:<name>`, `@kb:<title>`
+- Custom commands via `nowaikit.commands.json`
+
+### Enterprise features
+- **Audit logging** — every tool call logged to JSONL file + webhook (SIEM integration). Wired into both MCP and HTTP servers.
+- **SSO / OIDC** — Okta/Entra/Ping IdP → ServiceNow token exchange. `GET /auth/login` + `/auth/callback` routes in HTTP server.
+- **Org/team policy** (`nowaikit.org.json`) — admin-deployed config: allowed instances, locked tool packages, SSO enforcement, write controls. Deploy via MDM or GPO.
+- **Per-user execution context** — auth modes: `service-account`, `per-user` (OAuth Authorization Code), `impersonation`. Queries respect each user's ServiceNow ACLs.
+
+### App builder integrations
+- **HTTP API server** (`npm run serve`) — REST proxy for Lovable, Bolt, v0, Replit apps. Keeps credentials server-side.
+- **Smithery registry** — `smithery install nowaikit` one-command install.
+
+[Full changelog](CHANGELOG.md)
+
+## What's New in v2.3
+
+- **Scoped Application (App Studio) module** — `list_scoped_apps`, `get_scoped_app`, `create_scoped_app`, `update_scoped_app`
+- **Create/update reports** — `create_report`, `update_report` added to Reporting module
+- **Create/update dashboards** — `create_dashboard`, `update_dashboard` added to Performance Analytics
+- **Create portals & pages** — `create_portal`, `create_portal_page` added to Service Portal module
+- **Create/update catalog items** — `create_catalog_item`, `update_catalog_item` added to Catalog module
+- **Approval rules** — `create_approval_rule` for automated approval workflow setup
+[Full changelog](CHANGELOG.md)
+
+## What's New in v2.2
+
+- **5 new modules**: System Properties, Update Set Management, Virtual Agent authoring, IT Asset Management, DevOps & Pipeline Tracking
+- **True multi-instance & multi-customer support** — connect to unlimited instances (dev, staging, prod, customer tenants) simultaneously from one session
+- **Per-call instance routing** — pass `instance: "name"` to any tool, or `switch_instance` globally
+- **2 new role packages** — `devops_engineer`, `itam_analyst`
+- `system_administrator` package extended with system properties and update set tools
+[Full changelog](CHANGELOG.md)
+
+### v2.1 highlights
+
+- **4 new modules**: Service Portal & UI Builder, Integration Hub, Notifications & Attachments, Performance Analytics
+- **Scripting enhancements** — UI Policies, UI Actions, ACL management
+- **Reporting enhancements** — scheduled job CRUD + run history
+- **Now Assist** — `generate_work_notes` AI-drafted work notes for any record
+- **2 new role packages** — `portal_developer`, `integration_engineer`
+- **Binary file upload** — `uploadAttachment()` via ServiceNow Attachment API
+
+## What's New in v2.0
+
+- **HRSD module** — HR cases, services, profiles, onboarding/offboarding workflows
+- **CSM module** — Customer cases, accounts, contacts, products, SLA tracking
+- **Security Operations & GRC** — SecOps incidents, vulnerabilities, risks, controls, threat intel
+- **Flow Designer** — List, inspect, trigger, and monitor flows and subflows
+- **OAuth 2.0** for all AI clients
+- **Role-based tool packages** — persona-specific packages
+- **Now Assist Agentic Playbooks** — AI automation
+- **ATF Failure Insight** — test failure diagnostics
+- **61 unit tests** covering all permission tiers, routing, and domain handlers
+- **Complete documentation** — reference guides in `docs/`
 
 ---
 
@@ -779,7 +1119,7 @@ Initial public release of **servicenow-mcp** — 400+ ServiceNow MCP tools, full
 | Guide | Description |
 |-------|-------------|
 | [docs/TOOLS.md](docs/TOOLS.md) | Complete reference for all tools with parameters, return types, and permission requirements |
-| [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md) | Step-by-step beginner + advanced setup for all AI clients |
+| [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md) | Step-by-step beginner + advanced setup for all AI clients (Claude, ChatGPT, Gemini, Cursor, VS Code, Windsurf, Continue, Cline, Codex, JetBrains, Ollama) |
 | [docs/TOOL_PACKAGES.md](docs/TOOL_PACKAGES.md) | Role-based package reference — which tools each of the 14 persona packages includes |
 | [docs/NOW_ASSIST.md](docs/NOW_ASSIST.md) | Now Assist and AI integration guide — NLQ, AI Search, Agentic Playbooks |
 | [docs/ATF.md](docs/ATF.md) | ATF testing guide — suites, test runs, ATF Failure Insight |
@@ -787,7 +1127,9 @@ Initial public release of **servicenow-mcp** — 400+ ServiceNow MCP tools, full
 | [docs/REPORTING.md](docs/REPORTING.md) | Reporting and analytics — aggregate queries, Performance Analytics, scheduled jobs |
 | [docs/MULTI_INSTANCE.md](docs/MULTI_INSTANCE.md) | Multi-instance configuration via `instances.json` or environment variables |
 | [docs/SERVICENOW_OAUTH_SETUP.md](docs/SERVICENOW_OAUTH_SETUP.md) | Creating an OAuth application in ServiceNow for secure API access |
-| [docs/INSTALLATION.md](docs/INSTALLATION.md) | Full installation guide including environment variables reference |
+| [docs/INSTALLATION.md](docs/INSTALLATION.md) | Full installation guide including wizard, enterprise config, SSO, and audit logging |
+| [clients/lovable/SETUP.md](clients/lovable/SETUP.md) | HTTP API server — integrate with Lovable, Bolt, v0, Replit apps |
+| [desktop/BUILDING.md](desktop/BUILDING.md) | Build and code-sign the Electron desktop app |
 | [EXAMPLES.md](EXAMPLES.md) | 120+ real-world examples with inputs, outputs, and advanced workflows |
 
 ---
@@ -808,6 +1150,7 @@ npm run lint         # lint
 ```
 src/
   server.ts              — MCP server entry point (stdio)
+  http-server.ts         — HTTP API server (REST proxy for web apps)
   servicenow/
     client.ts            — ServiceNow REST API client (Basic / OAuth / per-user)
     instances.ts         — Multi-instance manager
@@ -822,20 +1165,31 @@ src/
   prompts/
     index.ts             — MCP prompts registry (/ slash commands)
     itsm.ts              — 11 built-in slash commands
-    user-prompts.ts      — Custom commands from servicenow-mcp.commands.json
+    user-prompts.ts      — Custom commands from nowaikit.commands.json
   resources/
     index.ts             — MCP resources (@ mentions)
+  auth/
+    sso.ts               — OIDC/SSO module (IdP → ServiceNow token exchange)
+  dashboard/
+    html.ts              — Web dashboard (served at GET /)
   cli/
     index.ts             — CLI entry point (commander.js)
     setup.ts             — Interactive setup wizard
     detect-clients.ts    — Auto-detect installed AI clients
-    config-store.ts      — ~/.config/servicenow-mcp/instances.json
-    auth.ts              — servicenow-mcp auth login/logout/whoami
+    config-store.ts      — ~/.config/nowaikit/instances.json
+    auth.ts              — nowaikit auth login/logout/whoami
     writers/index.ts     — Write configs to AI client config files
   utils/
     permissions.ts       — Five-tier permission gate functions
+    audit.ts             — Structured JSONL audit logger + webhook
+    org-config.ts        — Org/team policy loader (nowaikit.org.json)
     errors.ts            — Typed error classes
     logging.ts           — Structured logger
+desktop/
+  main/                  — Electron main process (Node.js)
+  renderer/src/          — React 18 UI (Vite)
+  electron-builder.yml   — Cross-platform packaging config
+  BUILDING.md            — Desktop build & code-signing guide
 tests/
   tools/                 — Unit tests
 docs/                    — Reference documentation
@@ -844,6 +1198,7 @@ clients/
   cursor/                — Cursor setup guide
   vscode/                — VS Code setup guide
   claude-code/           — Claude Code setup guide
+  lovable/               — Lovable/Bolt/v0/Replit HTTP proxy guide
   codex/                 — OpenAI Codex Python client
   gemini/                — Google Gemini Python client
 smithery.yaml            — Smithery registry config
@@ -870,10 +1225,10 @@ If you discover a security vulnerability, please follow the responsible disclosu
 ## Frequently Asked Questions
 
 **Do I need to know the ServiceNow API to use this?**
-No. For beginners, you just connect your AI and ask questions in plain English. The server handles all API calls automatically.
+No. For beginners, you just connect your AI and ask questions in plain English. The kit handles all API calls automatically.
 
 **Which ServiceNow versions are supported?**
-All actively supported ServiceNow releases. The server targets the latest available APIs and has been tested on the three most recent releases.
+All actively supported ServiceNow releases. The toolkit targets the latest available APIs and has been tested on the three most recent releases — **Australia**, **Zurich**, and **Yokohama** — and works on any currently supported instance.
 
 **Can I use this on a free Personal Developer Instance (PDI)?**
 Yes. Get a free PDI at [developer.servicenow.com](https://developer.servicenow.com) and connect in 5 minutes.
@@ -881,30 +1236,35 @@ Yes. Get a free PDI at [developer.servicenow.com](https://developer.servicenow.c
 **Is it safe to use on production?**
 Yes. The permission system is read-only by default. Write, scripting, and Now Assist capabilities must each be explicitly enabled with environment variables. Use role packages to limit the tool surface.
 
+**Can I use multiple AI providers at the same time?**
+Yes. Each AI client gets its own MCP config pointing at the same (or different) NowAIKit instance. Run Claude Desktop and Cursor side by side against the same ServiceNow environment. In the nowaikit Desktop app you can switch between Claude, ChatGPT, and Gemini with one click inside the Chat page.
+
 **Does it support multi-instance / multiple customers?**
 Yes. Configure any number of instances (prod, staging, dev, or multiple customer tenants) via `instances.json` or environment variables. Use `list_instances`, `switch_instance`, and `get_current_instance` tools to manage them, or pass `instance: "name"` to any individual tool call. See [docs/MULTI_INSTANCE.md](docs/MULTI_INSTANCE.md).
 
 **Is it free?**
-Completely free and open-source under the MIT license.
+Completely free to use for personal and commercial purposes. See [LICENSE](LICENSE) for details.
 
 ---
 
 ## License
 
-[MIT](LICENSE) — free for personal and commercial use.
+[Source Available](LICENSE) — free to use for personal and commercial purposes. See LICENSE for details.
 
 ---
 
 <div align="center">
 
-### The only ServiceNow MCP server you'll ever need.
+### The only ServiceNow AI toolkit you'll ever need.
 
-400+ tools. 31+ modules. Every AI platform. True multi-instance. Open-source forever.
+400+ tools. 31+ modules. Every AI platform. True multi-instance. Free to use.
 
-**servicenow-mcp** &bull; ServiceNow MCP Server &bull; ServiceNow AI Agent &bull; ServiceNow Claude Integration &bull; ServiceNow ChatGPT &bull; ServiceNow Cursor &bull; ServiceNow Gemini &bull; ServiceNow Automation &bull; ServiceNow Developer Tools &bull; ServiceNow Multi-Instance &bull; ServiceNow MSP
+**NowAIKit** &bull; ServiceNow MCP Server &bull; ServiceNow AI Agent &bull; ServiceNow Claude Integration &bull; ServiceNow ChatGPT &bull; ServiceNow Cursor &bull; ServiceNow Gemini &bull; ServiceNow Automation &bull; ServiceNow Developer Tools &bull; ServiceNow Multi-Instance &bull; ServiceNow MSP
 
-If servicenow-mcp saves you time, please ⭐ star the repository — it helps others find the project.
+If NowAIKit saves you time, please ⭐ star the repository — it helps others find the project.
 
-[![GitHub Stars](https://img.shields.io/github/stars/aartiq/servicenow-mcp?style=social)](../../stargazers)
+[![GitHub Stars](https://img.shields.io/github/stars/aartiq/nowaikit?style=social)](../../stargazers)
+
+Built by Hardik Benani · [AartiQ](https://nowaikit.com)
 
 </div>
