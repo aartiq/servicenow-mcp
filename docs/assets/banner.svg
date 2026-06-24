@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" fill="none" role="img" aria-label="NowAIKit — ServiceNow MCP Server. Connect any AI to ServiceNow. 400+ tools.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" fill="none" role="img" aria-label="NowAIKit — ServiceNow MCP Server. Connect any AI to ServiceNow. 450+ tools.">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="340" gradientUnits="userSpaceOnUse">
       <stop stop-color="#070B16"/>
@@ -60,7 +60,7 @@
     <g font-size="14" font-weight="600">
       <g transform="translate(255 250)">
         <rect width="108" height="30" rx="15" fill="#00D4AA" fill-opacity="0.10" stroke="#00D4AA" stroke-opacity="0.4"/>
-        <text x="54" y="20" text-anchor="middle" fill="#33DCBB">400+ tools</text>
+        <text x="54" y="20" text-anchor="middle" fill="#33DCBB">450+ tools</text>
       </g>
       <g transform="translate(373 250)">
         <rect width="116" height="30" rx="15" fill="#00D4AA" fill-opacity="0.10" stroke="#00D4AA" stroke-opacity="0.4"/>

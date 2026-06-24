@@ -3,7 +3,7 @@
 <img src="docs/assets/banner.svg" alt="NowAIKit — ServiceNow MCP Server" width="100%"/>
 
 [![npm](https://img.shields.io/npm/v/nowaikit?style=flat-square&color=00D4AA&label=npm)](https://www.npmjs.com/package/nowaikit)
-[![Tools](https://img.shields.io/badge/400%2B%20tools-all%20modules-0F4C81?style=flat-square)](docs/TOOLS.md)
+[![Tools](https://img.shields.io/badge/450%2B%20tools-all%20modules-0F4C81?style=flat-square)](docs/TOOLS.md)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-0F4C81?style=flat-square)](https://modelcontextprotocol.io)
 [![License: Source Available](https://img.shields.io/badge/license-Source%20Available-f59e0b?style=flat-square)](LICENSE)
 
@@ -11,7 +11,7 @@
 
 **Connect Claude, ChatGPT, Gemini, Cursor, Copilot — or any AI — to ServiceNow.**
 
-400+ tools across ITSM, ITOM, CMDB, HRSD, CSM, Flow Designer, scripting & portal. Read, build, query and automate any instance in plain English.
+450+ tools across ITSM, ITOM, CMDB, HRSD, CSM, Flow Designer, scripting & portal. Read, build, query and automate any instance in plain English.
 
 </div>
 
@@ -77,7 +77,7 @@ No instance? Grab a free Personal Developer Instance at **[developer.servicenow.
 
 | | |
 |---|---|
-| [Installation](docs/INSTALLATION.md) · [Client setup](docs/CLIENT_SETUP.md) | [All 400+ tools](docs/TOOLS.md) · [Tool packages](docs/TOOL_PACKAGES.md) |
+| [Installation](docs/INSTALLATION.md) · [Client setup](docs/CLIENT_SETUP.md) | [All 450+ tools](docs/TOOLS.md) · [Tool packages](docs/TOOL_PACKAGES.md) |
 | [Multi-instance](docs/MULTI_INSTANCE.md) · [OAuth](docs/SERVICENOW_OAUTH_SETUP.md) | [Scripting](docs/SCRIPTING.md) · [ATF](docs/ATF.md) · [Reporting](docs/REPORTING.md) |
 
 Full guides & product home → **[nowaikit.com](https://nowaikit.com)**

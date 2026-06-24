@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.1.3] — 2026-06-24
+
+### Fixed
+- **`query_records` descending sort** — `orderBy: "-field"` now correctly sorts descending (`ORDERBYDESC<field>`) instead of returning the oldest record. Fixes the "can't get the latest record" bug. ([#8](https://github.com/aartiq/servicenow-mcp/issues/8))
+- **Docker build** — the image now installs build dependencies (TypeScript) and copies `scripts/`, so `npm run build` succeeds; production deps are pruned afterward. ([#4](https://github.com/aartiq/servicenow-mcp/issues/4))
+
+### Changed
+- Repository is now `aartiq/servicenow-mcp` (canonical); homepage → nowaikit.com.
+
+---
+
 ## [4.1.1] — 2026-06-23
 
 ### Added — `@servicenow/sdk` 4.8 parity for the Fluent tooling

@@ -353,10 +353,11 @@ export class ServiceNowClient {
       // Handle descending sort (prefix with "-")
       if (params.orderBy.startsWith('-')) {
         const field = params.orderBy.substring(1);
+        // ServiceNow descending syntax is ORDERBYDESC<field> (not ORDERBY<field>^ORDERBYDESC).
         queryParams.set('sysparm_query',
           params.query
-            ? `${params.query}^ORDERBY${field}^ORDERBYDESC`
-            : `ORDERBY${field}^ORDERBYDESC`
+            ? `${params.query}^ORDERBYDESC${field}`
+            : `ORDERBYDESC${field}`
         );
       } else {
         queryParams.set('sysparm_query',
