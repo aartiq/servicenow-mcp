@@ -1117,7 +1117,7 @@ export class ServiceNowClient {
   async naturalLanguageUpdate(_instruction: string, _table: string): Promise<any> {
     // This is a simplified implementation - a full version would parse
     // the instruction to extract record identifier and field updates
-    logger.warn('Natural language update is experimental and requires manual parsing');
+    logger.warn('Natural language update uses best-effort parsing; verify the result before applying');
 
     throw new ServiceNowError(
       'Natural language update requires custom parsing logic - not yet implemented',

@@ -245,7 +245,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     "name": "natural_language_search",
-    "description": "Search ServiceNow using plain English (experimental)",
+    "description": "Search ServiceNow using plain English",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -265,7 +265,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     "name": "natural_language_update",
-    "description": "Update a record using natural language (experimental, requires WRITE_ENABLED=true)",
+    "description": "Update a record using natural language (requires WRITE_ENABLED=true)",
     "inputSchema": {
       "type": "object",
       "properties": {
