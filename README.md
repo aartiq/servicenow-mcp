@@ -1,15 +1,15 @@
 <div align="center">
 
-<img src="docs/assets/banner.svg" alt="NowAIKit — ServiceNow MCP Server" width="100%"/>
+<img src="docs/assets/banner.svg" alt="NowAIKit ServiceNow MCP Server" width="100%"/>
 
 [![npm](https://img.shields.io/npm/v/nowaikit?style=flat-square&color=00D4AA&label=npm)](https://www.npmjs.com/package/nowaikit)
 [![Tools](https://img.shields.io/badge/450%2B%20tools-all%20modules-0F4C81?style=flat-square)](docs/TOOLS.md)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-0F4C81?style=flat-square)](https://modelcontextprotocol.io)
 [![License: Source Available](https://img.shields.io/badge/license-Source%20Available-f59e0b?style=flat-square)](LICENSE)
 
-# NowAIKit — ServiceNow MCP Server
+# ServiceNow MCP Server (NowAIKit)
 
-**Connect Claude, ChatGPT, Gemini, Cursor, Copilot — or any AI — to ServiceNow.**
+**Connect Claude, ChatGPT, Gemini, Cursor, Copilot, or any AI, to ServiceNow.**
 
 450+ tools across ITSM, ITOM, CMDB, HRSD, CSM, Flow Designer, scripting & portal. Read, build, query and automate any instance in plain English.
 
