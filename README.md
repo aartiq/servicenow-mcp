@@ -13,6 +13,8 @@
 
 450+ tools across ITSM, ITOM, CMDB, HRSD, CSM, Flow Designer, scripting & portal. Read, build, query and automate any instance in plain English.
 
+New in 4.4: Blast Radius static impact analysis (see what a change affects before you delete or rename), and Local Sync to pull widgets and scripts to local files, edit, and push them back.
+
 </div>
 
 ---
