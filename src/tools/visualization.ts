@@ -16,6 +16,11 @@ import { ServiceNowError } from '../utils/errors.js';
 
 const VISUALIZATION_TOOL_NAMES = new Set(['visualize_aggregate', 'visualize_trend', 'aggregate_report']);
 
+// Copilot Studio / Teams renders MCP tool results as text, so a returned Adaptive Card does
+// not render and free-form "ASCII charts" look unprofessional. Steer the model to present a
+// clean table and to send people to Power BI / PA for an actual interactive chart.
+const PRESENTATION = 'Present this to the user as a clean Markdown table (use table_markdown) plus the one-line summary. Do NOT draw an ASCII or text-art chart. If the user wants a visual or interactive chart, tell them charts of this data are best viewed in Power BI or a ServiceNow Performance Analytics dashboard (native chart rendering is not supported for MCP tools in Copilot Studio / Teams). The adaptive_card field is only for hosts that render Adaptive Cards.';
+
 type Point = { label: string; value: number };
 
 function toArray(v: any): string[] {
@@ -179,6 +184,7 @@ export async function executeVisualizationToolCall(
         table_markdown: markdownTable([String(args.group_by), 'count'], points),
         adaptive_card: breakdownChart(chartType, title, points),
         summary,
+        presentation: PRESENTATION,
       };
     }
 
@@ -232,6 +238,7 @@ export async function executeVisualizationToolCall(
         table_markdown,
         adaptive_card: breakdownChart('column', title, rows.map((r) => ({ label: r.group, value: r.count }))),
         summary,
+        presentation: PRESENTATION,
         ...(autoResolution ? { note: 'avg_business_duration is the average resolution time (business hours). Pass avg_fields:["calendar_duration"] for wall-clock elapsed time instead.' } : {}),
       };
     }
@@ -271,6 +278,7 @@ export async function executeVisualizationToolCall(
         table_markdown: markdownTable([interval, 'count'], series),
         adaptive_card: lineCard,
         summary,
+        presentation: PRESENTATION,
       };
     }
 

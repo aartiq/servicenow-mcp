@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.6.3] — 2026-07-22
+
+### Changed
+- **Report/chart tools now steer clean presentation.** aggregate_report / visualize_aggregate / visualize_trend return a `presentation` hint telling the model to show a Markdown table + summary (not an ASCII chart) and to point users to Power BI / Performance Analytics for interactive charts, since Copilot Studio + Teams does not render Adaptive Cards returned by MCP tools.
+
 ## [4.6.2] — 2026-07-22
 
 ### Changed
