@@ -84,6 +84,7 @@ import { getOrchestrationToolDefinitions, executeOrchestrationToolCall } from '.
 import { getDiscoveryToolDefinitions, executeDiscoveryToolCall, executeDynamicToolCall } from './discovery.js';
 import { getBlastRadiusToolDefinitions, executeBlastRadiusToolCall } from './blast-radius.js';
 import { getLocalSyncToolDefinitions, executeLocalSyncToolCall } from './local-sync.js';
+import { getVisualizationToolDefinitions, executeVisualizationToolCall } from './visualization.js';
 import { schemaCache } from './schema-cache.js';
 
 // ─── Package Definitions ──────────────────────────────────────────────────────
@@ -283,6 +284,7 @@ const ALL_TOOLS = [
   ...getDiscoveryToolDefinitions(),
   ...getBlastRadiusToolDefinitions(),
   ...getLocalSyncToolDefinitions(),
+  ...getVisualizationToolDefinitions(),
 ];
 
 // ─── Dynamic tool discovery (search_tools) ──────────────────────────────────────
@@ -445,6 +447,7 @@ export async function executeTool(
     () => executeOrchestrationToolCall(client, name, args),
     () => executeBlastRadiusToolCall(client, name, args),
     () => executeLocalSyncToolCall(client, name, args),
+    () => executeVisualizationToolCall(client, name, args),
     () => executeDiscoveryToolCall(client, name, args),
     () => executeDynamicToolCall(client, name, args),
   ];

@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.5.0] — 2026-07-22
+
+### Added — Visualization / reporting (charts for Copilot & Teams)
+- **`visualize_aggregate`** — group a table by a field (incidents by priority, cases by state, etc.) and get back chart-ready data, a markdown table, a summary, and a ready-to-render **Adaptive Card** with a native Teams `Chart.*` element (column / bar / pie / donut).
+- **`visualize_trend`** — count records over time (day / week / month) and get a line-chart Adaptive Card plus the series data.
+- Why a card: Microsoft Copilot Studio passes an MCP tool result to the model as text/JSON and does not render images an MCP server returns. A native Adaptive Card chart renders client-side in Teams, so the numbers stay inside the tenant (no third-party chart service). Drop the returned `adaptive_card` into a Copilot Studio "Send an adaptive card" step. The `table_markdown` is an always-renders fallback.
+
 ## [4.4.1] — 2026-07-21
 
 ### Security

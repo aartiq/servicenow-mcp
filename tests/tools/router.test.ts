@@ -62,6 +62,7 @@ describe('getTools – package system', () => {
       'blast_radius_table_configs', 'blast_radius_field_references',
       'blast_radius_script_dependents', 'blast_radius_update_sets', 'blast_radius_property_usage',
       'list_supported_artifacts', 'pull_artifact', 'push_artifact', 'sync_status',
+      'visualize_aggregate', 'visualize_trend',
     ]) {
       expect(names).toContain(n);
     }
