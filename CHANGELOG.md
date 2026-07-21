@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.6.1] — 2026-07-22
+
+### Changed
+- **`aggregate_report` now includes average resolution time by default** for task-derived tables (incident, problem, change_request, sc_task, cases, etc.) when `avg_fields` is omitted, so "volume by category" also answers "average resolution time by category" without the caller naming a duration field. Pass `avg_fields:["calendar_duration"]` for wall-clock elapsed time instead of business hours.
+
 ## [4.6.0] — 2026-07-22
 
 ### Added — Server-side aggregate reports (no truncation)

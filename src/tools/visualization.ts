@@ -24,6 +24,14 @@ function toArray(v: any): string[] {
   return [];
 }
 
+// Task-derived tables carry business_duration/calendar_duration (resolution time). If a report
+// on one of these is requested without an explicit avg field, default to average resolution time
+// so "volume by X" also answers "average resolution time by X" without the caller naming a field.
+const TASK_TABLES = new Set([
+  'incident', 'problem', 'change_request', 'sc_task', 'sc_req_item', 'sc_request',
+  'task', 'change_task', 'problem_task', 'incident_task', 'sn_customerservice_case', 'kb_submission',
+]);
+
 function toPoints(result: any[]): Point[] {
   return (result || [])
     .map((g) => {
@@ -106,7 +114,7 @@ export function getVisualizationToolDefinitions() {
     },
     {
       name: 'aggregate_report',
-      description: 'Server-side aggregate REPORT grouped by a field, in ONE query with no 1000-row truncation. Returns per-group record count PLUS optional averages/sums/mins/maxes of numeric or duration fields — the right tool for a periodic summary like "incident volume by category with average resolution time". Do NOT list raw records for this; use this. Duration fields come back pre-formatted (e.g. "21 14:03:10"). Returns a stats table (markdown), the rows, a count chart Adaptive Card, and a summary. Read-only.',
+      description: 'Server-side aggregate REPORT grouped by a field, in ONE query with no 1000-row truncation. Returns per-group record count PLUS averages/sums/mins/maxes of numeric or duration fields — the right tool for a periodic summary like "incident volume by category with average resolution time". Do NOT list raw records for this; use this. For task tables (incident, problem, change_request, cases, etc.) it INCLUDES average resolution time automatically even if avg_fields is omitted. Duration fields come back pre-formatted (e.g. "21 14:03:10"). Returns a stats table (markdown), the rows, a count chart Adaptive Card, and a summary. Read-only.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -176,7 +184,12 @@ export async function executeVisualizationToolCall(
 
     case 'aggregate_report': {
       if (!args.table || !args.group_by) throw new ServiceNowError('table and group_by are required', 'INVALID_REQUEST');
-      const avgFields = toArray(args.avg_fields);
+      let avgFields = toArray(args.avg_fields);
+      let autoResolution = false;
+      if (avgFields.length === 0 && TASK_TABLES.has(String(args.table))) {
+        avgFields = ['business_duration'];
+        autoResolution = true;
+      }
       const sumFields = toArray(args.sum_fields);
       const minFields = toArray(args.min_fields);
       const maxFields = toArray(args.max_fields);
@@ -218,6 +231,7 @@ export async function executeVisualizationToolCall(
         table_markdown,
         adaptive_card: breakdownChart('column', title, rows.map((r) => ({ label: r.group, value: r.count }))),
         summary,
+        ...(autoResolution ? { note: 'avg_business_duration is the average resolution time (business hours). Pass avg_fields:["calendar_duration"] for wall-clock elapsed time instead.' } : {}),
       };
     }
 
