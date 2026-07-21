@@ -965,12 +965,15 @@ export class ServiceNowClient {
    */
   async runStats(
     table: string,
-    opts: { groupBy?: string; query?: string; count?: boolean; avgFields?: string[]; sumFields?: string[]; minFields?: string[]; maxFields?: string[] },
+    opts: { groupBy?: string; query?: string; count?: boolean; avgFields?: string[]; sumFields?: string[]; minFields?: string[]; maxFields?: string[]; displayValue?: boolean },
   ): Promise<any[]> {
     await this.authenticate();
     const params = new URLSearchParams();
     if (opts.groupBy) params.set('sysparm_group_by', opts.groupBy);
     if (opts.count !== false) params.set('sysparm_count', 'true');
+    // Readable group labels ("Closed" not "7", "Critical" not "1"). Callers that group by a
+    // date field for time buckets should leave this off so the raw datetime stays parseable.
+    if (opts.displayValue) params.set('sysparm_display_value', 'true');
     if (opts.avgFields?.length) params.set('sysparm_avg_fields', opts.avgFields.join(','));
     if (opts.sumFields?.length) params.set('sysparm_sum_fields', opts.sumFields.join(','));
     if (opts.minFields?.length) params.set('sysparm_min_fields', opts.minFields.join(','));

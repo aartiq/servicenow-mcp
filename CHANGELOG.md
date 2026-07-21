@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.6.2] — 2026-07-22
+
+### Changed
+- **Readable group labels in reports/charts.** `aggregate_report` and `visualize_aggregate` now request display values, so groups show as "Closed" / "In Progress" / "Critical" instead of raw codes like 7 / 1. `visualize_trend` keeps raw dates for correct time bucketing.
+
 ## [4.6.1] — 2026-07-22
 
 ### Changed

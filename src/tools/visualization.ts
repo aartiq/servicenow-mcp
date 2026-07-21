@@ -161,7 +161,7 @@ export async function executeVisualizationToolCall(
       if (!args.table || !args.group_by) throw new ServiceNowError('table and group_by are required', 'INVALID_REQUEST');
       const chartType = String(args.chart_type || 'column');
       const limit = typeof args.limit === 'number' ? args.limit : 12;
-      const result = await client.runAggregateQuery(String(args.table), String(args.group_by), 'COUNT', args.query ? String(args.query) : undefined);
+      const result = await client.runStats(String(args.table), { groupBy: String(args.group_by), query: args.query ? String(args.query) : undefined, count: true, displayValue: true });
       let points = toPoints(result).sort((a, b) => b.value - a.value);
       const total = points.reduce((a, p) => a + p.value, 0);
       if (points.length > limit) points = points.slice(0, limit);
@@ -199,6 +199,7 @@ export async function executeVisualizationToolCall(
         query: args.query ? String(args.query) : undefined,
         count: true,
         avgFields, sumFields, minFields, maxFields,
+        displayValue: true,
       });
       let rows = result.map((g: any) => {
         const gf = (g.groupby_fields && g.groupby_fields[0]) || {};
