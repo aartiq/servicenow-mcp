@@ -14,9 +14,15 @@
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
 
-const VISUALIZATION_TOOL_NAMES = new Set(['visualize_aggregate', 'visualize_trend']);
+const VISUALIZATION_TOOL_NAMES = new Set(['visualize_aggregate', 'visualize_trend', 'aggregate_report']);
 
 type Point = { label: string; value: number };
+
+function toArray(v: any): string[] {
+  if (Array.isArray(v)) return v.map(String).filter(Boolean);
+  if (typeof v === 'string' && v.trim()) return v.split(',').map((s) => s.trim()).filter(Boolean);
+  return [];
+}
 
 function toPoints(result: any[]): Point[] {
   return (result || [])
@@ -99,6 +105,25 @@ export function getVisualizationToolDefinitions() {
       },
     },
     {
+      name: 'aggregate_report',
+      description: 'Server-side aggregate REPORT grouped by a field, in ONE query with no 1000-row truncation. Returns per-group record count PLUS optional averages/sums/mins/maxes of numeric or duration fields — the right tool for a periodic summary like "incident volume by category with average resolution time". Do NOT list raw records for this; use this. Duration fields come back pre-formatted (e.g. "21 14:03:10"). Returns a stats table (markdown), the rows, a count chart Adaptive Card, and a summary. Read-only.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          table: { type: 'string', description: 'Table to aggregate, e.g. "incident"' },
+          group_by: { type: 'string', description: 'Field to group by, e.g. "category", "assignment_group", "priority"' },
+          query: { type: 'string', description: 'Encoded query filter, e.g. resolved in the last 7 days: "stateIN6,7^resolved_atRELATIVEGT@dayofweek@ago@7"' },
+          avg_fields: { type: 'array', items: { type: 'string' }, description: 'Fields to average per group, e.g. ["business_duration"] or ["calendar_duration"] for resolution time. Comma string also accepted.' },
+          sum_fields: { type: 'array', items: { type: 'string' }, description: 'Fields to sum per group' },
+          min_fields: { type: 'array', items: { type: 'string' }, description: 'Fields to take the minimum of per group' },
+          max_fields: { type: 'array', items: { type: 'string' }, description: 'Fields to take the maximum of per group' },
+          title: { type: 'string', description: 'Optional report title' },
+          limit: { type: 'number', description: 'Keep the top N groups by count (default 25)' },
+        },
+        required: ['table', 'group_by'],
+      },
+    },
+    {
       name: 'visualize_trend',
       description: 'Build a real-time trend line of ServiceNow record counts over time (e.g. incidents opened per day). Returns chart-ready series, a Teams Adaptive Card line chart, a markdown table, and a summary. Read-only.',
       inputSchema: {
@@ -145,6 +170,53 @@ export async function executeVisualizationToolCall(
         data: points,
         table_markdown: markdownTable([String(args.group_by), 'count'], points),
         adaptive_card: breakdownChart(chartType, title, points),
+        summary,
+      };
+    }
+
+    case 'aggregate_report': {
+      if (!args.table || !args.group_by) throw new ServiceNowError('table and group_by are required', 'INVALID_REQUEST');
+      const avgFields = toArray(args.avg_fields);
+      const sumFields = toArray(args.sum_fields);
+      const minFields = toArray(args.min_fields);
+      const maxFields = toArray(args.max_fields);
+      const limit = typeof args.limit === 'number' ? args.limit : 25;
+      const result = await client.runStats(String(args.table), {
+        groupBy: String(args.group_by),
+        query: args.query ? String(args.query) : undefined,
+        count: true,
+        avgFields, sumFields, minFields, maxFields,
+      });
+      let rows = result.map((g: any) => {
+        const gf = (g.groupby_fields && g.groupby_fields[0]) || {};
+        const st = g.stats || {};
+        const row: Record<string, any> = { group: String(gf.display_value ?? gf.value ?? 'unknown'), count: Number(st.count ?? 0) };
+        for (const f of avgFields) row[`avg_${f}`] = st.avg?.[f] ?? null;
+        for (const f of sumFields) row[`sum_${f}`] = st.sum?.[f] ?? null;
+        for (const f of minFields) row[`min_${f}`] = st.min?.[f] ?? null;
+        for (const f of maxFields) row[`max_${f}`] = st.max?.[f] ?? null;
+        return row;
+      }).sort((a, b) => b.count - a.count);
+      const total = rows.reduce((a, r) => a + r.count, 0);
+      if (rows.length > limit) rows = rows.slice(0, limit);
+      const cols = ['group', 'count', ...avgFields.map((f) => `avg_${f}`), ...sumFields.map((f) => `sum_${f}`), ...minFields.map((f) => `min_${f}`), ...maxFields.map((f) => `max_${f}`)];
+      const table_markdown = [
+        `| ${cols.join(' | ')} |`,
+        `| ${cols.map(() => '---').join(' | ')} |`,
+        ...rows.map((r) => `| ${cols.map((c) => (r[c] ?? '')).join(' | ')} |`),
+      ].join('\n');
+      const title = String(args.title || `${args.table} by ${args.group_by}`);
+      const summary = rows.length
+        ? `${title} (total ${total} over ${rows.length} groups): ${rows.map((r) => `${r.group} ${r.count}${avgFields.length ? ` (avg ${avgFields.map((f) => r[`avg_${f}`]).join(', ')})` : ''}`).join('; ')}.`
+        : `No records for ${args.table}${args.query ? ` where ${args.query}` : ''}.`;
+      return {
+        title,
+        table: args.table,
+        group_by: args.group_by,
+        total,
+        rows,
+        table_markdown,
+        adaptive_card: breakdownChart('column', title, rows.map((r) => ({ label: r.group, value: r.count }))),
         summary,
       };
     }

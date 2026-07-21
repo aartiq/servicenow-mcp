@@ -958,6 +958,31 @@ export class ServiceNowClient {
   }
 
   /**
+   * Full Stats/Aggregate API query (GET /api/now/stats/{table}). Returns per-group
+   * statistics — count plus averages/sums/mins/maxes of numeric or duration fields — in a
+   * SINGLE server-side query, so it never truncates the way a record list does. Duration
+   * fields come back pre-formatted by ServiceNow (e.g. "21 14:03:10" = 21d 14h 3m 10s).
+   */
+  async runStats(
+    table: string,
+    opts: { groupBy?: string; query?: string; count?: boolean; avgFields?: string[]; sumFields?: string[]; minFields?: string[]; maxFields?: string[] },
+  ): Promise<any[]> {
+    await this.authenticate();
+    const params = new URLSearchParams();
+    if (opts.groupBy) params.set('sysparm_group_by', opts.groupBy);
+    if (opts.count !== false) params.set('sysparm_count', 'true');
+    if (opts.avgFields?.length) params.set('sysparm_avg_fields', opts.avgFields.join(','));
+    if (opts.sumFields?.length) params.set('sysparm_sum_fields', opts.sumFields.join(','));
+    if (opts.minFields?.length) params.set('sysparm_min_fields', opts.minFields.join(','));
+    if (opts.maxFields?.length) params.set('sysparm_max_fields', opts.maxFields.join(','));
+    if (opts.query) params.set('sysparm_query', opts.query);
+    const url = `${this.baseUrl}/api/now/stats/${table}?${params.toString()}`;
+    const response = await this.request<any>(url);
+    const result = response && (response as any).result;
+    return Array.isArray(result) ? result : result ? [result] : [];
+  }
+
+  /**
    * Run aggregate/stats query on a table (ServiceNow Reporting API)
    */
   async runAggregateQuery(table: string, groupBy: string, _aggregate: string = 'COUNT', query?: string): Promise<any> {

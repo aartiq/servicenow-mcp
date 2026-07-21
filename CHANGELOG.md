@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.6.0] — 2026-07-22
+
+### Added — Server-side aggregate reports (no truncation)
+- **`aggregate_report`** — group a table by a field and get per-group statistics in a single Stats API query: record **count plus averages / sums / mins / maxes** of numeric or duration fields. This is the right tool for a periodic summary like "incident volume by category with average resolution time", where listing raw records would truncate at 1,000 rows and can't compute averages. Duration fields come back pre-formatted (e.g. "21 14:03:10"). Returns a markdown stats table, the rows, a count-chart Adaptive Card, and a summary.
+- New client method `runStats(table, {groupBy, query, count, avgFields, sumFields, minFields, maxFields})` backing it.
+
 ## [4.5.0] — 2026-07-22
 
 ### Added — Visualization / reporting (charts for Copilot & Teams)
