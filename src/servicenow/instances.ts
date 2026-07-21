@@ -147,6 +147,25 @@ class InstanceManager {
     //    older unprefixed SERVICENOW_CLIENT_ID / SERVICENOW_USERNAME forms.
     const legacyUrl = process.env.SERVICENOW_INSTANCE_URL;
     if (legacyUrl && !this.instances.has('default')) {
+      // Delegated auth: a pre-obtained access token (e.g. supplied by a host that
+      // already manages the OAuth session). Per-user mode sends it as `Bearer
+      // <token>` and skips all service-account token acquisition — so a caller with
+      // only an access token (no username/password, no client_credentials that this
+      // server could exchange) can still connect over stdio.
+      const bearer = process.env.SERVICENOW_BEARER_TOKEN || process.env.SN_BEARER_TOKEN;
+      if (bearer) {
+        this.register('default', {
+          instanceUrl: legacyUrl,
+          authMethod: 'oauth', // unused in per-user mode; the bearer token is authoritative
+          authMode: 'per-user',
+          perUserBearerToken: bearer,
+          maxRetries: parseInt(process.env.MAX_RETRIES || '3', 10),
+          retryDelayMs: parseInt(process.env.RETRY_DELAY_MS || '1000', 10),
+          requestTimeoutMs: parseInt(process.env.REQUEST_TIMEOUT_MS || '30000', 10),
+        });
+        if (this.instances.size === 1) this.currentName = 'default';
+        return;
+      }
       const auth = (process.env.SERVICENOW_AUTH_METHOD || 'basic') as 'oauth' | 'basic';
       this.register('default', {
         instanceUrl: legacyUrl,

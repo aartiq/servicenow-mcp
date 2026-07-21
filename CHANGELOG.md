@@ -6,6 +6,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.4.1] — 2026-07-21
+
+### Security
+- **Delegated permission tiers now narrow, never widen.** A delegated-auth context can only reduce the server's env-configured capability ceiling; a forged `x-nowaikit-*-enabled` header can never enable a tier (`write`/`scripting`/`cmdbWrite`/`nowAssist`/`atf`) the operator left disabled. Effective capability is `env AND delegated`.
+- **Optional gateway secret for delegated auth.** When `NOWAIKIT_DELEGATED_SECRET` is set, delegated-auth headers are only trusted if the request carries a matching `x-nowaikit-gateway-secret` (constant-time compared); otherwise the token and all flags are dropped (fail closed).
+- **Encoded-query injection hardening.** `blast_radius_*` tools validate table/field identifiers and reject the `^ = ,` operator characters in name inputs, so a crafted value can't inject `^OR`/`^NQ` clauses. `get_user` / `get_group` now build lookups with `URLSearchParams` and reject `^ = & # ?` in the identifier.
+
+### Changed — usability
+- `blast_radius_*` descriptions state the LIKE-match limitation (candidates to review, not definitive) and clarify this is config/metadata impact (distinct from `cmdb_impact_analysis`). `field_references` and `property_usage` return a top-level total.
+- `pull_artifact` / `push_artifact` / `sync_status` accept a name or a sys_id. `push_artifact` warns it overwrites without merging and takes an optional `expected_updated_on` to abort on a conflict; it also reports `ignored_fields`. `sync_status` returns `sys_updated_on` for that conflict check.
+
+## [4.4.0] — 2026-07-21
+
+### Added — Blast Radius (static impact analysis)
+- **`blast_radius_table_configs`** — every config artifact scoped to a table (business rules, client scripts, UI policies, ACLs, UI actions, data policies, dictionary fields), with per-type counts. Run before altering or removing a table.
+- **`blast_radius_field_references`** — a field's dictionary entry plus any scripts that mention the field name. Run before renaming or removing a field.
+- **`blast_radius_script_dependents`** — what references a Script Include / artifact by name, across script-bearing config tables.
+- **`blast_radius_update_sets`** — which update sets already capture changes to an artifact, so you know what is in-flight before you touch it.
+- **`blast_radius_property_usage`** — scripts that read a system property, plus the property record. All read-only; each lane degrades independently if a plugin/table is absent.
+
+### Added — Local Sync (pull/push artifacts to files)
+- **`pull_artifact`** / **`push_artifact`** — fetch an artifact's editable fields (e.g. a Service Portal widget's template/css/script) to local files, edit, and write them back. Keeps large bodies out of the model context and gives a git-style edit loop. File writes are confined to `NOWAIKIT_SYNC_DIR`; with it unset, content is returned inline and nothing touches disk.
+- **`sync_status`** — field-by-field diff of instance content vs your local/edited content.
+- **`list_supported_artifacts`** — the artifact tables and fields that support sync.
+
+## [4.3.0] — 2026-07-21
+
+### Added — Multi-tenant / delegated auth
+- Delegated-auth mode binds a per-request user identity and capability policy from context headers, so one shared server can serve many users, each governed by their own ServiceNow access.
+- `withUser()` can route a request to the caller's own instance (SSRF-guarded to ServiceNow hosts), and the permission tiers honour the delegated policy over environment flags.
+- Added a `core` tool-discovery mode, an `./embed` entry point, a `nowaikit-mcp` bin, and a fix so the HTTP/SSE transport reuses the already-parsed request body (no more `-32700` on the streamable transport).
+
+### Fixed — ServiceNow REST endpoint audit
+- **`get_catalog_item`** now returns an item's variables and a `mandatory_variables` list via the Service Catalog API, so callers know which fields an order requires.
+- **`get_performance_analytics`** uses the PA Scorecards API (`/api/now/pa/scorecards`) instead of the widget renderer; accepts an indicator or a widget sys_id.
+- **`search_knowledge`** uses Zing full-text search and no longer lets an OR clause leak unpublished articles.
+- **`categorize_incident`** and **`get_ms_copilot_topics`** read real tables instead of calling endpoints that do not exist.
+- Removed tools that pointed at the non-existent `sn_assist` REST namespace (`generate_summary`, `suggest_resolution`, `generate_work_notes`, `trigger_agentic_playbook`).
+
+---
+
 ## [4.1.6] — 2026-06-24
 
 ### Added — ServiceNow product-documentation search

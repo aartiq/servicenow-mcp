@@ -1,15 +1,17 @@
 /**
- * Now Assist & ServiceNow AI tools — latest release.
+ * ServiceNow AI / Predictive Intelligence tools.
  * All tools require NOW_ASSIST_ENABLED=true (Tier AI).
  *
- * ServiceNow APIs used:
- *   - Now Assist Skills: POST /api/sn_assist/skill/invoke
- *   - Agentic Playbooks:  POST /api/sn_assist/playbook/trigger  
- *   - AI Search:          GET  /api/now/ai_search/search
- *   - Predictive Intel.:  POST /api/sn_ml/solution/{id}/predict (LightGBM in latest release)
- *   - NLQ:               POST /api/sn_nl_text_to_value/text_query
- *   - Virtual Agent:      GET  /api/sn_cs/topic               (streaming in latest release)
- *   - MS Copilot 365:     GET  /api/sn_assist/copilot/topics   
+ * A note on scope: ServiceNow does not expose a public inbound REST API for running
+ * Now Assist skills (summarize / resolution suggestion / work-note drafting) or for
+ * triggering Agentic workflows — those run through server-side script APIs
+ * (sn_one_extend.OneExtendUtil / AiAgentRuntimeUtil) that a customer must wrap in a
+ * Scripted REST resource. So instead of calling fabricated endpoints, the tools here
+ * read real ServiceNow tables:
+ *   - Predictive Intelligence solutions: ml_solution table
+ *   - Virtual Agent / Copilot topics:     sys_cs_topic table
+ *   - Incident categorization suggestion:  similar resolved incidents (Table API heuristic)
+ *   - AI Search / NLQ:                     ServiceNow search APIs
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
@@ -44,43 +46,20 @@ export function getNowAssistToolDefinitions() {
       },
     },
     {
-      name: 'generate_summary',
-      description: 'Generate an AI summary of any record using Now Assist (latest release: sn_assist/skill/summarize)',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          table: { type: 'string', description: 'Table name (e.g., "incident", "change_request")' },
-          sys_id: { type: 'string', description: 'System ID of the record' },
-        },
-        required: ['table', 'sys_id'],
-      },
-    },
-    {
-      name: 'suggest_resolution',
-      description: 'Get AI-powered resolution suggestion for an incident based on similar past incidents',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          incident_sys_id: { type: 'string', description: 'System ID of the incident' },
-        },
-        required: ['incident_sys_id'],
-      },
-    },
-    {
       name: 'categorize_incident',
-      description: 'Use Predictive Intelligence to predict category, assignment group, and priority (latest release: LightGBM algorithm)',
+      description: 'Suggest category, assignment group, and priority for an incident by analysing similar resolved incidents (Table API). Predictive Intelligence has no public REST prediction endpoint; for model-based scoring run PI on-record and read the predicted field.',
       inputSchema: {
         type: 'object',
         properties: {
           short_description: { type: 'string', description: 'Incident short description' },
-          description: { type: 'string', description: 'Optional full description for better accuracy' },
+          description: { type: 'string', description: 'Optional full description (not required for the heuristic)' },
         },
         required: ['short_description'],
       },
     },
     {
       name: 'get_virtual_agent_topics',
-      description: 'List Virtual Agent topics available in the instance (latest release: streaming VA API)',
+      description: 'List Virtual Agent topics available in the instance (sys_cs_topic)',
       inputSchema: {
         type: 'object',
         properties: {
@@ -92,39 +71,14 @@ export function getNowAssistToolDefinitions() {
       },
     },
     {
-      name: 'trigger_agentic_playbook',
-      description: 'Invoke an Agentic Playbook — context-aware AI agents that complete tasks autonomously ',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          playbook_sys_id: { type: 'string', description: 'System ID of the Agentic Playbook' },
-          context: { type: 'object', description: 'Context key-value pairs to pass to the playbook' },
-        },
-        required: ['playbook_sys_id'],
-      },
-    },
-    {
       name: 'get_ms_copilot_topics',
-      description: 'List VA topics exposed to Microsoft Copilot 365 via Custom Engine Agent integration ',
+      description: 'List the Virtual Agent topics (sys_cs_topic) that back a Microsoft Copilot integration. Copilot topic mapping itself is configured in Copilot Studio on the Microsoft side, not exposed via ServiceNow REST.',
       inputSchema: {
         type: 'object',
         properties: {
           limit: { type: 'number', description: 'Max results (default: 20)' },
         },
         required: [],
-      },
-    },
-    {
-      name: 'generate_work_notes',
-      description: 'Generate AI-drafted work notes for a record based on its current context',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          table: { type: 'string', description: 'Table name' },
-          sys_id: { type: 'string', description: 'System ID of the record' },
-          context: { type: 'string', description: 'Additional context to include in the draft' },
-        },
-        required: ['table', 'sys_id'],
       },
     },
     {
@@ -140,9 +94,8 @@ export function getNowAssistToolDefinitions() {
 }
 
 const NOW_ASSIST_TOOL_NAMES = new Set([
-  'nlq_query', 'ai_search', 'generate_summary', 'suggest_resolution',
-  'categorize_incident', 'get_virtual_agent_topics', 'trigger_agentic_playbook',
-  'get_ms_copilot_topics', 'generate_work_notes', 'get_pi_models',
+  'nlq_query', 'ai_search', 'categorize_incident', 'get_virtual_agent_topics',
+  'get_ms_copilot_topics', 'get_pi_models',
 ]);
 
 export async function executeNowAssistToolCall(
@@ -173,71 +126,63 @@ export async function executeNowAssistToolCall(
       const result = await client.callNowAssist(`/api/now/ai_search/search?${params.toString()}`, {});
       return { query: args.query, ...result };
     }
-    case 'generate_summary': {
-      if (!args.table || !args.sys_id) throw new ServiceNowError('table and sys_id are required', 'INVALID_REQUEST');
-      // Now Assist Skill: POST /api/sn_assist/skill/invoke
-      const result = await client.callNowAssist('/api/sn_assist/skill/invoke', {
-        skill: 'summarize',
-        input: { table: args.table, sys_id: args.sys_id },
-      });
-      return { table: args.table, sys_id: args.sys_id, summary: result?.output?.summary || result };
-    }
-    case 'suggest_resolution': {
-      if (!args.incident_sys_id) throw new ServiceNowError('incident_sys_id is required', 'INVALID_REQUEST');
-      const result = await client.callNowAssist('/api/sn_assist/skill/invoke', {
-        skill: 'resolution_suggestion',
-        input: { table: 'incident', sys_id: args.incident_sys_id },
-      });
-      return { incident_sys_id: args.incident_sys_id, suggestion: result?.output || result };
-    }
     case 'categorize_incident': {
       if (!args.short_description) throw new ServiceNowError('short_description is required', 'INVALID_REQUEST');
-      // Predictive Intelligence ML API: POST /api/sn_ml/solution/{id}/predict
-      // Get available PI solutions first then predict
-      const piResp = await client.queryRecords({ table: 'ml_solution', query: 'active=true^table_name=incident', limit: 1, fields: 'sys_id,name' });
-      if (piResp.count === 0) {
-        return { message: 'No active Predictive Intelligence solution found for incident table. Enable PI plugin and train a model.' };
-      }
-      const solutionId = String(piResp.records[0].sys_id);
-      const result = await client.callNowAssist(`/api/sn_ml/solution/${solutionId}/predict`, {
-        short_description: args.short_description,
-        description: args.description,
+      // No public REST exists to run a Predictive Intelligence prediction (sn_ml is
+      // script-only). Redirect to a real Table API heuristic: find similar resolved
+      // incidents by text and surface their most common category / assignment group /
+      // priority as a suggestion.
+      const terms = String(args.short_description).replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      const resp = await client.queryRecords({
+        table: 'incident',
+        query: `short_descriptionLIKE${terms}^stateIN6,7`,
+        limit: 20,
+        fields: 'number,short_description,category,subcategory,assignment_group,priority',
       });
-      return { short_description: args.short_description, prediction: result, algorithm_note: 'LightGBM available in latest release' };
+      const top = (key: string): { value: string; count: number }[] => {
+        const counts: Record<string, number> = {};
+        for (const r of resp.records as any[]) {
+          const raw = r[key];
+          const v = raw && typeof raw === 'object' ? raw.display_value || raw.value : raw;
+          if (v) counts[v] = (counts[v] || 0) + 1;
+        }
+        return Object.entries(counts)
+          .sort((a, b) => b[1] - a[1])
+          .map(([value, count]) => ({ value, count }));
+      };
+      return {
+        short_description: args.short_description,
+        based_on_incidents: resp.count,
+        suggested_category: top('category')[0]?.value || null,
+        suggested_assignment_group: top('assignment_group')[0]?.value || null,
+        suggested_priority: top('priority')[0]?.value || null,
+        category_distribution: top('category'),
+        note: resp.count
+          ? 'Suggestion derived from similar resolved incidents (Table API). For model-based scoring, run Predictive Intelligence on-record and read the predicted field.'
+          : 'No similar resolved incidents were found to base a suggestion on.',
+      };
     }
     case 'get_virtual_agent_topics': {
-      // VA API: GET /api/sn_cs/topic (streaming support added)
       let query = '';
       if (args.active !== false) query = 'active=true';
       if (args.category) query = query ? `${query}^category.title=${args.category}` : `category.title=${args.category}`;
       const resp = await client.queryRecords({ table: 'sys_cs_topic', query: query || undefined, limit: args.limit || 20, fields: 'sys_id,name,active,category,description' });
-      return { count: resp.count, topics: resp.records, note: 'ServiceNow VA supports streaming responses and Google Chat v2.0' };
-    }
-    case 'trigger_agentic_playbook': {
-      if (!args.playbook_sys_id) throw new ServiceNowError('playbook_sys_id is required', 'INVALID_REQUEST');
-      // Agentic Playbooks API
-      const result = await client.callNowAssist('/api/sn_assist/playbook/trigger', {
-        playbook_sys_id: args.playbook_sys_id,
-        context: args.context || {},
-      });
-      return { playbook_sys_id: args.playbook_sys_id, result, note: 'Agentic Playbooks are a latest release feature' };
+      return { count: resp.count, topics: resp.records };
     }
     case 'get_ms_copilot_topics': {
-      // MS Copilot 365 Custom Engine Agent
-      const result = await client.callNowAssist('/api/sn_assist/copilot/topics', {});
-      return { topics: result, note: 'Microsoft Copilot 365 integration (Custom Engine Agent) is a latest release feature' };
-    }
-    case 'generate_work_notes': {
-      if (!args.table || !args.sys_id) throw new ServiceNowError('table and sys_id are required', 'INVALID_REQUEST');
-      const result = await client.callNowAssist('/api/sn_assist/skill/invoke', {
-        skill: 'work_notes_draft',
-        input: { table: args.table, sys_id: args.sys_id, context: args.context },
-      });
-      return { table: args.table, sys_id: args.sys_id, draft: result?.output?.text || result };
+      // No ServiceNow REST endpoint lists "Copilot topics"; topic authoring lives in
+      // Copilot Studio on the Microsoft side. The real ServiceNow-side data is the VA
+      // topic table, which is what a Copilot integration surfaces.
+      const resp = await client.queryRecords({ table: 'sys_cs_topic', query: 'active=true', limit: args.limit || 20, fields: 'sys_id,name,active,category,description' });
+      return {
+        count: resp.count,
+        topics: resp.records,
+        note: 'These are Virtual Agent topics (sys_cs_topic). Microsoft Copilot topic mapping is configured in Copilot Studio, not exposed via ServiceNow REST.',
+      };
     }
     case 'get_pi_models': {
       const resp = await client.queryRecords({ table: 'ml_solution', query: 'active=true', limit: 20, fields: 'sys_id,name,table_name,type,active,sys_updated_on' });
-      return { count: resp.count, models: resp.records, note: 'Predictive Intelligence supports LightGBM, Feed Forward Neural Net, and XGBoost' };
+      return { count: resp.count, models: resp.records };
     }
     default:
       return null;

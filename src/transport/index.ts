@@ -11,6 +11,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { logger } from '../utils/logging.js';
 import { VERSION, SERVER_NAME } from '../utils/version.js';
 import { createHttpServer, type NowAIKitHttpServer } from './http-server.js';
+import { isDelegatedAuthEnabled, parseDelegatedAuthHeaders, runWithDelegatedAuth } from '../utils/request-context.js';
 
 export type TransportType = 'stdio' | 'sse' | 'http';
 
@@ -83,7 +84,9 @@ async function setupSseTransport(server: Server, httpServer: NowAIKitHttpServer)
     }
 
     const transport = sessions.get(sessionId)!;
-    await transport.handlePostMessage(req, res);
+    // Pass the already-parsed body (the HTTP server drained the stream) — same
+    // reason as the streamable-HTTP path below.
+    await transport.handlePostMessage(req, res, (req as { body?: unknown }).body);
   }, true);
 
   // Health endpoint (no auth required)
@@ -104,7 +107,19 @@ async function setupStreamableHttpTransport(server: Server, httpServer: NowAIKit
 
   // Mount transport on /mcp
   httpServer.post('/mcp', async (req, res) => {
-    await transport.handleRequest(req, res);
+    // DELEGATED_AUTH: bind the per-user identity/policy from headers for this
+    // request's lifetime (used by the ServiceNow client + permission checks).
+    // The HTTP server already drains + parses the POST body into req.body, so the
+    // stream is consumed by the time we get here. Pass that parsed body through to
+    // the MCP transport (3rd arg) — otherwise it re-reads an empty stream and the
+    // request fails with a JSON-RPC parse error (-32700).
+    const parsedBody = (req as { body?: unknown }).body;
+    if (isDelegatedAuthEnabled()) {
+      const ctx = parseDelegatedAuthHeaders(req.headers as Record<string, string | string[] | undefined>);
+      await runWithDelegatedAuth(ctx, () => transport.handleRequest(req, res, parsedBody));
+    } else {
+      await transport.handleRequest(req, res, parsedBody);
+    }
   }, true);
 
   httpServer.get('/mcp', async (req, res) => {

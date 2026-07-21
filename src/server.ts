@@ -16,6 +16,7 @@ import { getPrompts, resolvePromptAsync } from './prompts/index.js';
 import { logger } from './utils/logging.js';
 import { ServiceNowError } from './utils/errors.js';
 import { connectTransport } from './transport/index.js';
+import { getDelegatedAuth } from './utils/request-context.js';
 import { VERSION, SERVER_NAME } from './utils/version.js';
 
 dotenv.config();
@@ -45,7 +46,7 @@ function isDestructiveTool(name: string): boolean {
 const LONG_RUNNING_TOOLS = new Set([
   'run_discovery_scan', 'run_atf_suite', 'run_atf_test', 'cmdb_reconcile', 'cmdb_impact_analysis',
   'bulk_create_records', 'import_cmdb_data', 'run_transform_map', 'scan_vulnerabilities',
-  'run_security_playbook', 'execute_playbook', 'trigger_agentic_playbook', 'compare_instances',
+  'run_security_playbook', 'execute_playbook', 'compare_instances',
   'export_update_set', 'preview_update_set', 'check_table_completeness', 'analyze_data_quality',
   'ml_train_incident_classifier', 'ml_train_change_risk', 'ml_train_anomaly_detector', 'ml_forecast_incidents',
 ]);
@@ -85,7 +86,16 @@ export function createServer(): Server {
       }
 
       const instanceName = (args as Record<string, unknown>)?.['instance'] as string | undefined;
-      const client = instanceManager.getClient(instanceName);
+      const baseClient = instanceManager.getClient(instanceName);
+      // DELEGATED_AUTH: run as the per-request identity AND (for multi-tenant
+      // hosting) against the caller's own instance, both carried in the delegated
+      // context headers. When a token is present we also honour its instanceUrl,
+      // so one shared server serves many customers with no per-customer config.
+      // No-op in normal single-user mode.
+      const delegatedAuth = getDelegatedAuth();
+      const client = delegatedAuth?.bearerToken
+        ? baseClient.withUser({ bearerToken: delegatedAuth.bearerToken, instanceUrl: delegatedAuth.instanceUrl })
+        : baseClient;
       const toolArgs = (args || {}) as Record<string, unknown>;
 
       // ─── Elicitation: confirm destructive ops when the client supports it ──────

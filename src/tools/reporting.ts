@@ -65,14 +65,16 @@ export function getReportingToolDefinitions() {
     },
     {
       name: 'get_performance_analytics',
-      description: 'Get Performance Analytics widget data (requires PA plugin; latest release: /api/now/pa/widget/{sys_id})',
+      description: 'Read Performance Analytics scorecard/indicator data (requires PA plugin; GET /api/now/pa/scorecards). Pass an indicator sys_id, or a PA widget sys_id to resolve its indicator.',
       inputSchema: {
         type: 'object',
         properties: {
-          widget_sys_id: { type: 'string', description: 'sys_id of the PA widget' },
-          time_range: { type: 'string', description: 'Time range (e.g., "last_30_days", "last_quarter")' },
+          indicator_sys_id: { type: 'string', description: 'sys_id of the PA indicator (pa_indicators)' },
+          widget_sys_id: { type: 'string', description: 'sys_id of a PA widget (pa_widgets); its indicator is resolved automatically' },
+          from: { type: 'string', description: 'Optional score-series start date (YYYY-MM-DD)' },
+          to: { type: 'string', description: 'Optional score-series end date (YYYY-MM-DD)' },
         },
-        required: ['widget_sys_id'],
+        required: [],
       },
     },
     {
@@ -341,16 +343,21 @@ export async function executeReportingToolCall(
       return { table: args.table, date_field: args.date_field, group_by: args.group_by, periods: results };
     }
     case 'get_performance_analytics': {
-      if (!args.widget_sys_id) throw new ServiceNowError('widget_sys_id is required', 'INVALID_REQUEST');
-      // ServiceNow PA API: GET /api/now/pa/widget/{sys_id}
-      try {
-        const result = await client.callNowAssist(`/api/now/pa/widget/${args.widget_sys_id}`, {});
-        return { widget_sys_id: args.widget_sys_id, data: result };
-      } catch {
-        // Fallback: query PA data table
-        const resp = await client.queryRecords({ table: 'pa_job_log', query: `sys_id=${args.widget_sys_id}`, limit: 1 });
-        return { widget_sys_id: args.widget_sys_id, data: resp.records[0] || {} };
+      // PA Scorecards API: GET /api/now/pa/scorecards?sysparm_uuid=<indicator>. Accept an
+      // indicator sys_id directly, or resolve one from a PA widget (pa_widgets.indicator).
+      let indicatorId: string | undefined = args.indicator_sys_id;
+      if (!indicatorId && args.widget_sys_id) {
+        try {
+          const w = await client.getRecord('pa_widgets', args.widget_sys_id, 'indicator');
+          indicatorId = (w as any)?.indicator?.value || (w as any)?.indicator;
+        } catch { /* fall through to the validation below */ }
       }
+      if (!indicatorId) throw new ServiceNowError('indicator_sys_id (or widget_sys_id) is required', 'INVALID_REQUEST');
+      const params: Record<string, string> = { sysparm_uuid: String(indicatorId), sysparm_include_scores: 'true' };
+      if (args.from) params.sysparm_from = String(args.from);
+      if (args.to) params.sysparm_to = String(args.to);
+      const scorecards = await client.getPaScorecards(params);
+      return { indicator_sys_id: indicatorId, scorecards };
     }
     case 'export_report_data': {
       if (!args.table) throw new ServiceNowError('table is required', 'INVALID_REQUEST');

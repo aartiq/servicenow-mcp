@@ -82,6 +82,8 @@ import { getCmdbReconciliationToolDefinitions, executeCmdbReconciliationToolCall
 import { getOrchestrationToolDefinitions, executeOrchestrationToolCall } from './orchestration.js';
 // Dynamic Schema Discovery
 import { getDiscoveryToolDefinitions, executeDiscoveryToolCall, executeDynamicToolCall } from './discovery.js';
+import { getBlastRadiusToolDefinitions, executeBlastRadiusToolCall } from './blast-radius.js';
+import { getLocalSyncToolDefinitions, executeLocalSyncToolCall } from './local-sync.js';
 import { schemaCache } from './schema-cache.js';
 
 // ─── Package Definitions ──────────────────────────────────────────────────────
@@ -221,8 +223,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
   ],
   ai_developer: [
     'query_records', 'get_record', 'natural_language_search', 'create_record', 'update_record', 'delete_record',
-    'nlq_query', 'ai_search', 'generate_summary', 'suggest_resolution', 'categorize_incident',
-    'get_virtual_agent_topics', 'trigger_agentic_playbook', 'get_ms_copilot_topics', 'generate_work_notes', 'get_pi_models',
+    'nlq_query', 'ai_search', 'categorize_incident',
+    'get_virtual_agent_topics', 'get_ms_copilot_topics', 'get_pi_models',
     'search_knowledge', 'get_knowledge_article',
     'fluent_query', 'batch_request', 'execute_script', 'generate_report',
     'fluent_sdk_query', 'fluent_version',
@@ -279,6 +281,8 @@ const ALL_TOOLS = [
   ...getCmdbReconciliationToolDefinitions(),
   ...getOrchestrationToolDefinitions(),
   ...getDiscoveryToolDefinitions(),
+  ...getBlastRadiusToolDefinitions(),
+  ...getLocalSyncToolDefinitions(),
 ];
 
 // ─── Dynamic tool discovery (search_tools) ──────────────────────────────────────
@@ -353,6 +357,15 @@ export function getTools() {
   const packageName = (process.env.MCP_TOOL_PACKAGE || 'full').toLowerCase();
   const discovery = (process.env.MCP_TOOL_DISCOVERY || '').toLowerCase();
   const dynamicTools = schemaCache.getGeneratedTools();
+
+  // Core discovery mode: expose ONLY the small core set (record CRUD, schema,
+  // natural-language search) and NOT the search_tools meta-tool. This is for hosts
+  // that want a fast, deterministic toolset where the model calls a query/CRUD tool
+  // directly instead of first searching the catalog — no extra discovery round-trip.
+  // The core tools work on any table, so they cover most read/write/troubleshoot work.
+  if (discovery === 'core') {
+    return [...ALL_TOOLS.filter((t) => LEAN_CORE_TOOL_NAMES.has(t.name)), ...dynamicTools].map(withAnnotations);
+  }
 
   // Lean discovery mode: expose only a small core set + search_tools to keep
   // the tool list small; the model uses search_tools to find the rest.
@@ -430,6 +443,8 @@ export async function executeTool(
     () => executeAiAgentsToolCall(client, name, args),
     () => executeCmdbReconciliationToolCall(client, name, args),
     () => executeOrchestrationToolCall(client, name, args),
+    () => executeBlastRadiusToolCall(client, name, args),
+    () => executeLocalSyncToolCall(client, name, args),
     () => executeDiscoveryToolCall(client, name, args),
     () => executeDynamicToolCall(client, name, args),
   ];

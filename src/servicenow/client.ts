@@ -88,9 +88,27 @@ export class ServiceNowClient {
    * Return a copy of this client configured to run as a specific user.
    * Used for per-request user context switching without mutating the shared client.
    */
-  withUser(options: { sysId?: string; bearerToken?: string }): ServiceNowClient {
+  withUser(options: { sysId?: string; bearerToken?: string; instanceUrl?: string }): ServiceNowClient {
     const copy = Object.create(Object.getPrototypeOf(this)) as ServiceNowClient;
     Object.assign(copy, this);
+    // Multi-tenant: route this request to the caller's own instance (from the
+    // delegated context), instead of the server-configured one. SSRF-guarded to
+    // ServiceNow hosts (override the suffix allowlist with MT_INSTANCE_ALLOW).
+    if (options.instanceUrl) {
+      const url = options.instanceUrl.trim().replace(/\/$/, '');
+      let host = '';
+      try { host = new URL(url).host.toLowerCase(); } catch { host = ''; }
+      const suffixes = (process.env.MT_INSTANCE_ALLOW || '.service-now.com')
+        .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      const okHost = host !== '' && suffixes.some(s => {
+        const suf = s.startsWith('.') ? s : '.' + s;
+        return host === suf.slice(1) || host.endsWith(suf);
+      });
+      if (!/^https:\/\//i.test(url) || !okHost) {
+        throw new ServiceNowError(`Delegated instance URL not allowed: ${options.instanceUrl}`, 'VALIDATION_ERROR');
+      }
+      copy.baseUrl = url;
+    }
     if (options.sysId) {
       copy.authMode = 'impersonation';
       copy.impersonateUserSysId = options.sysId;
@@ -106,6 +124,12 @@ export class ServiceNowClient {
    * Authenticate with ServiceNow using OAuth or Basic Auth
    */
   private async authenticate(): Promise<void> {
+    // Per-user mode carries the user's own bearer token (delegated auth) —
+    // no service-account token acquisition needed.
+    if (this.authMode === 'per-user' && this.perUserBearerToken) {
+      return;
+    }
+
     if (this.authMethod === 'basic') {
       // Basic auth doesn't require token acquisition
       return;
@@ -475,8 +499,13 @@ export class ServiceNowClient {
     if (/^[0-9a-f]{32}$/i.test(userIdentifier)) {
       return await this.getRecord('sys_user', userIdentifier);
     }
+    // Reject encoded-query operators / URL-param injection chars before building the query.
+    if (/[\^=&#?]/.test(userIdentifier)) {
+      throw new ServiceNowError(`Invalid user identifier: ${userIdentifier}`, 'VALIDATION_ERROR');
+    }
     const query = `user_name=${userIdentifier}^ORemail=${userIdentifier}`;
-    const url = `${this.baseUrl}/api/now/table/sys_user?sysparm_query=${query}&sysparm_limit=1`;
+    const params = new URLSearchParams({ sysparm_query: query, sysparm_limit: '1' });
+    const url = `${this.baseUrl}/api/now/table/sys_user?${params.toString()}`;
 
     logger.info(`Looking up user: ${userIdentifier}`);
 
@@ -507,8 +536,14 @@ export class ServiceNowClient {
 
     // Check if it's a sys_id (32 hex chars) or name
     const isSysId = /^[0-9a-f]{32}$/i.test(groupIdentifier);
+    // Reject encoded-query operators / URL-param injection chars (group names may contain
+    // spaces, which are safe; ^ = & # are not).
+    if (/[\^=&#?]/.test(groupIdentifier)) {
+      throw new ServiceNowError(`Invalid group identifier: ${groupIdentifier}`, 'VALIDATION_ERROR');
+    }
     const query = isSysId ? `sys_id=${groupIdentifier}` : `name=${groupIdentifier}`;
-    const url = `${this.baseUrl}/api/now/table/sys_user_group?sysparm_query=${query}&sysparm_limit=1`;
+    const params = new URLSearchParams({ sysparm_query: query, sysparm_limit: '1' });
+    const url = `${this.baseUrl}/api/now/table/sys_user_group?${params.toString()}`;
 
     logger.info(`Looking up group: ${groupIdentifier}`);
 
@@ -895,6 +930,31 @@ export class ServiceNowClient {
         'NOW_ASSIST_ERROR'
       );
     }
+  }
+
+  /**
+   * Get a Service Catalog item with its variables (label, mandatory, type, choices)
+   * via the Service Catalog API. The Table API (getRecord) does not expose variables,
+   * so callers cannot tell which fields are required before ordering.
+   */
+  async getServiceCatalogItem(sysId: string): Promise<any> {
+    await this.authenticate();
+    const url = `${this.baseUrl}/api/sn_sc/servicecatalog/items/${sysId}`;
+    const response = await this.request<any>(url, { method: 'GET' });
+    return (response && (response as any).result) || response;
+  }
+
+  /**
+   * Read Performance Analytics scorecard/indicator data via the PA Scorecards API
+   * (GET /api/now/pa/scorecards). This is the supported read API; the legacy
+   * /api/now/pa/widget/{sys_id} route is the widget renderer, not a data API.
+   */
+  async getPaScorecards(params: Record<string, string>): Promise<any> {
+    await this.authenticate();
+    const qs = new URLSearchParams(params).toString();
+    const url = `${this.baseUrl}/api/now/pa/scorecards${qs ? `?${qs}` : ''}`;
+    const response = await this.request<any>(url, { method: 'GET' });
+    return (response && (response as any).result) || response;
   }
 
   /**

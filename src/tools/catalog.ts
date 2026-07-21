@@ -249,7 +249,23 @@ export async function executeCatalogToolCall(
     case 'get_catalog_item': {
       if (!args.sys_id_or_name) throw new ServiceNowError('sys_id_or_name is required', 'INVALID_REQUEST');
       if (/^[0-9a-f]{32}$/i.test(args.sys_id_or_name)) {
-        return await client.getRecord('sc_cat_item', args.sys_id_or_name);
+        // Use the Service Catalog API so variables (and their mandatory flags) come back.
+        // The Table API version does not expose variables, so callers cannot tell which
+        // fields are required before ordering.
+        const item = await client.getServiceCatalogItem(args.sys_id_or_name);
+        const vars: any[] = item.variables || [];
+        const mandatory = vars
+          .filter((v) => v.mandatory)
+          .map((v) => ({ name: v.name, label: v.label, type: v.type }));
+        return {
+          ...item,
+          mandatory_variables: mandatory,
+          hint: mandatory.length
+            ? `To order this item, collect values for the mandatory variables (${mandatory
+                .map((m) => m.name)
+                .join(', ')}) and pass them to order_catalog_item as variables:{name:value}.`
+            : 'This item has no mandatory variables; it can be ordered directly.',
+        };
       }
       const resp = await client.queryRecords({ table: 'sc_cat_item', query: `name=${args.sys_id_or_name}^ORsys_id=${args.sys_id_or_name}`, limit: 1 });
       if (resp.count === 0) throw new ServiceNowError(`Catalog item not found: ${args.sys_id_or_name}`, 'NOT_FOUND');
@@ -282,8 +298,9 @@ export async function executeCatalogToolCall(
     case 'order_catalog_item': {
       requireWrite();
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
-      // Use Service Catalog API: POST /api/now/v1/servicecatalog/items/{sys_id}/order_now
-      const result = await client.callNowAssist(`/api/now/v1/servicecatalog/items/${args.sys_id}/order_now`, {
+      // Service Catalog API lives under the sn_sc namespace, not now/v1.
+      // POST /api/sn_sc/servicecatalog/items/{sys_id}/order_now
+      const result = await client.callNowAssist(`/api/sn_sc/servicecatalog/items/${args.sys_id}/order_now`, {
         sysparm_quantity: args.quantity || 1,
         variables: args.variables || {},
       });

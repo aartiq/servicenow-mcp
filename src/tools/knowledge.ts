@@ -106,8 +106,15 @@ export async function executeKnowledgeToolCall(
     }
     case 'search_knowledge': {
       if (!args.query) throw new ServiceNowError('query is required', 'INVALID_REQUEST');
-      let query = `short_descriptionLIKE${args.query}^ORtextLIKE${args.query}^workflow_state=published`;
-      if (args.knowledge_base) query += `^kb_knowledge_base.title=${args.knowledge_base}^ORkb_knowledge_base=${args.knowledge_base}`;
+      // Zing full-text search (123TEXTQUERY321) gives relevance ranking and keeps the
+      // published filter as a proper AND. The previous LIKE^OR form let the OR break out
+      // of the workflow_state=published constraint and leak unpublished articles.
+      let query = `workflow_state=published^123TEXTQUERY321=${args.query}`;
+      if (args.knowledge_base) {
+        query += /^[0-9a-f]{32}$/i.test(args.knowledge_base)
+          ? `^kb_knowledge_base=${args.knowledge_base}`
+          : `^kb_knowledge_base.title=${args.knowledge_base}`;
+      }
       const resp = await client.queryRecords({ table: 'kb_knowledge', query, limit: args.limit || 10, fields: 'sys_id,number,short_description,workflow_state,kb_knowledge_base,view_count' });
       return { count: resp.count, articles: resp.records };
     }
