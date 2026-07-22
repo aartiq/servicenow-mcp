@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.7.0] — 2026-07-22
+
+### Changed (breaking) — friendlier impact-analysis tool names
+- The Blast Radius tools are renamed to plain-language names (the behaviour is unchanged):
+  - `blast_radius_table_configs` → **`list_table_config`**
+  - `blast_radius_field_references` → **`find_field_references`**
+  - `blast_radius_script_dependents` → **`find_script_references`**
+  - `blast_radius_update_sets` → **`find_update_sets`**
+  - `blast_radius_property_usage` → **`find_property_usage`**
+- These are static dependency-search tools (what depends on a table/field/script before you change it). Renamed while the feature is new so callers do not have to relearn "blast radius" jargon.
+
 ## [4.6.3] — 2026-07-22
 
 ### Changed
