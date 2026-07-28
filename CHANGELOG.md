@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.7.1] — 2026-07-28
+
+### Fixed — `npx nowaikit` works directly as an MCP server
+- When `nowaikit` is launched with no subcommand and piped stdio (how an MCP client like Claude Desktop runs it), it now starts the MCP server instead of printing the CLI banner and help to stdout. Previously that banner/help text corrupted the JSON-RPC stream (`Unexpected token, is not valid JSON` / `process exiting early`) and you had to use the separate `nowaikit-mcp` bin. The interactive CLI in a terminal is unchanged. Force server mode with `NOWAIKIT_MCP=1`.
+
 ## [4.7.0] — 2026-07-22
 
 ### Changed (breaking) — friendlier impact-analysis tool names

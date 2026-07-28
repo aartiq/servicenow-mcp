@@ -91,8 +91,15 @@ async function checkForUpdate(): Promise<void> {
   }
 }
 
-// Fire update check in background (non-blocking — doesn't delay CLI startup)
-const updateCheckPromise = checkForUpdate();
+// If launched with no subcommand and stdio is piped (not a TTY), an MCP client such as Claude
+// Desktop is running `nowaikit` and expects a JSON-RPC server on stdout. Start the MCP server
+// instead of the interactive CLI, so `npx nowaikit` works directly as an MCP command. Force with
+// NOWAIKIT_MCP=1. In this mode we skip the update check and CLI parsing so stdout stays clean.
+const MCP_MODE = process.env.NOWAIKIT_MCP === "1"
+  || (process.argv.slice(2).length === 0 && !process.stdout.isTTY && !process.stdin.isTTY);
+
+// Fire update check in background (non-blocking). Never in MCP mode — it writes to stdout.
+const updateCheckPromise = MCP_MODE ? Promise.resolve() : checkForUpdate();
 
 const program = new Command();
 
@@ -443,10 +450,19 @@ program
     await program.parseAsync(['node', 'nowaikit', ...args]);
   });
 
-// Await update check (already running in background) then run CLI
-updateCheckPromise.finally(() => {
-  program.parseAsync(process.argv).catch((e: unknown) => {
-    console.error(err('Error:'), e instanceof Error ? e.message : e);
+if (MCP_MODE) {
+  // Launched as an MCP server by a client. Start the stdio server (keeps the process alive).
+  // console.error goes to stderr, so stdout stays clean for the JSON-RPC protocol.
+  import('../server.js').catch((e: unknown) => {
+    console.error('nowaikit MCP server failed to start:', e instanceof Error ? e.message : e);
     process.exit(1);
   });
-});
+} else {
+  // Await update check (already running in background) then run CLI
+  updateCheckPromise.finally(() => {
+    program.parseAsync(process.argv).catch((e: unknown) => {
+      console.error(err('Error:'), e instanceof Error ? e.message : e);
+      process.exit(1);
+    });
+  });
+}
