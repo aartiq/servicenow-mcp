@@ -9,6 +9,7 @@ import type {
 } from './types.js';
 import { ServiceNowError } from '../utils/errors.js';
 import { logger } from '../utils/logging.js';
+import { missingRequiredFields } from './mandatory-fields.js';
 
 // ─── Input validation helpers ────────────────────────────────────────────────
 
@@ -82,6 +83,14 @@ export class ServiceNowClient {
     this.requestTimeoutMs = config.requestTimeoutMs || 30000;
     this.impersonateUserSysId = config.impersonateUserSysId;
     this.perUserBearerToken = config.perUserBearerToken;
+  }
+
+  /**
+   * The ServiceNow instance host this client targets (e.g. "acme.service-now.com").
+   * Used to scope per-instance caches so tenants never share discovered schema.
+   */
+  get instanceHost(): string {
+    try { return new URL(this.baseUrl).host.toLowerCase(); } catch { return this.baseUrl.toLowerCase(); }
   }
 
   /**
@@ -849,6 +858,16 @@ export class ServiceNowClient {
   async createRecord(table: string, data: Record<string, any>): Promise<ServiceNowRecord> {
     validateTableName(table);
     await this.authenticate();
+    // Field-level mandatory check: reject a create that omits a field this instance genuinely
+    // requires at the data layer (dictionary, overrides, data policies). UI policies are ignored
+    // on purpose, the Table API never evaluates them. Bypass with NOWAIKIT_SKIP_MANDATORY_CHECK=true.
+    const missing = await missingRequiredFields(this, table, data);
+    if (missing.length) {
+      throw new ServiceNowError(
+        `Cannot create ${table}: missing required field(s): ${missing.map(m => `${m.label} (${m.element})`).join(', ')}. Provide these values, or ask the user for them before creating.`,
+        'MANDATORY_FIELDS_MISSING'
+      );
+    }
     logger.info(`Creating record in ${table}`);
     const url = `${this.baseUrl}/api/now/table/${table}`;
     try {

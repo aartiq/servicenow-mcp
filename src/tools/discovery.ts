@@ -47,8 +47,8 @@ export async function executeDiscoveryToolCall(
     throw new ServiceNowError('table is required', 'INVALID_REQUEST');
   }
 
-  // Check cache first
-  const cached = schemaCache.get(table);
+  // Check cache first (scoped to this instance so tenants never share discovered schema)
+  const cached = schemaCache.get(table, client.instanceHost);
   if (cached) {
     return {
       table,
@@ -87,7 +87,7 @@ export async function executeDiscoveryToolCall(
       }));
 
       const toolNames = buildToolNames(table, args.operations);
-      schemaCache.set(table, columns, toolNames);
+      schemaCache.set(table, columns, toolNames, client.instanceHost);
 
       return {
         table,
@@ -115,7 +115,7 @@ export async function executeDiscoveryToolCall(
   }));
 
   const toolNames = buildToolNames(table, args.operations);
-  schemaCache.set(table, columns, toolNames);
+  schemaCache.set(table, columns, toolNames, client.instanceHost);
 
   return {
     table,
@@ -145,8 +145,8 @@ export async function executeDynamicToolCall(
   const operation = match[1]!;
   const table = match[2]!;
 
-  // Verify schema is cached
-  const cached = schemaCache.get(table);
+  // Verify schema is cached (scoped to this instance)
+  const cached = schemaCache.get(table, client.instanceHost);
   if (!cached) {
     throw new ServiceNowError(
       `Table "${table}" schema not cached. Run discover_table first.`,

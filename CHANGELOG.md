@@ -6,6 +6,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.7.3] - 2026-08-05
+
+### Added: field-level mandatory checking on record create
+- Create tools now check a table's genuinely-required fields before creating, and ask for any that are
+  missing instead of creating with system defaults. The check is matched to what the ServiceNow Table API
+  actually enforces: active **data policies**. Dictionary `mandatory` and UI policies are UI-layer and are
+  not enforced by REST (verified against a live instance), so they are intentionally not checked, to avoid
+  rejecting records ServiceNow itself would accept. Inherited data policies are respected via the table
+  hierarchy. Bypass with `NOWAIKIT_SKIP_MANDATORY_CHECK=true`.
+
+### Fixed: AI client detection and selection during `setup`
+- Setup no longer hides AI clients that weren't auto-detected. Every client (Claude Desktop, Cursor, and so
+  on) is now selectable even when detection missed it, and its config file and folder are created if absent.
+  Previously an installed-but-undetected Claude Desktop showed as a greyed-out entry you couldn't pick.
+- Improved Claude Desktop detection on Windows: it now also checks the config folder (created on first
+  launch, before any MCP config exists) and the several places Claude Desktop actually installs, including
+  the Squirrel versioned `app-*` directory.
+
+---
+
+## [4.7.2] - 2026-08-03
+
+### Fixed: per-instance isolation of the schema-discovery cache
+- The dynamic schema cache used by `discover_table` was keyed by table name only. In a multi-tenant
+  host (one process serving several ServiceNow instances), a cached schema for a table like `incident`
+  could be returned to a request against a different instance within the cache TTL. This exposed table
+  structure (custom field names and types), not record data. The cache is now scoped per ServiceNow
+  instance, so one tenant never sees another tenant's discovered schema. `getGeneratedTools` and
+  `getCachedTables` accept an optional instance filter; single-tenant behaviour is unchanged.
+- Added `ServiceNowClient.instanceHost` and a dedicated multi-tenant isolation test suite.
+
+---
+
 ## [4.7.1] — 2026-07-28
 
 ### Fixed — `npx nowaikit` works directly as an MCP server

@@ -2,9 +2,9 @@
  * Auto-detect installed AI clients and their MCP config paths.
  * Checks app binaries and known config file locations per platform.
  */
-import { existsSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 import { homedir } from 'os';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { execSync } from 'child_process';
 
 export type WriteMethod = 'json-mcpServers' | 'json-servers' | 'command' | 'env';
@@ -42,6 +42,33 @@ function appExists(macPath: string, winExe: string, linuxBin: string): boolean {
     return existsSync(join(localAppData, winExe));
   }
   return which(linuxBin);
+}
+
+/**
+ * Robust Claude Desktop detection. The config file only appears once you've added an MCP server,
+ * so a fresh install shows nothing there. Check the config FOLDER (created on first launch), and on
+ * Windows the several places Claude Desktop actually installs, including the Squirrel versioned dir.
+ */
+function claudeDesktopDetected(configPath: string): boolean {
+  const p = process.platform;
+  if (existsSync(configPath) || existsSync(dirname(configPath))) return true;
+  if (p === 'darwin') return existsSync('/Applications/Claude.app');
+  if (p === 'win32') {
+    const lad = process.env['LOCALAPPDATA'] || '';
+    const candidates = [
+      join(lad, 'AnthropicClaude', 'claude.exe'),
+      join(lad, 'Programs', 'claude', 'Claude.exe'),
+      join(lad, 'Programs', 'AnthropicClaude', 'claude.exe'),
+    ];
+    if (candidates.some(c => c && existsSync(c))) return true;
+    // Squirrel installs the exe under %LOCALAPPDATA%\AnthropicClaude\app-<version>\
+    try {
+      const base = join(lad, 'AnthropicClaude');
+      if (existsSync(base) && readdirSync(base).some(d => /^app-/i.test(d))) return true;
+    } catch { /* ignore */ }
+    return false;
+  }
+  return existsSync(join(homedir(), '.config', 'Claude'));
 }
 
 export function detectClients(): DetectedClient[] {
@@ -135,16 +162,7 @@ export function detectClients(): DetectedClient[] {
 
   return clients.map(c => {
     if (c.id === 'claude-desktop') {
-      return {
-        ...c,
-        detected:
-          existsSync(c.configPath) ||
-          appExists(
-            '/Applications/Claude.app',
-            join('AnthropicClaude', 'claude.exe'),
-            'claude-desktop'
-          ),
-      };
+      return { ...c, detected: claudeDesktopDetected(c.configPath) };
     }
     if (c.id === 'cursor') {
       return {

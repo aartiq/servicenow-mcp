@@ -16,6 +16,8 @@ export interface ColumnSchema {
 
 export interface CachedSchema {
   table: string;
+  /** ServiceNow instance host this schema was discovered from. Scopes the cache per tenant. */
+  instance: string;
   columns: ColumnSchema[];
   generatedToolNames: string[];
   cachedAt: number;
@@ -33,21 +35,31 @@ const DEFAULT_TTL_MS = 30 * 60 * 1000; // 30 minutes
 class SchemaCache {
   private cache = new Map<string, CachedSchema>();
 
-  /** Get cached schema if still valid. */
-  get(table: string): CachedSchema | undefined {
-    const entry = this.cache.get(table);
+  /**
+   * Cache key is scoped by ServiceNow instance so that, in a multi-tenant host, one
+   * tenant's discovered table structure is never returned to another. An empty/absent
+   * instance falls back to a single shared scope, preserving single-tenant behaviour.
+   */
+  private keyFor(table: string, instance?: string): string {
+    return `${(instance || 'default').toLowerCase()}::${table}`;
+  }
+
+  /** Get cached schema if still valid, scoped to the given instance. */
+  get(table: string, instance?: string): CachedSchema | undefined {
+    const entry = this.cache.get(this.keyFor(table, instance));
     if (!entry) return undefined;
     if (Date.now() - entry.cachedAt > entry.ttlMs) {
-      this.cache.delete(table);
+      this.cache.delete(this.keyFor(table, instance));
       return undefined;
     }
     return entry;
   }
 
-  /** Store schema for a table. */
-  set(table: string, columns: ColumnSchema[], generatedToolNames: string[], ttlMs = DEFAULT_TTL_MS): void {
-    this.cache.set(table, {
+  /** Store schema for a table, scoped to the given instance. */
+  set(table: string, columns: ColumnSchema[], generatedToolNames: string[], instance?: string, ttlMs = DEFAULT_TTL_MS): void {
+    this.cache.set(this.keyFor(table, instance), {
       table,
+      instance: (instance || 'default').toLowerCase(),
       columns,
       generatedToolNames,
       cachedAt: Date.now(),
@@ -65,26 +77,41 @@ class SchemaCache {
     }
   }
 
-  /** Get all dynamically generated tool definitions across all cached tables. */
-  getGeneratedTools(): DynamicToolDefinition[] {
+  /**
+   * Get all dynamically generated tool definitions. When an instance is given, only that
+   * instance's tables are returned; passing no instance returns every scope (single-tenant use).
+   */
+  getGeneratedTools(instance?: string): DynamicToolDefinition[] {
     this.evictExpired();
+    const scope = instance ? instance.toLowerCase() : undefined;
     const tools: DynamicToolDefinition[] = [];
 
     for (const [, schema] of this.cache) {
+      if (scope && schema.instance !== scope) continue;
       tools.push(...buildDynamicTools(schema));
     }
     return tools;
   }
 
-  /** Get all cached table names. */
-  getCachedTables(): string[] {
+  /** Get cached table names, optionally scoped to one instance. */
+  getCachedTables(instance?: string): string[] {
     this.evictExpired();
-    return Array.from(this.cache.keys());
+    const scope = instance ? instance.toLowerCase() : undefined;
+    const tables: string[] = [];
+    for (const [, schema] of this.cache) {
+      if (scope && schema.instance !== scope) continue;
+      tables.push(schema.table);
+    }
+    return tables;
   }
 
-  /** Clear all cached schemas. */
-  clear(): void {
-    this.cache.clear();
+  /** Clear cached schemas. With an instance, clears only that scope; otherwise all. */
+  clear(instance?: string): void {
+    if (!instance) { this.cache.clear(); return; }
+    const scope = instance.toLowerCase();
+    for (const [key, entry] of this.cache) {
+      if (entry.instance === scope) this.cache.delete(key);
+    }
   }
 }
 

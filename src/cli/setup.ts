@@ -1097,30 +1097,31 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
   const detected = clients.filter(c => c.detected);
   const notDetected = clients.filter(c => !c.detected);
 
-  if (detected.length === 0) {
-    console.log(warn('  No AI clients detected. Generating .env file instead.'));
-    const dotenvClient = clients.find(c => c.id === 'dotenv')!;
-    const result = writeClientConfig(dotenvClient, instance);
-    console.log(result.success ? success(`  ✓ ${result.message}`) : err(`  ✗ ${result.message}`));
-    await ensureGlobalCommand();
-    await runAutoConfiguration(instance, mcpEnabled, sdkEnabled, []);
-    printSummary(instance);
-    return;
-  }
-
   sectionLabel('Detected AI clients on this machine');
   console.log('');
   detected.forEach(c => console.log(`    ${success('✓')} ${white(c.name)}`));
   if (notDetected.length > 0) {
     notDetected
       .filter(c => c.id !== 'dotenv')
-      .forEach(c => console.log(`    ${dim('✗')} ${dim(c.name)}`));
+      .forEach(c => console.log(`    ${dim('✗')} ${dim(c.name)} ${dim('(not auto-detected — you can still select it below)')}`));
   }
   console.log('');
 
+  // Detection is a hint, not a gate: every client is selectable, so a user who knows they have one
+  // (for example Claude Desktop that wasn't auto-detected) can still install into it. The config
+  // file and its folder are created if missing.
+  const selectable = clients.filter(c => c.id !== 'dotenv');
+  const dotenvClient = clients.find(c => c.id === 'dotenv')!;
   const chosen = await checkbox<string>({
     message: brand('?') + ' Install into ' + dim('(space to select, enter to confirm)') + brand(':'),
-    choices: detected.map(c => ({ name: c.name, value: c.id, checked: c.id !== 'dotenv' })),
+    choices: [
+      ...selectable.map(c => ({
+        name: c.detected ? c.name : `${c.name} ${dim('(not detected)')}`,
+        value: c.id,
+        checked: c.detected,
+      })),
+      { name: dotenvClient.name, value: dotenvClient.id, checked: detected.length === 0 },
+    ],
   });
 
   if (chosen.length === 0) {
