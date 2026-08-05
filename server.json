@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.aartiq/nowaikit",
-  "title": "NowAIKit — ServiceNow MCP Server",
-  "description": "ServiceNow MCP server — 450+ tools (ITSM, ITOM, CMDB, scripting) for Claude, ChatGPT & any AI.",
-  "version": "4.1.6",
-  "websiteUrl": "https://nowaikit.com",
+  "name": "io.github.aartiq/servicenow-mcp",
+  "title": "ServiceNow MCP Server (NowAIKit)",
+  "description": "ServiceNow MCP server: 450+ tools across ITSM, ITOM, CMDB, HRSD, CSM, scripting and more, for Claude, ChatGPT, Gemini, Cursor, Copilot and any AI. Read-only by default, open source.",
+  "version": "4.7.3",
+  "websiteUrl": "https://servicenow-mcp.com",
   "repository": {
-    "url": "https://github.com/aartiq/nowaikit",
+    "url": "https://github.com/aartiq/servicenow-mcp",
     "source": "github"
   },
   "packages": [
     {
       "registryType": "npm",
       "identifier": "nowaikit",
-      "version": "4.1.6",
+      "version": "4.7.3",
       "transport": {
         "type": "stdio"
       },
