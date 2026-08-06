@@ -98,4 +98,4 @@ Full guides & product home → **[nowaikit.com](https://nowaikit.com)**
 
 ---
 
-© 2026 AartiQ (Hardik Benani) · [NowAIKit Source Available License](LICENSE)
+© 2026 NowAIKit · Source available under the [Elastic License 2.0](LICENSE)

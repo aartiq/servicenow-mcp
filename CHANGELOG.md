@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.8.0] - 2026-08-05
+
+### Added: create_script_include controls
+- `client_callable` parameter, so a script include can be created client callable (for GlideAjax) in one step
+  instead of a follow-up update.
+- `scope` parameter to target an application scope (a `sys_scope` sys_id, or `"global"`), for callers with
+  cross-scope create rights. Default stays the caller's current application.
+- The create response now reports which scope the record landed in, so it is clear where it was created.
+
+### Changed: licensing
+- Moved to the Elastic License 2.0 (source available). Free to use and fork, no reselling or hosting as a
+  service without a commercial agreement. See LICENSE and NOTICE. Commercial licensing: enterprise@nowaikit.com.
+
+---
+
 ## [4.7.3] - 2026-08-05
 
 ### Added: field-level mandatory checking on record create

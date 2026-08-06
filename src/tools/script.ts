@@ -98,6 +98,8 @@ export function getScriptToolDefinitions() {
           api_name: { type: 'string', description: 'API name used to call this from other scripts' },
           access: { type: 'string', description: '"public" or "package_private" (default: "public")' },
           active: { type: 'boolean', description: 'Whether to activate (default: true)' },
+          client_callable: { type: 'boolean', description: 'Client callable, for GlideAjax use (default: false)' },
+          scope: { type: 'string', description: 'Target application scope: a sys_scope sys_id, or "global" for the global scope. Default: your current application. Overriding scope needs cross-scope create rights.' },
         },
         required: ['name', 'script'],
       },
@@ -432,9 +434,17 @@ export async function executeScriptToolCall(
     }
     case 'create_script_include': {
       if (!args.name || !args.script) throw new ServiceNowError('name and script are required', 'INVALID_REQUEST');
-      const data = { name: args.name, script: args.script, api_name: args.api_name || args.name, access: args.access || 'public', active: args.active !== false };
-      const result = await client.createRecord('sys_script_include', data);
-      return { ...result, summary: `Created script include ${args.name}`, note: 'ES2021 (async/await, ?., ??) supported in the latest release' };
+      const data: Record<string, any> = { name: args.name, script: args.script, api_name: args.api_name || args.name, access: args.access || 'public', active: args.active !== false, client_callable: args.client_callable === true };
+      if (args.scope) data.sys_scope = args.scope;
+      const result: any = await client.createRecord('sys_script_include', data);
+      const sc = result && (result.sys_scope ?? (result.record && result.record.sys_scope));
+      const landedScope = sc && typeof sc === 'object' ? (sc.display_value || sc.value) : sc;
+      return {
+        ...result,
+        summary: `Created script include ${args.name}${args.client_callable === true ? ' (client callable)' : ''}`,
+        scope: landedScope || args.scope || 'current application',
+        note: `Landed in scope: ${landedScope || args.scope || 'your current application'}. Pass scope (a sys_scope sys_id or "global") to target a different one. Tip: the record uses the caller's current application unless scope is set. ES2021 (async/await, ?., ??) supported.`,
+      };
     }
     case 'update_script_include': {
       if (!args.sys_id || !args.fields) throw new ServiceNowError('sys_id and fields are required', 'INVALID_REQUEST');
