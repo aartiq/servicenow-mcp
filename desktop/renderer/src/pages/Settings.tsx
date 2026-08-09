@@ -843,7 +843,7 @@ export default function Settings({ settings, onSave, activeInstance, onNavigate 
             <button
               onClick={() => elApi()?.openExternal('https://github.com/aartiq/nowaikit/blob/main/LICENSE')}
               style={{ background:'none', border:'none', color:'var(--dim)', cursor:'pointer', padding:0, fontSize:'0.72rem', textDecoration:'underline' }}
-            >MIT License</button>
+            >Elastic License 2.0</button>
             , without warranty of any kind. Use at your own risk.{' '}
             <button
               onClick={() => elApi()?.openExternal('https://github.com/aartiq/nowaikit/blob/main/TERMS.md')}
