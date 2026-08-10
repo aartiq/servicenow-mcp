@@ -50,6 +50,8 @@ export interface ReportData {
   sections: ReportSection[];
   findings: ReportFinding[];
   rawMarkdown: string;
+  /** Resolved white-label branding used by the generators. */
+  brand?: BrandKit;
 }
 
 export type ReportFormat = 'pdf' | 'pptx' | 'md';
@@ -60,6 +62,25 @@ export interface ReportOptions {
   instanceName: string;
   capability?: string;
   outputDir?: string;
+  /** White-label branding overrides (company, accent colour, logo). Falls back to NowAIKit. */
+  brand?: BrandOverrides;
+}
+
+/** Caller-supplied branding overrides (CLI flags / env / SDK). */
+export interface BrandOverrides {
+  company?: string;
+  accentColor?: string;
+  /** Base64 PNG (no data: prefix). */
+  logoBase64?: string;
+  footer?: string;
+}
+
+/** Fully resolved brand for the generators (overrides merged with NowAIKit defaults). */
+export interface BrandKit {
+  company: string;
+  accent: string;
+  logoBase64?: string;
+  footer?: string;
 }
 
 export interface ReportResult {

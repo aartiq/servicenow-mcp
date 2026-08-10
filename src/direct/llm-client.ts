@@ -5,13 +5,16 @@
  * Users bring their own API key (BYOK) — no vendor lock-in.
  *
  * Features:
- *  - Providers: Anthropic, OpenAI, Google Gemini, Ollama, LM Studio
+ *  - Providers: Anthropic, OpenAI, Google Gemini, Ollama, LM Studio, and the
+ *    user's own Claude Code / Codex subscription via their local CLI (no API key)
  *  - Automatic retry with exponential backoff (honors Retry-After) on 429/5xx
  *  - Per-request timeout via AbortController
  *  - Optional token streaming via an onToken callback
  */
 
-export type LlmProvider = 'anthropic' | 'openai' | 'gemini' | 'ollama' | 'lmstudio';
+import { spawn } from 'node:child_process';
+
+export type LlmProvider = 'anthropic' | 'openai' | 'gemini' | 'ollama' | 'lmstudio' | 'claude-cli' | 'codex-cli';
 
 export interface LlmConfig {
   provider: LlmProvider;
@@ -46,6 +49,9 @@ const DEFAULT_MODELS: Record<LlmProvider, string> = {
   gemini: 'gemini-3.5-flash',
   ollama: 'llama3.3',
   lmstudio: 'auto',
+  // CLI-subscription providers: empty means "let the CLI use its own default model".
+  'claude-cli': '',
+  'codex-cli': '',
 };
 
 const PROVIDER_URLS: Record<LlmProvider, string> = {
@@ -55,9 +61,14 @@ const PROVIDER_URLS: Record<LlmProvider, string> = {
   gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
   ollama: 'http://localhost:11434/api/chat',
   lmstudio: 'http://localhost:1234/v1/chat/completions',
+  // CLI-subscription providers run a local binary, no HTTP endpoint.
+  'claude-cli': '',
+  'codex-cli': '',
 };
 
-const LOCAL_PROVIDERS: LlmProvider[] = ['ollama', 'lmstudio'];
+// Local / no-API-key providers. The CLI-subscription providers use the user's own
+// Claude Code / Codex login, so they need no API key here either.
+const LOCAL_PROVIDERS: LlmProvider[] = ['ollama', 'lmstudio', 'claude-cli', 'codex-cli'];
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 function resolveConfig(config: LlmConfig): { url: string; model: string; apiKey: string } {
@@ -314,6 +325,67 @@ async function callOllama(url: string, model: string, messages: LlmMessage[], op
 
 interface RetryOpts { timeoutMs: number; maxRetries: number; }
 
+// ── CLI-subscription providers (Claude Code / Codex) ────────────────────────
+// Shell out to the user's locally installed `claude` / `codex` CLI, which run on the
+// user's own subscription. No API key. The Apex executor gathers the ServiceNow data
+// itself and makes a single text-in/text-out call, so a headless CLI call fits cleanly.
+
+function flattenMessages(messages: LlmMessage[]): { system: string; prompt: string } {
+  const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+  const prompt = messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => (m.role === 'assistant' ? 'Assistant: ' : '') + m.content)
+    .join('\n\n');
+  return { system, prompt };
+}
+
+function runCli(bin: string, args: string[], input: string, timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch (e) {
+      reject(new Error(`Could not start "${bin}". Is it installed and on your PATH? (${e instanceof Error ? e.message : e})`));
+      return;
+    }
+    let out = '';
+    let err = '';
+    const timer = setTimeout(() => { try { child!.kill('SIGKILL'); } catch { /* ignore */ } reject(new Error(`"${bin}" timed out after ${timeoutMs}ms`)); }, timeoutMs);
+    child.stdout?.on('data', (d) => { out += d.toString(); });
+    child.stderr?.on('data', (d) => { err += d.toString(); });
+    child.on('error', (e) => { clearTimeout(timer); reject(new Error(`Could not run "${bin}". Is the CLI installed and logged in? (${e instanceof Error ? e.message : e})`)); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(out.trim());
+      else reject(new Error(`"${bin}" exited with code ${code}: ${(err || out).slice(0, 500).trim()}`));
+    });
+    try { if (input) child.stdin?.write(input); child.stdin?.end(); } catch { /* ignore */ }
+  });
+}
+
+/** Claude Code CLI — uses the user's Claude subscription. `claude -p` reads the prompt from stdin. */
+async function callClaudeCli(config: LlmConfig, messages: LlmMessage[]): Promise<LlmResponse> {
+  const { system, prompt } = flattenMessages(messages);
+  const bin = process.env.NOWAIKIT_CLAUDE_BIN || 'claude';
+  const args = ['-p'];
+  if (config.model) args.push('--model', config.model);
+  if (system) args.push('--append-system-prompt', system);
+  const text = await runCli(bin, args, prompt, config.timeoutMs ?? 300000);
+  return { content: text, model: config.model || 'claude-code' };
+}
+
+/** OpenAI Codex CLI — uses the user's Codex/ChatGPT subscription. Headless via `codex exec`. */
+async function callCodexCli(config: LlmConfig, messages: LlmMessage[]): Promise<LlmResponse> {
+  const { system, prompt } = flattenMessages(messages);
+  const full = system ? `${system}\n\n${prompt}` : prompt;
+  const bin = process.env.NOWAIKIT_CODEX_BIN || 'codex';
+  const args = ['exec'];
+  if (config.model) args.push('--model', config.model);
+  args.push('-'); // read the prompt from stdin
+  const text = await runCli(bin, args, full, config.timeoutMs ?? 300000);
+  return { content: text, model: config.model || 'codex' };
+}
+
 /**
  * Send messages to the configured LLM provider and get a response.
  * Pass `onToken` to stream the response token-by-token (also returns the full text).
@@ -337,6 +409,10 @@ export async function callLlm(config: LlmConfig, messages: LlmMessage[], onToken
       return callOllama(url, model, messages, opts, onToken);
     case 'lmstudio':
       return callOpenAI(url, model, apiKey, messages, maxTokens, opts, onToken);
+    case 'claude-cli':
+      return callClaudeCli(config, messages);
+    case 'codex-cli':
+      return callCodexCli(config, messages);
     default:
       throw new Error(`Unsupported provider: ${config.provider}`);
   }

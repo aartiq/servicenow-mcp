@@ -48,6 +48,7 @@ const ENVIRONMENTS = [
   { value: 'uat', label: 'UAT' },
   { value: 'test', label: 'Test' },
   { value: 'dev', label: 'Development' },
+  { value: 'demo', label: 'Demo' },
 ];
 
 export default function Setup({ onComplete, onClose, existingGroups = [] }: Props): React.ReactElement {

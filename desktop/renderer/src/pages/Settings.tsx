@@ -458,6 +458,19 @@ export default function Settings({ settings, onSave, activeInstance, onNavigate 
           </div>
         </div>
 
+        {/* Subscription note — Claude Code / Codex subscriptions run through the CLI, not the chat.
+            The chat is agentic (live tool calls) and needs a provider API, so it can't drive a CLI subprocess. */}
+        <div style={{
+          marginBottom:12, padding:'10px 14px', borderRadius:8,
+          background:'rgba(99,102,241,0.06)', border:'1px solid var(--border)',
+          fontSize:'0.78rem', color:'var(--text2)', lineHeight:1.5,
+        }}>
+          Already pay for Claude Code or Codex? Run capabilities and branded reports with your own
+          subscription (no API key) from the CLI:{' '}
+          <code style={{ fontSize:'0.75rem' }}>nowaikit run scan-health -p claude-cli --format pdf</code>.
+          The chat here uses live tool calls, so it needs a provider API key below.
+        </div>
+
         {/* Provider card grid — each card is self-contained and expands on click */}
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
           {PROVIDERS.map(p => {
