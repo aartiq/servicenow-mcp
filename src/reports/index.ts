@@ -60,6 +60,20 @@ export async function generateReport(
     instanceUrl: options.instanceUrl,
   });
 
+  // Resolve white-label branding (options > env > NowAIKit defaults) and attach to the data.
+  const { resolveBrand } = await import('./brand.js');
+  let envLogoB64: string | undefined;
+  const envLogo = process.env.NOWAIKIT_REPORT_LOGO;
+  if (envLogo && !options.brand?.logoBase64) {
+    try { const { readFileSync } = await import('fs'); envLogoB64 = readFileSync(envLogo).toString('base64'); } catch { /* ignore bad path */ }
+  }
+  reportData.brand = resolveBrand({
+    company: options.brand?.company || process.env.NOWAIKIT_REPORT_COMPANY,
+    accentColor: options.brand?.accentColor || process.env.NOWAIKIT_REPORT_ACCENT,
+    logoBase64: options.brand?.logoBase64 || envLogoB64,
+    footer: options.brand?.footer || process.env.NOWAIKIT_REPORT_FOOTER,
+  });
+
   // Lazy-load generators
   if (format === 'pdf') {
     const { generatePdf } = await import('./pdf-generator.js');

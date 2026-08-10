@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.9.0] - 2026-08-11
+
+### Added: run capabilities with your own Claude Code or Codex subscription
+- New keyless providers `claude-cli` and `codex-cli` for direct mode. If you already pay for Claude Code or
+  Codex, run capabilities and reports with `--provider claude-cli` (or `codex-cli`) and no API key. NowAIKit
+  pre-fetches the ServiceNow data and makes a single text-in/text-out call to your local CLI.
+- Override the binary path with `NOWAIKIT_CLAUDE_BIN` / `NOWAIKIT_CODEX_BIN` if it is not on `PATH`.
+
+### Added: white-label branded reports
+- PDF and PPTX reports now carry customer branding. Set a company name, accent colour, and logo per run:
+  `--brand-company "Devoteam" --brand-color "#F5455C" --brand-logo ./logo.png`, on both `run` and `report`.
+- Same controls via environment: `NOWAIKIT_REPORT_COMPANY`, `NOWAIKIT_REPORT_ACCENT`, `NOWAIKIT_REPORT_LOGO`,
+  `NOWAIKIT_REPORT_FOOTER`. Defaults stay NowAIKit, so nothing changes unless you opt in. White-labelled
+  reports keep a small "Powered by NowAIKit" attribution.
+
+### Added: Demo instance type
+- Setup now offers Demo alongside Production, Development, and Test/QA (both CLI and the web setup form).
+
 ## [4.8.0] - 2026-08-05
 
 ### Added: create_script_include controls

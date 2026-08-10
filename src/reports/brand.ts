@@ -2,7 +2,7 @@
  * NowAIKit brand constants for report generation.
  * Colors, logo, and utility functions for building branded reports.
  */
-import type { Severity } from './types.js';
+import type { Severity, BrandKit, BrandOverrides } from './types.js';
 
 export const BRAND = {
   teal: '#00D4AA',
@@ -29,6 +29,21 @@ export const BRAND = {
   degraded: '#FFB020',
   criticalHealth: '#E8466A',
 } as const;
+
+/**
+ * Merge caller branding overrides with the NowAIKit defaults into a resolved BrandKit.
+ * Overrides come from CLI flags, env vars, or the SDK. Anything not provided stays NowAIKit.
+ * A leading '#' on the accent colour is normalised in/out by the generators as needed.
+ */
+export function resolveBrand(overrides?: BrandOverrides): BrandKit {
+  const accent = (overrides?.accentColor || BRAND.teal).trim();
+  return {
+    company: (overrides?.company || 'NowAIKit').trim(),
+    accent: /^#/.test(accent) ? accent : `#${accent}`,
+    logoBase64: overrides?.logoBase64,
+    footer: overrides?.footer,
+  };
+}
 
 /** Map severity to brand color hex. */
 export function severityColor(severity: Severity): string {

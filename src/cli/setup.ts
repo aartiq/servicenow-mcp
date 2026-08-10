@@ -489,6 +489,7 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
     choices: [
       { name: `${accent('●')} Production`,       value: 'production' },
       { name: `${brand('●')} Development`,       value: 'development' },
+      { name: `${accent('●')} Demo`,             value: 'demo' },
       { name: `${warn('●')} Test / QA`,          value: 'test' },
       { name: `${subtle('●')} Staging / UAT`,    value: 'staging' },
       { name: `${dim('●')} Personal Dev (PDI)`,  value: 'pdi' },

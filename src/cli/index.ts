@@ -309,9 +309,12 @@ program
   .option('-s, --scope <scope>', 'Application scope or scan scope')
   .option('-f, --focus <focus>', 'Review focus: security, performance, all')
   .option('--format <format>', 'Output format: md (default), pdf, pptx')
+  .option('--brand-company <name>', 'White-label company name for reports')
+  .option('--brand-color <hex>', 'White-label accent colour (hex, e.g. #F5455C)')
+  .option('--brand-logo <file>', 'PNG logo file for the report cover')
   .action(async (
     capability: string,
-    options: { instance?: string; provider?: string; model?: string; apiKey?: string; output?: string; table?: string; scope?: string; focus?: string; format?: string }
+    options: { instance?: string; provider?: string; model?: string; apiKey?: string; output?: string; table?: string; scope?: string; focus?: string; format?: string; brandCompany?: string; brandColor?: string; brandLogo?: string }
   ) => {
     cliBanner();
 
@@ -334,8 +337,10 @@ program
     const apiKey = options.apiKey || storedApiKey;
     const baseUrl = storedBaseUrl;
 
-    // If no provider configured and no env vars set, show helpful guidance
-    const localProviders = ['ollama', 'lmstudio'];
+    // If no provider configured and no env vars set, show helpful guidance.
+    // Keyless providers: local models (Ollama/LM Studio) and the user's own
+    // Claude Code / Codex subscription via their CLI.
+    const localProviders = ['ollama', 'lmstudio', 'claude-cli', 'codex-cli'];
     if (!localProviders.includes(provider) && !apiKey && !process.env[`${provider.toUpperCase()}_API_KEY`]) {
       console.log('');
       console.log(err('  AI analysis requires an LLM provider. Options:'));
@@ -343,6 +348,7 @@ program
       console.log(`    ${teal('1.')} Run ${teal('npx nowaikit setup')} to configure ${dim('(Ollama recommended — free, local)')}`);
       console.log(`    ${teal('2.')} Set ${teal('ANTHROPIC_API_KEY')} or ${teal('OPENAI_API_KEY')} environment variable`);
       console.log(`    ${teal('3.')} Use ${teal('--provider ollama')} for local Ollama ${dim('(no API key needed)')}`);
+      console.log(`    ${teal('4.')} Use ${teal('--provider claude-cli')} or ${teal('--provider codex-cli')} for your Claude Code / Codex subscription ${dim('(no API key)')}`);
       console.log('');
       process.exit(1);
     }
@@ -384,12 +390,28 @@ program
             : getDefaultInstance();
           const instName = options.instance || config.defaultInstance || 'instance';
 
+          // White-label branding from CLI flags (env vars are applied inside generateReport).
+          let brand: import('../reports/types.js').BrandOverrides | undefined;
+          if (options.brandCompany || options.brandColor || options.brandLogo) {
+            let logoBase64: string | undefined;
+            if (options.brandLogo) {
+              try {
+                const { readFileSync } = await import('fs');
+                logoBase64 = readFileSync(options.brandLogo).toString('base64');
+              } catch {
+                console.error(err(`\n  Could not read logo file: ${options.brandLogo}`));
+              }
+            }
+            brand = { company: options.brandCompany, accentColor: options.brandColor, logoBase64 };
+          }
+
           const reportResult = await generateReport(result.content, reportFormat, {
             title: capability.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
             instanceUrl: instConfig?.instanceUrl || '',
             instanceName: instName,
             capability,
             outputDir: options.output ? undefined : undefined,
+            brand,
           });
 
           // If -o flag specified, use that as output path
@@ -436,6 +458,9 @@ program
   .option('-t, --table <table>', 'Target table name')
   .option('-s, --scope <scope>', 'Application scope or scan scope')
   .option('--format <format>', 'Output format: pdf (default), pptx', 'pdf')
+  .option('--brand-company <name>', 'White-label company name for reports')
+  .option('--brand-color <hex>', 'White-label accent colour (hex, e.g. #F5455C)')
+  .option('--brand-logo <file>', 'PNG logo file for the report cover')
   .action(async (capability: string, options: any) => {
     // Delegate to `run` with format defaulting to pdf
     const args = ['run', capability];
@@ -446,6 +471,9 @@ program
     if (options.output) args.push('-o', options.output);
     if (options.table) args.push('-t', options.table);
     if (options.scope) args.push('-s', options.scope);
+    if (options.brandCompany) args.push('--brand-company', options.brandCompany);
+    if (options.brandColor) args.push('--brand-color', options.brandColor);
+    if (options.brandLogo) args.push('--brand-logo', options.brandLogo);
     args.push('--format', options.format || 'pdf');
     await program.parseAsync(['node', 'nowaikit', ...args]);
   });
