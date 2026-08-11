@@ -450,7 +450,18 @@ program
                 if (options.brandLogo.startsWith('http://') || options.brandLogo.startsWith('https://')) {
                   const res = await fetch(options.brandLogo);
                   if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+                  const contentType = res.headers.get('content-type') || '';
+                  if (!contentType.includes('image/')) {
+                    throw new Error(`Invalid content-type: ${contentType} (expected an image)`);
+                  }
+                  const contentLength = parseInt(res.headers.get('content-length') || '0', 10);
+                  if (contentLength > 5 * 1024 * 1024) {
+                    throw new Error(`Logo exceeds maximum size of 5MB (${Math.round(contentLength / 1024 / 1024)}MB)`);
+                  }
                   const arrayBuffer = await res.arrayBuffer();
+                  if (arrayBuffer.byteLength > 5 * 1024 * 1024) {
+                    throw new Error(`Logo exceeds maximum size of 5MB`);
+                  }
                   logoBase64 = Buffer.from(arrayBuffer).toString('base64');
                 } else {
                   const { readFileSync } = await import('fs');
