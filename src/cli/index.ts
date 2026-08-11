@@ -447,10 +447,17 @@ program
             let logoBase64: string | undefined;
             if (options.brandLogo) {
               try {
-                const { readFileSync } = await import('fs');
-                logoBase64 = readFileSync(options.brandLogo).toString('base64');
-              } catch {
-                console.error(err(`\n  Could not read logo file: ${options.brandLogo}`));
+                if (options.brandLogo.startsWith('http://') || options.brandLogo.startsWith('https://')) {
+                  const res = await fetch(options.brandLogo);
+                  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+                  const arrayBuffer = await res.arrayBuffer();
+                  logoBase64 = Buffer.from(arrayBuffer).toString('base64');
+                } else {
+                  const { readFileSync } = await import('fs');
+                  logoBase64 = readFileSync(options.brandLogo).toString('base64');
+                }
+              } catch (logoErr) {
+                console.error(err(`\n  Could not read logo: ${options.brandLogo} (${logoErr instanceof Error ? logoErr.message : 'error'})`));
               }
             }
             brand = { company: options.brandCompany, accentColor: options.brandColor, logoBase64 };
