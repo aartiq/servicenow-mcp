@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://nowaikit.com/docs
+    about: Setup, capabilities, and guides.
+  - name: Enterprise support and licensing
+    url: mailto:enterprise@nowaikit.com
+    about: Commercial support, SLA, and self-hosting for production use.
+  - name: Security disclosure
+    url: https://github.com/aartiq/nowaikit/security/policy
+    about: Please report vulnerabilities privately, not as public issues.
