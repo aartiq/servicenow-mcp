@@ -461,6 +461,13 @@ Full reference also in `.env.example`.
 |----------|---------|-------------|
 | `MCP_TOOL_PACKAGE` | `full` | `full`, `service_desk`, `platform_developer`, `portal_developer`, `integration_engineer`, `itom_engineer`, `agile_manager`, `ai_developer`, `devops_engineer`, `itam_analyst`, ... |
 
+### LLM Provider CLI Overrides
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NOWAIKIT_CLAUDE_BIN` | `claude` | Override path to `claude` executable when using `--provider claude-cli` |
+| `NOWAIKIT_CODEX_BIN` | `codex` | Override path to `codex` executable when using `--provider codex-cli` |
+
 ### Multi-Instance
 
 | Variable | Description |
