@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.9.1] - 2026-08-11
+
+### Added: one-step self-update
+- When a newer version exists, the CLI now asks a single "Update now?" (default yes). Say yes and it
+  runs the install for you and re-runs your command on the new version. No more copying commands.
+- New `nowaikit update` command to update on demand.
+- Non-interactive shells (pipes, CI) just print a one-line notice and are never blocked. Suppress the
+  whole thing with `NOWAIKIT_NO_UPDATE_CHECK=1`.
+
 ## [4.9.0] - 2026-08-11
 
 ### Added: run capabilities with your own Claude Code or Codex subscription

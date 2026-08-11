@@ -60,8 +60,8 @@ function cliBanner(): void {
   console.log('');
 }
 
-/** Non-blocking update check — prints a notice if a newer version exists on npm. */
-async function checkForUpdate(): Promise<void> {
+/** Non-blocking update check — returns the newer version on npm, or null. */
+async function checkForUpdate(): Promise<string | null> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
@@ -69,10 +69,10 @@ async function checkForUpdate(): Promise<void> {
       signal: controller.signal,
     });
     clearTimeout(timeout);
-    if (!res.ok) return;
+    if (!res.ok) return null;
     const data = await res.json() as { version?: string };
     const latest = data.version;
-    if (!latest || latest === CLI_VERSION) return;
+    if (!latest || latest === CLI_VERSION) return null;
 
     // Simple semver comparison: split into parts and compare numerically
     const cur = CLI_VERSION.split('.').map(Number);
@@ -80,15 +80,59 @@ async function checkForUpdate(): Promise<void> {
     const isNewer = lat[0] > cur[0]
       || (lat[0] === cur[0] && lat[1] > cur[1])
       || (lat[0] === cur[0] && lat[1] === cur[1] && lat[2] > cur[2]);
-    if (!isNewer) return;
-
-    console.log('');
-    console.log(chalk.hex('#FF6B35')(`  ⬆  Update available: ${CLI_VERSION} → ${latest}`));
-    console.log(dim(`     Run ${teal('npx nowaikit@latest')} to update`));
-    console.log('');
+    return isNewer ? latest : null;
   } catch {
     // Network error, timeout, offline — skip silently
+    return null;
   }
+}
+
+/** Run `npm install -g nowaikit@<version>` and report the outcome. */
+async function installUpdate(version: string): Promise<boolean> {
+  const { spawnSync } = await import('node:child_process');
+  console.log(dim(`  Installing nowaikit@${version} ...`));
+  const r = spawnSync('npm', ['install', '-g', `nowaikit@${version}`], { stdio: 'inherit' });
+  if (r.status === 0) { console.log(success(`  ✓ Updated to ${version}`)); return true; }
+  console.log(err(`  Update failed. Run it manually: npm install -g nowaikit@latest`));
+  return false;
+}
+
+/**
+ * If a newer version exists, offer a single yes/no. On yes, self-update and re-run the
+ * original command on the new version. Non-interactive shells (pipes, CI) just see a one-line
+ * notice and are never blocked. Suppress entirely with NOWAIKIT_NO_UPDATE_CHECK=1.
+ */
+async function maybePromptUpdate(latest: string | null): Promise<void> {
+  if (!latest || process.env.NOWAIKIT_NO_UPDATE_CHECK === '1') return;
+  const argv = process.argv.slice(2);
+  if (argv[0] === 'update') return; // the `update` command handles it explicitly
+  const interactive = process.stdout.isTTY && process.stdin.isTTY;
+  const skipFlags = new Set(['-v', '--version', '-h', '--help']);
+
+  // Non-interactive or a version/help query: notice only, no prompt.
+  if (!interactive || argv.some(a => skipFlags.has(a))) {
+    console.log('');
+    console.log(chalk.hex('#FF6B35')(`  ⬆  Update available: ${CLI_VERSION} → ${latest}`));
+    console.log(dim(`     Update any time with ${teal('npm install -g nowaikit@latest')}`));
+    console.log('');
+    return;
+  }
+
+  console.log('');
+  console.log(chalk.hex('#FF6B35')(`  ⬆  A new version of NowAIKit is available: ${CLI_VERSION} → ${latest}`));
+  const { confirm } = await import('@inquirer/prompts');
+  let yes: boolean;
+  try { yes = await confirm({ message: 'Update now?', default: true }); }
+  catch { return; } // Ctrl-C — carry on with the current version
+  if (!yes) { console.log(dim(`  Skipped. Update later with ${teal('npm install -g nowaikit@latest')}`)); console.log(''); return; }
+
+  if (!(await installUpdate(latest))) { console.log(''); return; }
+
+  // Re-run the original command on the freshly installed version so it just works.
+  const { spawnSync } = await import('node:child_process');
+  const re = spawnSync('nowaikit', argv, { stdio: 'inherit', env: { ...process.env, NOWAIKIT_NO_UPDATE_CHECK: '1' } });
+  if (re.error) { console.log(dim(`  Run your command again to use ${latest}.`)); process.exit(0); }
+  process.exit(re.status ?? 0);
 }
 
 // If launched with no subcommand and stdio is piped (not a TTY), an MCP client such as Claude
@@ -99,7 +143,7 @@ const MCP_MODE = process.env.NOWAIKIT_MCP === "1"
   || (process.argv.slice(2).length === 0 && !process.stdout.isTTY && !process.stdin.isTTY);
 
 // Fire update check in background (non-blocking). Never in MCP mode — it writes to stdout.
-const updateCheckPromise = MCP_MODE ? Promise.resolve() : checkForUpdate();
+const updateCheckPromise: Promise<string | null> = MCP_MODE ? Promise.resolve(null) : checkForUpdate();
 
 const program = new Command();
 
@@ -478,6 +522,22 @@ program
     await program.parseAsync(['node', 'nowaikit', ...args]);
   });
 
+// ─── update ─────────────────────────────────────────────────────────────────
+program
+  .command('update')
+  .description('Update NowAIKit to the latest version')
+  .action(async () => {
+    cliBanner();
+    const latest = await checkForUpdate();
+    if (!latest) {
+      console.log(`\n  ${success('✓')} You're on the latest version (${CLI_VERSION}).\n`);
+      return;
+    }
+    console.log(`\n  ${chalk.hex('#FF6B35')(`Updating ${CLI_VERSION} → ${latest}`)}`);
+    await installUpdate(latest);
+    console.log('');
+  });
+
 if (MCP_MODE) {
   // Launched as an MCP server by a client. Start the stdio server (keeps the process alive).
   // console.error goes to stderr, so stdout stays clean for the JSON-RPC protocol.
@@ -486,11 +546,14 @@ if (MCP_MODE) {
     process.exit(1);
   });
 } else {
-  // Await update check (already running in background) then run CLI
-  updateCheckPromise.finally(() => {
-    program.parseAsync(process.argv).catch((e: unknown) => {
-      console.error(err('Error:'), e instanceof Error ? e.message : e);
-      process.exit(1);
+  // Await the background update check, offer a single yes/no update, then run the CLI.
+  updateCheckPromise
+    .then((latest) => maybePromptUpdate(latest))
+    .catch(() => { /* never block the CLI on the update flow */ })
+    .finally(() => {
+      program.parseAsync(process.argv).catch((e: unknown) => {
+        console.error(err('Error:'), e instanceof Error ? e.message : e);
+        process.exit(1);
+      });
     });
-  });
 }
