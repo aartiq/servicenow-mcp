@@ -1,82 +1,82 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.aartiq/nowaikit",
-  "title": "ServiceNow MCP Server (NowAIKit)",
-  "description": "ServiceNow MCP server: 450+ tools for Claude, ChatGPT, Copilot & any AI. Read-only by default.",
-  "version": "4.8.0",
-  "websiteUrl": "https://servicenow-mcp.com",
-  "repository": {
-    "url": "https://github.com/aartiq/servicenow-mcp",
-    "source": "github"
-  },
-  "packages": [
+ "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+ "name": "io.github.aartiq/nowaikit",
+ "title": "ServiceNow MCP Server (NowAIKit)",
+ "description": "ServiceNow MCP server: 450+ tools for Claude, ChatGPT, Copilot & any AI. Read-only by default.",
+ "version": "4.9.1",
+ "websiteUrl": "https://servicenow-mcp.com",
+ "repository": {
+  "url": "https://github.com/aartiq/servicenow-mcp",
+  "source": "github"
+ },
+ "packages": [
+  {
+   "registryType": "npm",
+   "identifier": "nowaikit",
+   "version": "4.9.1",
+   "transport": {
+    "type": "stdio"
+   },
+   "environmentVariables": [
     {
-      "registryType": "npm",
-      "identifier": "nowaikit",
-      "version": "4.8.0",
-      "transport": {
-        "type": "stdio"
-      },
-      "environmentVariables": [
-        {
-          "name": "SERVICENOW_INSTANCE_URL",
-          "description": "Your ServiceNow instance URL (e.g. https://yourinstance.service-now.com)",
-          "required": true
-        },
-        {
-          "name": "SERVICENOW_AUTH_METHOD",
-          "description": "Authentication method: 'basic' or 'oauth'",
-          "required": true
-        },
-        {
-          "name": "SERVICENOW_BASIC_USERNAME",
-          "description": "ServiceNow username (for basic auth)"
-        },
-        {
-          "name": "SERVICENOW_BASIC_PASSWORD",
-          "description": "ServiceNow password (for basic auth)"
-        },
-        {
-          "name": "WRITE_ENABLED",
-          "description": "Enable write operations (true/false, default: false)"
-        },
-        {
-          "name": "SCRIPTING_ENABLED",
-          "description": "Enable scripting operations (true/false, default: false)"
-        },
-        {
-          "name": "CMDB_WRITE_ENABLED",
-          "description": "Enable CMDB write operations (true/false, default: false)"
-        },
-        {
-          "name": "NOW_ASSIST_ENABLED",
-          "description": "Enable Now Assist AI features (true/false, default: false)"
-        },
-        {
-          "name": "ATF_ENABLED",
-          "description": "Enable ATF test execution (true/false, default: false)"
-        },
-        {
-          "name": "MCP_TOOL_PACKAGE",
-          "description": "Role-based tool package: full, service_desk, platform_developer, etc."
-        },
-        {
-          "name": "TRANSPORT",
-          "description": "Transport mode: stdio (default), sse, or http"
-        },
-        {
-          "name": "PORT",
-          "description": "HTTP server port (default: 3000, for sse/http transport)"
-        },
-        {
-          "name": "NOWAIKIT_API_KEY",
-          "description": "Bearer token for API authentication (sse/http transport)"
-        },
-        {
-          "name": "FLUENT_ENABLED",
-          "description": "Enable Fluent SDK tools (true/false, default: false)"
-        }
-      ]
+     "name": "SERVICENOW_INSTANCE_URL",
+     "description": "Your ServiceNow instance URL (e.g. https://yourinstance.service-now.com)",
+     "required": true
+    },
+    {
+     "name": "SERVICENOW_AUTH_METHOD",
+     "description": "Authentication method: 'basic' or 'oauth'",
+     "required": true
+    },
+    {
+     "name": "SERVICENOW_BASIC_USERNAME",
+     "description": "ServiceNow username (for basic auth)"
+    },
+    {
+     "name": "SERVICENOW_BASIC_PASSWORD",
+     "description": "ServiceNow password (for basic auth)"
+    },
+    {
+     "name": "WRITE_ENABLED",
+     "description": "Enable write operations (true/false, default: false)"
+    },
+    {
+     "name": "SCRIPTING_ENABLED",
+     "description": "Enable scripting operations (true/false, default: false)"
+    },
+    {
+     "name": "CMDB_WRITE_ENABLED",
+     "description": "Enable CMDB write operations (true/false, default: false)"
+    },
+    {
+     "name": "NOW_ASSIST_ENABLED",
+     "description": "Enable Now Assist AI features (true/false, default: false)"
+    },
+    {
+     "name": "ATF_ENABLED",
+     "description": "Enable ATF test execution (true/false, default: false)"
+    },
+    {
+     "name": "MCP_TOOL_PACKAGE",
+     "description": "Role-based tool package: full, service_desk, platform_developer, etc."
+    },
+    {
+     "name": "TRANSPORT",
+     "description": "Transport mode: stdio (default), sse, or http"
+    },
+    {
+     "name": "PORT",
+     "description": "HTTP server port (default: 3000, for sse/http transport)"
+    },
+    {
+     "name": "NOWAIKIT_API_KEY",
+     "description": "Bearer token for API authentication (sse/http transport)"
+    },
+    {
+     "name": "FLUENT_ENABLED",
+     "description": "Enable Fluent SDK tools (true/false, default: false)"
     }
-  ]
+   ]
+  }
+ ]
 }
