@@ -320,7 +320,13 @@ program
     const caps = getCapabilityMeta();
 
     if (options.json) {
-      console.log(JSON.stringify(caps, null, 2));
+      const publicCaps = caps.map(c => ({
+        name: c.name,
+        description: c.description,
+        category: c.category,
+        arguments: c.arguments || [],
+      }));
+      console.log(JSON.stringify(publicCaps, null, 2));
       return;
     }
 
