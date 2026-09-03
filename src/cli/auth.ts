@@ -38,7 +38,7 @@ function openBrowser(url: string): void {
  * and capture the ?code= automatically so the user never pastes anything. Rejects if the port can't
  * bind or the flow times out, so the caller can fall back to the manual paste prompt.
  */
-function captureCodeViaLoopback(authUrl: string, port: number): Promise<string> {
+function captureCodeViaLoopback(authUrl: string, port: number, expectedState?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
       try {
@@ -46,9 +46,14 @@ function captureCodeViaLoopback(authUrl: string, port: number): Promise<string> 
         if (u.pathname !== '/callback') { res.writeHead(404); res.end('Not found'); return; }
         const code = u.searchParams.get('code');
         const err = u.searchParams.get('error');
+        const returnedState = u.searchParams.get('state');
+        // CSRF guard: the state returned must match the one we sent.
+        const stateOk = !expectedState || returnedState === expectedState;
+        const ok = !!code && stateOk;
         res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`<html><body style="font-family:sans-serif;padding:48px;color:#2b2630"><h2 style="color:#2f7256">NowAIKit</h2><p>${code ? 'Signed in. You can close this tab and return to your terminal.' : 'Sign-in failed: ' + (err || 'no authorization code returned')}.</p></body></html>`);
+        res.end(`<html><body style="font-family:sans-serif;padding:48px;color:#2b2630"><h2 style="color:#2f7256">NowAIKit</h2><p>${ok ? 'Signed in. You can close this tab and return to your terminal.' : 'Sign-in failed: ' + (err || (!stateOk ? 'state mismatch' : 'no authorization code returned'))}.</p></body></html>`);
         server.close();
+        if (!stateOk) { reject(new Error('state mismatch (possible CSRF)')); return; }
         if (code) resolve(code); else reject(new Error(err || 'no code in callback'));
       } catch (e) { try { res.writeHead(500); res.end(); } catch { /* noop */ } server.close(); reject(e as Error); }
     });
@@ -109,15 +114,19 @@ export async function authLogin(): Promise<void> {
     return;
   }
 
-  const instanceUrl = instances.length === 1
-    ? instances[0]!.instanceUrl
+  // Pick by the unique instance NAME, not the URL — several instances can share one instanceUrl
+  // (e.g. a basic and an OAuth config for the same box), and keying on the URL would resolve to the
+  // wrong one (the first match), silently using the wrong auth method.
+  const instanceName = instances.length === 1
+    ? instances[0]!.name
     : await select<string>({
         message: 'Choose instance to authenticate against:',
-        choices: instances.map(i => ({ name: `${i.name} (${i.instanceUrl})`, value: i.instanceUrl })),
+        choices: instances.map(i => ({ name: `${i.name} (${i.instanceUrl})`, value: i.name })),
       });
 
-  const instance = instances.find(i => i.instanceUrl === instanceUrl);
+  const instance = instances.find(i => i.name === instanceName);
   if (!instance) return;
+  const instanceUrl = instance.instanceUrl;
 
   console.log('');
   console.log(chalk.bold('Per-user OAuth login'));
@@ -131,11 +140,15 @@ export async function authLogin(): Promise<void> {
     const usePkce = !instance.clientSecret;
     const codeVerifier = usePkce ? b64url(randomBytes(32)) : '';
     const codeChallenge = usePkce ? b64url(createHash('sha256').update(codeVerifier).digest()) : '';
+    // ServiceNow requires a state parameter on the authorize request; we also verify it on the
+    // callback as a CSRF guard.
+    const state = b64url(randomBytes(16));
 
     const authUrl =
       `${instanceUrl}/oauth_auth.do` +
       `?response_type=code&client_id=${instance.clientId}` +
       `&redirect_uri=http://localhost:8765/callback` +
+      `&state=${state}` +
       (usePkce ? `&code_challenge=${codeChallenge}&code_challenge_method=S256` : '');
 
     // Preferred: loopback capture (RFC 8252) — open the browser and grab the code automatically,
@@ -146,7 +159,7 @@ export async function authLogin(): Promise<void> {
       console.log(chalk.dim('If it does not open, use this URL:'));
       console.log(chalk.underline(authUrl));
       console.log('');
-      code = await captureCodeViaLoopback(authUrl, 8765);
+      code = await captureCodeViaLoopback(authUrl, 8765, state);
     } catch {
       console.log('');
       console.log(chalk.yellow('Could not capture the sign-in automatically.'));

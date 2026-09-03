@@ -90,6 +90,17 @@ export function getDecisionToolDefinitions() {
         required: ['decision_sys_id', 'name'],
       },
     },
+    {
+      name: 'publish_decision_table',
+      description: 'Publish a Decision Builder decision table — sets sys_decision.status to "published". Requires WRITE_ENABLED=true',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          decision_sys_id: { type: 'string', description: 'sys_id of the decision table (sys_decision)' },
+        },
+        required: ['decision_sys_id'],
+      },
+    },
   ];
 }
 
@@ -144,6 +155,13 @@ export async function executeDecisionToolCall(
       if (args.order !== undefined) payload.order = args.order;
       const result = await client.createRecord('sys_decision_input', payload);
       return { ...result, summary: `Added input "${args.name}" to decision ${args.decision_sys_id}` };
+    }
+    case 'publish_decision_table': {
+      requireWrite();
+      if (!args.decision_sys_id) throw new ServiceNowError('decision_sys_id is required', 'INVALID_REQUEST');
+      // Verified on a live instance: sys_decision.status is a choice of draft|published.
+      const result = await client.updateRecord('sys_decision', args.decision_sys_id, { status: 'published', enable_publishing: 'true' });
+      return { ...result, summary: `Published decision table ${args.decision_sys_id}` };
     }
     default:
       return null;

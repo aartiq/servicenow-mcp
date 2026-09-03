@@ -1,7 +1,7 @@
 {
   "name": "nowaikit",
   "mcpName": "io.github.aartiq/nowaikit",
-  "version": "4.15.0",
+  "version": "4.15.1",
   "description": "The most comprehensive ServiceNow AI toolkit, including a full ServiceNow MCP server: 450+ MCP tools plus 26 AI capabilities (scan, review, build, ops, docs) and a direct BYOK mode. Works with Claude, ChatGPT, Gemini, Cursor, GitHub Copilot and any LLM.",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",

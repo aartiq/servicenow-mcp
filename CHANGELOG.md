@@ -6,6 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.15.1] - 2026-09-03
+
+### Fixed
+- `nowaikit auth login` now sends the OAuth `state` parameter, which ServiceNow requires, and verifies it
+  on the callback as a CSRF guard. Browser sign-in previously failed with "Missing state parameter" on
+  instances that enforce it.
+- The login instance picker selects by the unique instance name instead of the URL, so multiple configs
+  pointing at the same instance (for example a basic profile and an OAuth profile) resolve to the right
+  one rather than the first match, which had silently used the wrong auth method.
+- `nowaikit setup` no longer fails the connection test for a public OAuth client (PKCE, no secret): it
+  verifies the instance with the sign-in credentials, and skips the test entirely when provisioning or
+  reading an existing app already proved the connection.
+
+### Added
+- `publish_decision_table` publishes a Decision Builder decision table (sets `sys_decision.status` to
+  published), verified against a live instance.
+
+### Changed
+- Shorter setup wizard: the SDK starter file is created without a prompt, the AI provider step defaults
+  to Skip, and the "list all 26 capabilities" prompt is now a one-line pointer. On modern ServiceNow
+  releases the auto-provisioned OAuth app is a public client with PKCE and no secret.
+
 ## [4.15.0] - 2026-09-03
 
 ### Added: file attachments that work from conversational AI clients

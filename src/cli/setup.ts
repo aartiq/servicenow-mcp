@@ -682,6 +682,9 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
   let userPassword: string | undefined;
   let clientId: string | undefined;
   let clientSecret: string | undefined;
+  // True once we've already made a successful authenticated call during OAuth setup (provisioning or
+  // reading an existing app), so the separate "Testing Connection" step is redundant and can be skipped.
+  let connectionVerified = false;
 
   if (authMode === 'per-user') {
     box([
@@ -725,6 +728,7 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
       clientSecret = found.clientSecret;
       username = signInUser;
       userPassword = signInPass;
+      connectionVerified = true; // findExistingOAuthApp already made an authenticated call with these creds
       if (clientSecret) {
         detect.succeed(success('  Found an existing OAuth app — using it ') + dim(`(Client ID ${clientId})`));
       } else if (caps.publicPkce) {
@@ -745,7 +749,7 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
         message: brand('?') + ' How do you want to set up OAuth' + brand('?'),
         choices: [
           { name: `${success('✨')} Create it for me ${dim('— needs the sign-in above to be an ADMIN')}`, value: 'auto' },
-          { name: `${accent('🔑')} I was given a Client ID / Secret ${dim('— enter them')}`, value: 'have' },
+          { name: `${accent('🔑')} I have the Client ID and Secret ${dim('— enter them')}`, value: 'have' },
           { name: `${accent('🔧')} Show me the manual steps ${dim('(needs an admin)')}`, value: 'manual' },
           { name: `${brand('🔒')} Skip OAuth — username/password ${dim('(no app, any user)')}`, value: 'basic' },
         ],
@@ -760,6 +764,7 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
           spin.succeed(success('  OAuth app created — Client ID ') + accent(clientId) + (caps.publicPkce ? dim(' (public client, PKCE)') : ''));
           username = signInUser;
           userPassword = signInPass;
+          connectionVerified = true; // the create call itself proved the instance + admin creds work
         } catch (e) {
           spin.fail(err('  ' + (e instanceof Error ? e.message : String(e))));
           console.log('');
@@ -799,8 +804,19 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
   step(4, 'Testing Connection');
 
   let connected = false;
+
+  // Already proven during OAuth setup (we provisioned or read an app with these creds) — no re-test.
+  if (connectionVerified) {
+    console.log('  ' + success('✓') + dim(' Connection already verified during sign-in.'));
+    connected = true;
+  }
+
   while (!connected) {
-    const { ok } = await testConnection(instanceUrl, authMethod, {
+    // A public OAuth client (PKCE, no secret) can't be exercised by the setup-time password grant —
+    // the per-user token comes later from `nowaikit auth login`. Verify the instance and the
+    // service-account credentials with basic auth instead. The saved config stays OAuth.
+    const testMethod: 'basic' | 'oauth' = (authMethod === 'oauth' && !clientSecret) ? 'basic' : authMethod;
+    const { ok } = await testConnection(instanceUrl, testMethod, {
       username,
       password: userPassword,
       clientId,
@@ -1065,7 +1081,7 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
       choices: providerChoices,
       default: localProviders.ollama.running ? 'ollama'
         : localProviders.lmstudio.running ? 'lmstudio'
-        : undefined,
+        : 'skip',
     });
 
     if (selectedProvider !== 'skip') {
@@ -1154,16 +1170,9 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
         console.log(`  ${success('✓')} Google Gemini configured with ${accent(aiModel)}`);
       }
 
-      // Custom base URL option for advanced users
-      const useCustomUrl = await confirm({
-        message: brand('?') + ' Use a custom API endpoint URL' + brand('?'),
-        default: false,
-      });
-      if (useCustomUrl) {
-        aiBaseUrl = await input({
-          message: brand('?') + ' Custom endpoint URL' + brand(':'),
-        });
-      }
+      // Advanced: a custom AI base URL (proxy / OpenAI-compatible endpoint) can be set via
+      // NOWAIKIT_AI_BASE_URL. No prompt here — it keeps setup short for the common case.
+      if (process.env.NOWAIKIT_AI_BASE_URL) aiBaseUrl = process.env.NOWAIKIT_AI_BASE_URL;
     } else {
       console.log(`  ${dim('→')} AI provider skipped — use --provider flag or environment variables when running capabilities.`);
     }
@@ -1208,24 +1217,8 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
     console.log(dim('  Supports: ') + accent('Anthropic') + dim(', ') + accent('OpenAI') + dim(', ') + accent('Ollama') + dim(' (BYOK — bring your own key)'));
     console.log('');
 
-    const showMoreCaps = await confirm({
-      message: brand('?') + ' Would you like to list all 26 capabilities in detail' + brand('?'),
-      default: false,
-    });
-
-    if (showMoreCaps) {
-      console.log('');
-      try {
-        const { getCapabilityMeta } = await import('../prompts/index.js');
-        const caps = getCapabilityMeta();
-        for (const c of caps) {
-          console.log(`    ${brand('/' + c.name.padEnd(24))} ${dim(c.description)}`);
-        }
-      } catch {
-        console.log(dim('  (Capability metadata not available — run ') + brand('npx nowaikit capabilities') + dim(' to see the full list)'));
-      }
-      console.log('');
-    }
+    console.log(dim('  See all 26 in detail any time: ') + brand('npx nowaikit capabilities'));
+    console.log('');
   } else {
     console.log(`  ${dim('▸')} ${dim('Apex AI Skills disabled — 26 capabilities not loaded.')}`);
     console.log('');
@@ -1440,12 +1433,8 @@ async function runAutoConfiguration(
     if (existsSync(examplePath)) {
       console.log(`  ${dim('→')} ${dim('Starter file already exists:')} ${accent(examplePath)}`);
     } else {
-      const shouldCreate = await confirm({
-        message: brand('?') + ' Create a starter ' + brand('nowaikit-example.ts') + ' in the current directory' + brand('?'),
-        default: true,
-      });
-
-      if (shouldCreate) {
+      // Just create it (no prompt) — it's harmless, never overwrites, and only runs when SDK is enabled.
+      {
         const instanceUrl = instance.instanceUrl;
         const starter = [
           `/**`,
@@ -1485,7 +1474,7 @@ async function runAutoConfiguration(
         ].join('\n');
 
         writeFileSync(examplePath, starter, 'utf8');
-        console.log(`  ${success('✓')} Created starter file: ${accent(examplePath)}`);
+        console.log(`  ${success('✓')} Created starter file: ${accent(examplePath)} ${dim('(delete if you do not need it)')}`);
       }
     }
     console.log('');
