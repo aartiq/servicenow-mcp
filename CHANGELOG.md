@@ -6,6 +6,58 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.15.0] - 2026-09-03
+
+### Added: file attachments that work from conversational AI clients
+- `upload_attachment` accepts `source_url` (the gateway fetches the file server-side) or
+  `content_base64`, not just a local path, so clients that only have a link or pasted bytes (Copilot,
+  Claude, ChatGPT) can attach files. A phantom-file guard rejects tiny error pages masquerading as PDFs.
+- New `read_attachment` (fetch an existing attachment's bytes/text) and `copy_attachment` (copy an
+  attachment from one record to another).
+
+### Added: `get_mandatory_fields`
+- Reads a table's data policies (`sys_data_policy2` / `sys_data_policy_rule`) so an agent can see which
+  fields are mandatory, including conditional ones, before a create fails.
+
+### Changed: reads return display names by default
+- `query_records`, `get_record`, and `get_incident` default to `sysparm_display_value=all`, so reference
+  fields come back as human names plus their sys_id and link, instead of bare sys_ids.
+
+### Added: friendly record URLs on create
+- `create_incident`, `create_change_request`, `create_problem`, `create_knowledge_article`, and
+  `create_record` now include a direct record URL (and a portal view URL for KB) in the result.
+
+### Changed: CLI per-user OAuth sign-in is fully browser-based
+- `nowaikit auth login` captures the authorization code on a local loopback (RFC 8252) and opens the
+  browser automatically, so there is no copy/paste step. Falls back to manual paste if the local port
+  cannot bind, and to username/password if the browser flow cannot complete.
+- Windows browser-open no longer breaks on OAuth URLs (switched from `cmd /c start`, which treats `&` as
+  a command separator, to `rundll32 url.dll,FileProtocolHandler`).
+- `nowaikit setup` signs in once, detects an existing OAuth app, and can auto-provision one via the
+  Table API. On instances with modern OAuth it creates a public client with PKCE (no client secret) and
+  flags CIMD support; otherwise it falls back to manual steps or username/password.
+
+### Fixed: remaining update set tools switch the caller's own current update set
+- Completes the issue #11 fix. `switch_update_set` already moved to the per-user `sys_user_preference`
+  in 4.12.1; now `create_update_set` (with `switch_to`) and `ensure_active_update_set` also stop writing
+  `sys_update_set.is_default` (the shared per-scope "Default" bucket, which never switched the caller's
+  session and could reassign the scope default as a side effect). Both now write the caller's
+  `sys_user_preference` (name `sys_update_set`) via `gs.getUserID()`, so they work across basic, OAuth,
+  per-user token, and impersonation modes.
+- `get_current_update_set` now returns the caller's actual current update set (from their preference)
+  instead of an arbitrary in-progress set. Falls back to listing in-progress sets when none is set.
+- Added `tests/tools/updateset.test.ts` with a regression guard that `is_default` is never written.
+- Reported in issue #11. Thanks to the reporter for the detailed root-cause analysis.
+
+### Also included since 4.12.1
+- Per-user OAuth lifecycle completed in the CLI (token refresh + PKCE wiring), gateway-safe.
+- `tokens.json` is written owner-only (0600).
+- `nowaikit setup` detects and auto-configures Antigravity, Cline, and Gemini CLI, and writes VS Code
+  global MCP config; cross-platform config paths covered by tests (Windows / macOS / Linux).
+- Server-side script execution runs via a self-terminating scheduled job (works with no install);
+  `execute_script` returns an honest error with an optional helper endpoint instead of failing silently.
+- App Studio scoped-app creation uses the instance's registered vendor prefix.
+
 ## [4.9.1] - 2026-08-11
 
 ### Added: one-step self-update

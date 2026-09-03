@@ -5,16 +5,58 @@
  * logout — removes stored token
  * whoami — show which ServiceNow user is currently authenticated
  */
-import { input, password, select } from '@inquirer/prompts';
+import { confirm, input, password, select } from '@inquirer/prompts';
 import chalk from 'chalk';
 import ora from 'ora';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { createHash, randomBytes } from 'crypto';
+import { createServer } from 'node:http';
+import { spawn } from 'node:child_process';
 import { listInstances } from './config-store.js';
 
 const b64url = (b: Buffer): string => b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+/** Open a URL in the user's default browser (best-effort, cross-platform). */
+function openBrowser(url: string): void {
+  try {
+    if (process.platform === 'darwin') {
+      spawn('open', [url], { stdio: 'ignore', detached: true }).unref();
+    } else if (process.platform === 'win32') {
+      // NOT `cmd /c start` — cmd treats the `&` in an OAuth URL as a command separator and breaks it.
+      // rundll32 gets the full URL as a single argument, so query strings survive intact.
+      spawn('rundll32', ['url.dll,FileProtocolHandler', url], { stdio: 'ignore', detached: true }).unref();
+    } else {
+      spawn('xdg-open', [url], { stdio: 'ignore', detached: true }).unref();
+    }
+  } catch { /* best effort; the URL is also printed for manual open */ }
+}
+
+/**
+ * Loopback OAuth capture (RFC 8252): run a tiny local server on the redirect port, open the browser,
+ * and capture the ?code= automatically so the user never pastes anything. Rejects if the port can't
+ * bind or the flow times out, so the caller can fall back to the manual paste prompt.
+ */
+function captureCodeViaLoopback(authUrl: string, port: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const server = createServer((req, res) => {
+      try {
+        const u = new URL(req.url || '/', `http://127.0.0.1:${port}`);
+        if (u.pathname !== '/callback') { res.writeHead(404); res.end('Not found'); return; }
+        const code = u.searchParams.get('code');
+        const err = u.searchParams.get('error');
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<html><body style="font-family:sans-serif;padding:48px;color:#2b2630"><h2 style="color:#2f7256">NowAIKit</h2><p>${code ? 'Signed in. You can close this tab and return to your terminal.' : 'Sign-in failed: ' + (err || 'no authorization code returned')}.</p></body></html>`);
+        server.close();
+        if (code) resolve(code); else reject(new Error(err || 'no code in callback'));
+      } catch (e) { try { res.writeHead(500); res.end(); } catch { /* noop */ } server.close(); reject(e as Error); }
+    });
+    server.on('error', (e) => reject(e));
+    server.listen(port, '127.0.0.1', () => openBrowser(authUrl));
+    setTimeout(() => { try { server.close(); } catch { /* noop */ } reject(new Error('timed out waiting for browser sign-in')); }, 180_000);
+  });
+}
 
 interface UserToken {
   instanceUrl: string;
@@ -96,13 +138,37 @@ export async function authLogin(): Promise<void> {
       `&redirect_uri=http://localhost:8765/callback` +
       (usePkce ? `&code_challenge=${codeChallenge}&code_challenge_method=S256` : '');
 
-    console.log(chalk.cyan('Open this URL in your browser to authenticate:'));
-    console.log(chalk.underline(authUrl));
-    console.log('');
+    // Preferred: loopback capture (RFC 8252) — open the browser and grab the code automatically,
+    // no copy/paste. Falls back to manual paste if the local port can't bind or the flow times out.
+    let code: string;
+    try {
+      console.log(chalk.cyan('Opening your browser to sign in…'));
+      console.log(chalk.dim('If it does not open, use this URL:'));
+      console.log(chalk.underline(authUrl));
+      console.log('');
+      code = await captureCodeViaLoopback(authUrl, 8765);
+    } catch {
+      console.log('');
+      console.log(chalk.yellow('Could not capture the sign-in automatically.'));
+      console.log(chalk.dim('If the browser showed a ServiceNow error, this instance may not have the NowAIKit OAuth app installed.'));
+      console.log(chalk.cyan('Open this URL in your browser to authenticate, then paste the code from the redirect:'));
+      console.log(chalk.underline(authUrl));
+      console.log('');
+      code = await input({
+        message: 'Paste the authorization code (or leave blank to sign in with username/password):',
+      });
+    }
 
-    const code = await input({
-      message: 'Paste the authorization code from the redirect URL:',
-    });
+    // No OAuth app / user gave up on the browser flow → fall back to the no-app path.
+    if (!code || !code.trim()) {
+      const useBasic = await confirm({
+        message: 'No code entered. Sign in with your ServiceNow username and password instead?',
+        default: true,
+      });
+      if (useBasic) return await basicAuthLogin(instanceUrl);
+      console.log(chalk.yellow('Sign-in cancelled.'));
+      return;
+    }
 
     const spinner = ora('Exchanging authorization code for token…').start();
     try {
@@ -122,6 +188,14 @@ export async function authLogin(): Promise<void> {
 
       if (!resp.ok) {
         spinner.fail(chalk.red(`Token exchange failed: ${resp.status} ${resp.statusText}`));
+        // 400/401 here usually means the OAuth app is missing or misconfigured on this instance.
+        if (resp.status === 400 || resp.status === 401) {
+          const useBasic = await confirm({
+            message: 'The OAuth app may not be set up on this instance. Sign in with username and password instead?',
+            default: true,
+          });
+          if (useBasic) return await basicAuthLogin(instanceUrl);
+        }
         return;
       }
 
@@ -159,39 +233,49 @@ export async function authLogin(): Promise<void> {
       spinner.fail(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
     }
   } else {
-    // Basic auth per-user: prompt credentials, store them
-    const username = await input({ message: 'Your ServiceNow username:' });
-    const pass = await password({ message: 'Your ServiceNow password:', mask: '•' });
+    await basicAuthLogin(instanceUrl);
+  }
+}
 
-    const spinner = ora('Verifying credentials…').start();
-    try {
-      const creds = Buffer.from(`${username}:${pass}`).toString('base64');
-      const resp = await fetch(
-        `${instanceUrl}/api/now/table/sys_user?sysparm_query=user_name=${encodeURIComponent(username)}&sysparm_limit=1`,
-        { headers: { Authorization: `Basic ${creds}`, Accept: 'application/json' } }
-      );
-      if (!resp.ok) {
-        spinner.fail(chalk.red(`Auth failed: ${resp.status} ${resp.statusText}`));
-        return;
-      }
-      const data = await resp.json() as { result?: Array<{ sys_id?: { value: string }; user_name?: { value: string } }> };
-      const snUserSysId = data.result?.[0]?.sys_id?.value || '';
+/**
+ * Per-user basic-auth login — the fallback that needs NO OAuth app on the instance. The user enters
+ * their own ServiceNow username and password, so queries still run in their own permission context.
+ * Works only where the instance permits basic REST auth and the user has a local password; on
+ * SSO-only / MFA-enforced instances this is not available and the OAuth app (or Entra) is required.
+ */
+async function basicAuthLogin(instanceUrl: string): Promise<void> {
+  const username = await input({ message: 'Your ServiceNow username:' });
+  const pass = await password({ message: 'Your ServiceNow password:', mask: '•' });
 
-      const store = loadTokens();
-      store.tokens[tokenKey(instanceUrl)] = {
-        instanceUrl,
-        accessToken: creds,
-        refreshToken: '',
-        expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000, // basic auth doesn't expire
-        snUser: username,
-        snUserSysId,
-      };
-      saveTokens(store);
-
-      spinner.succeed(chalk.green(`Saved credentials for ${username} on ${instanceUrl}`));
-    } catch (err) {
-      spinner.fail(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+  const spinner = ora('Verifying credentials…').start();
+  try {
+    const creds = Buffer.from(`${username}:${pass}`).toString('base64');
+    const resp = await fetch(
+      `${instanceUrl}/api/now/table/sys_user?sysparm_query=user_name=${encodeURIComponent(username)}&sysparm_limit=1`,
+      { headers: { Authorization: `Basic ${creds}`, Accept: 'application/json' } }
+    );
+    if (!resp.ok) {
+      spinner.fail(chalk.red(`Auth failed: ${resp.status} ${resp.statusText}`));
+      if (resp.status === 401) console.log(chalk.dim('If this instance is SSO-only or blocks basic REST auth, use the OAuth app path instead.'));
+      return;
     }
+    const data = await resp.json() as { result?: Array<{ sys_id?: { value: string }; user_name?: { value: string } }> };
+    const snUserSysId = data.result?.[0]?.sys_id?.value || '';
+
+    const store = loadTokens();
+    store.tokens[tokenKey(instanceUrl)] = {
+      instanceUrl,
+      accessToken: creds,
+      refreshToken: '',
+      expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000, // basic auth doesn't expire
+      snUser: username,
+      snUserSysId,
+    };
+    saveTokens(store);
+
+    spinner.succeed(chalk.green(`Saved credentials for ${username} on ${instanceUrl}`));
+  } catch (err) {
+    spinner.fail(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
   }
 }
 

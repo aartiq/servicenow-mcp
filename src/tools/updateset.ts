@@ -16,6 +16,44 @@ import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
 import { requireScripting } from '../utils/permissions.js';
 
+// The caller's current update set is a per-USER preference (sys_user_preference name=sys_update_set),
+// NOT the per-scope `is_default` flag. Writing is_default flips a shared, instance-wide default for an
+// application scope and does not switch the caller's session. These helpers read/write that preference
+// so every tool switches the caller the same way the ServiceNow UI's "make this my current" link does.
+// gs.getUserID() resolves the caller across every auth mode (basic, OAuth, per-user token, impersonation).
+
+/** The sys_id of the caller's current update set (from their user preference), or undefined. */
+async function readCurrentUpdateSetId(client: ServiceNowClient): Promise<string | undefined> {
+  const pref = await client.queryRecords({
+    table: 'sys_user_preference',
+    query: 'name=sys_update_set^user=javascript:gs.getUserID()',
+    fields: 'sys_id,value',
+    limit: 1,
+  });
+  const v = pref.records?.[0]?.value;
+  return v ? String(v) : undefined;
+}
+
+/** Point the caller's session at an update set by writing their sys_user_preference (upsert). */
+async function setCurrentUpdateSet(client: ServiceNowClient, updateSetId: string): Promise<Record<string, any>> {
+  const existing = await client.queryRecords({
+    table: 'sys_user_preference',
+    query: 'name=sys_update_set^user=javascript:gs.getUserID()',
+    fields: 'sys_id',
+    limit: 1,
+  });
+  const prefId = existing.records?.[0]?.sys_id as string | undefined;
+  if (prefId) {
+    const result = await client.updateRecord('sys_user_preference', prefId, { value: updateSetId });
+    return { preference: prefId, ...result };
+  }
+  const me = await client.queryRecords({ table: 'sys_user', query: 'sys_id=javascript:gs.getUserID()', fields: 'sys_id', limit: 1 });
+  const userId = me.records?.[0]?.sys_id as string | undefined;
+  if (!userId) throw new ServiceNowError('Could not resolve the current user to set the update set', 'NOT_FOUND');
+  const result = await client.createRecord('sys_user_preference', { name: 'sys_update_set', user: userId, value: updateSetId, type: 'string' });
+  return { ...result };
+}
+
 export function getUpdateSetToolDefinitions() {
   return [
     {
@@ -116,13 +154,16 @@ export async function executeUpdateSetToolCall(
 ): Promise<any> {
   switch (name) {
     case 'get_current_update_set': {
-      const resp = await client.queryRecords({
-        table: 'sys_update_set',
-        query: 'state=in progress',
-        limit: 5,
-        fields: 'sys_id,name,description,state,is_default,release,sys_updated_on,sys_updated_by',
-      });
-      return { count: resp.count, active_update_sets: resp.records };
+      // The caller's actual current update set is their user preference, not "some in-progress set".
+      const fields = 'sys_id,name,description,state,is_default,release,sys_updated_on,sys_updated_by';
+      const curId = await readCurrentUpdateSetId(client);
+      if (curId) {
+        const current = await client.getRecord('sys_update_set', curId, fields);
+        return { source: 'user_preference', current_update_set: current };
+      }
+      // No per-user preference set yet: fall back to listing in-progress sets so the caller can pick one.
+      const resp = await client.queryRecords({ table: 'sys_update_set', query: 'state=in progress', limit: 5, fields });
+      return { source: 'fallback_in_progress', current_update_set: null, active_update_sets: resp.records, note: 'No per-user current update set is set; showing in-progress sets to choose from.' };
     }
 
     case 'list_update_sets': {
@@ -147,7 +188,7 @@ export async function executeUpdateSetToolCall(
       const result = await client.createRecord('sys_update_set', payload);
       const newId = String((result as any).sys_id || (result as any).result?.sys_id || '');
       if (newId && args.switch_to !== false) {
-        await client.updateRecord('sys_update_set', newId, { is_default: true });
+        await setCurrentUpdateSet(client, newId);
         return { action: 'created_and_switched', name: args.name, sys_id: newId, ...result };
       }
       return { action: 'created', name: args.name, sys_id: newId, ...result };
@@ -156,25 +197,7 @@ export async function executeUpdateSetToolCall(
     case 'switch_update_set': {
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
       requireScripting();
-      // The caller's current update set is a per-USER preference (sys_user_preference
-      // name=sys_update_set), NOT the per-scope `is_default` flag. Writing is_default
-      // flips a shared, instance-wide default for an application scope and does not switch
-      // the caller's session, so set the user preference instead.
-      const existing = await client.queryRecords({
-        table: 'sys_user_preference',
-        query: 'name=sys_update_set^user=javascript:gs.getUserID()',
-        fields: 'sys_id',
-        limit: 1,
-      });
-      const prefId = existing.records?.[0]?.sys_id as string | undefined;
-      if (prefId) {
-        const result = await client.updateRecord('sys_user_preference', prefId, { value: args.sys_id });
-        return { action: 'switched', sys_id: args.sys_id, preference: prefId, ...result };
-      }
-      const me = await client.queryRecords({ table: 'sys_user', query: 'sys_id=javascript:gs.getUserID()', fields: 'sys_id', limit: 1 });
-      const userId = me.records?.[0]?.sys_id as string | undefined;
-      if (!userId) throw new ServiceNowError('Could not resolve the current user to switch the update set', 'NOT_FOUND');
-      const result = await client.createRecord('sys_user_preference', { name: 'sys_update_set', user: userId, value: args.sys_id, type: 'string' });
+      const result = await setCurrentUpdateSet(client, String(args.sys_id));
       return { action: 'switched', sys_id: args.sys_id, ...result };
     }
 
@@ -229,18 +252,21 @@ export async function executeUpdateSetToolCall(
 
     case 'ensure_active_update_set': {
       requireScripting();
-      const resp = await client.queryRecords({
-        table: 'sys_update_set',
-        query: 'state=in progress',
-        limit: 1,
-        fields: 'sys_id,name',
-      });
-      if (resp.count > 0) {
-        return { action: 'existing_found', update_set: resp.records[0] };
+      // Prefer the caller's own current update set if it exists and is still in progress.
+      const curId = await readCurrentUpdateSetId(client);
+      if (curId) {
+        const current = await client.getRecord('sys_update_set', curId, 'sys_id,name,state');
+        if (current && String((current as any).state).toLowerCase() === 'in progress') {
+          return { action: 'existing_found', update_set: current };
+        }
       }
+      // Otherwise create a fresh set and point the caller at it via their preference (not is_default,
+      // which would reassign the shared per-scope default without switching the caller's session).
       const defaultName = args.default_name || `AI Session Update Set ${new Date().toISOString().slice(0, 10)}`;
-      const created = await client.createRecord('sys_update_set', { name: defaultName, state: 'in progress', is_default: true });
-      return { action: 'auto_created', name: defaultName, update_set: created };
+      const created = await client.createRecord('sys_update_set', { name: defaultName, state: 'in progress' });
+      const newId = String((created as any).sys_id || (created as any).result?.sys_id || '');
+      if (newId) await setCurrentUpdateSet(client, newId);
+      return { action: 'auto_created', name: defaultName, sys_id: newId, update_set: created };
     }
 
     default:

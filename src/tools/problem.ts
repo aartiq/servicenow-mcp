@@ -71,7 +71,9 @@ export async function executeProblemToolCall(
       requireWrite();
       if (!args.short_description) throw new ServiceNowError('short_description is required', 'INVALID_REQUEST');
       const result = await client.createRecord('problem', args);
-      return { ...result, summary: `Created problem ${result.number || result.sys_id}` };
+      const pSid = typeof result.sys_id === 'object' ? result.sys_id?.value : result.sys_id;
+      const pUrl = pSid && typeof (client as any).recordUrl === 'function' ? (client as any).recordUrl('problem', pSid) : undefined;
+      return { ...result, url: pUrl, summary: `Created problem ${result.number || pSid}` };
     }
     case 'get_problem': {
       if (!args.number_or_sysid) throw new ServiceNowError('number_or_sysid is required', 'INVALID_REQUEST');

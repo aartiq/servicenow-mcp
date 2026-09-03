@@ -114,14 +114,16 @@ export async function executeIncidentToolCall(
       requireWrite();
       if (!args.short_description) throw new ServiceNowError('short_description is required', 'INVALID_REQUEST');
       const result = await client.createRecord('incident', args);
-      return { ...result, summary: `Created incident ${result.number || result.sys_id}` };
+      const iSid = typeof result.sys_id === 'object' ? result.sys_id?.value : result.sys_id;
+      const iUrl = iSid && typeof (client as any).recordUrl === 'function' ? (client as any).recordUrl('incident', iSid) : undefined;
+      return { ...result, url: iUrl, summary: `Created incident ${result.number || iSid}` };
     }
     case 'get_incident': {
       if (!args.number_or_sysid) throw new ServiceNowError('number_or_sysid is required', 'INVALID_REQUEST');
       if (/^[0-9a-f]{32}$/i.test(args.number_or_sysid)) {
-        return await client.getRecord('incident', args.number_or_sysid);
+        return await client.getRecord('incident', args.number_or_sysid, undefined, 'all');
       }
-      const resp = await client.queryRecords({ table: 'incident', query: `number=${args.number_or_sysid}^ORsys_id=${args.number_or_sysid}`, limit: 1 });
+      const resp = await client.queryRecords({ table: 'incident', query: `number=${args.number_or_sysid}^ORsys_id=${args.number_or_sysid}`, limit: 1, displayValue: 'all' });
       if (resp.count === 0) throw new ServiceNowError(`Incident not found: ${args.number_or_sysid}`, 'NOT_FOUND');
       return resp.records[0];
     }

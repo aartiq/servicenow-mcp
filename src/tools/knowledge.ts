@@ -138,7 +138,18 @@ export async function executeKnowledgeToolCall(
         category: args.category,
         workflow_state: 'draft',
       });
-      return { ...result, summary: `Created knowledge article ${result.number || result.sys_id}` };
+      // Additive: keep the full record (backward-compatible for every client) and add a clear,
+      // human-facing article link + summary so the agent presents the UI link, not a
+      // /api/now/table/... reference link from the record's reference fields.
+      const sysId = typeof result.sys_id === 'object' ? result.sys_id?.value : result.sys_id;
+      const number = typeof result.number === 'object' ? result.number?.value : result.number;
+      const base = client.instanceUrl;
+      return {
+        ...result,
+        url: sysId ? `${base}/kb_knowledge.do?sys_id=${sysId}` : undefined,
+        view_url: number ? `${base}/kb_view.do?sysparm_article=${number}` : undefined,
+        summary: `Created knowledge article ${number || sysId} (draft). Open it at ${base}/kb_knowledge.do?sys_id=${sysId}`,
+      };
     }
     case 'update_knowledge_article': {
       requireWrite();

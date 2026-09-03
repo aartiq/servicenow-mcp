@@ -138,7 +138,9 @@ export async function executeChangeToolCall(
       if (args.test_plan) data.test_plan = args.test_plan;
       if (args.cmdb_ci) data.cmdb_ci = args.cmdb_ci;
       const result = await client.createRecord('change_request', data);
-      return { ...result, summary: `Created change request: ${result.number || result.sys_id}` };
+      const cSid = typeof result.sys_id === 'object' ? result.sys_id?.value : result.sys_id;
+      const cUrl = cSid && typeof (client as any).recordUrl === 'function' ? (client as any).recordUrl('change_request', cSid) : undefined;
+      return { ...result, url: cUrl, summary: `Created change request: ${result.number || cSid}` };
     }
     case 'get_change_request': {
       if (!args.number_or_sysid) throw new ServiceNowError('number_or_sysid is required', 'INVALID_REQUEST');

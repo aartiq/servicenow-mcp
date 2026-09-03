@@ -26,7 +26,7 @@ const mockClient = {
 describe('getCoreToolDefinitions', () => {
   it('returns the core tool definitions including validate_query', () => {
     const tools = getCoreToolDefinitions();
-    expect(tools.length).toBe(25);
+    expect(tools.length).toBe(26);
     expect(tools.map(t => t.name)).toContain('validate_query');
   });
 

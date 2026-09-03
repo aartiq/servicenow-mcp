@@ -61,6 +61,31 @@ export function forbiddenDiagnostic(authMethod: 'basic' | 'oauth'): string {
 
 // ─── Input validation helpers ────────────────────────────────────────────────
 
+/** Best-effort MIME type from a file extension, for attachments fetched without a content type. */
+function guessContentType(fileName: string): string {
+  const ext = (fileName.split('.').pop() || '').toLowerCase();
+  const map: Record<string, string> = {
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    csv: 'text/csv',
+    txt: 'text/plain',
+    json: 'application/json',
+    xml: 'application/xml',
+    html: 'text/html',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    zip: 'application/zip',
+  };
+  return map[ext] || 'application/octet-stream';
+}
+
 /** Validate and sanitize ServiceNow table names (alphanumeric + underscores only) */
 function validateTableName(table: string): string {
   if (!table || !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(table)) {
@@ -185,6 +210,59 @@ export class ServiceNowClient {
    */
   get instanceHost(): string {
     try { return new URL(this.baseUrl).host.toLowerCase(); } catch { return this.baseUrl.toLowerCase(); }
+  }
+
+  /** Public accessor for the resolved instance base URL (no trailing slash), for building UI links. */
+  get instanceUrl(): string {
+    return this.baseUrl;
+  }
+
+  /** Human-facing record URL (opens the form in ServiceNow), not the /api/now REST link. */
+  recordUrl(table: string, sysId: string): string {
+    return `${this.baseUrl}/${encodeURIComponent(table)}.do?sys_id=${encodeURIComponent(sysId)}`;
+  }
+
+  /**
+   * Return the fields that ServiceNow Data Policies make mandatory on a table, so an agent can
+   * collect them BEFORE a create/update and avoid the "Data Policy Exception: mandatory fields"
+   * error. Reads sys_data_policy_rule (the mandatory rules) and sys_data_policy2 (the condition
+   * under which each applies). All server-side, read-only.
+   */
+  async getMandatoryFields(table: string): Promise<any> {
+    const t = validateTableName(table);
+    const rules = await this.queryRecords({
+      table: 'sys_data_policy_rule',
+      query: `table=${t}^mandatory=true`,
+      fields: 'field,sys_data_policy',
+      limit: 100,
+    });
+    const rows: any[] = (rules as any).records ?? rules ?? [];
+    // Resolve the parent policy conditions once.
+    const policyIds = Array.from(new Set(rows.map((r) => (typeof r.sys_data_policy === 'object' ? r.sys_data_policy?.value : r.sys_data_policy)).filter(Boolean)));
+    const condByPolicy = new Map<string, { desc?: string; conditions?: string; active?: string }>();
+    if (policyIds.length) {
+      const pol = await this.queryRecords({
+        table: 'sys_data_policy2',
+        query: `sys_idIN${policyIds.join(',')}`,
+        fields: 'sys_id,short_description,conditions,active',
+        limit: 100,
+      });
+      for (const p of ((pol as any).records ?? pol ?? [])) {
+        condByPolicy.set(p.sys_id, { desc: p.short_description, conditions: p.conditions, active: p.active });
+      }
+    }
+    const fields = rows.map((r) => {
+      const pid = typeof r.sys_data_policy === 'object' ? r.sys_data_policy?.value : r.sys_data_policy;
+      const meta = condByPolicy.get(pid) || {};
+      return { field: r.field, applies_when: meta.conditions || 'always', policy: meta.desc, active: meta.active };
+    }).filter((f) => f.active !== 'false');
+    return {
+      table: t,
+      mandatory_fields: fields,
+      summary: fields.length
+        ? `On ${t}, these fields are made mandatory by data policy: ${fields.map((f) => f.field).join(', ')}. Collect them before creating or updating.`
+        : `No data-policy mandatory fields found on ${t} (dictionary-level mandatory fields may still apply).`,
+    };
   }
 
   /**
@@ -506,6 +584,12 @@ export class ServiceNowClient {
       queryParams.set('sysparm_fields', params.fields);
     }
 
+    // Return reference fields as readable names, not raw sys_ids. 'all' keeps the sys_id too
+    // (as {display_value, value}) so the agent can still act on the record.
+    if (params.displayValue) {
+      queryParams.set('sysparm_display_value', params.displayValue === 'all' ? 'all' : 'true');
+    }
+
     if (params.limit !== undefined && params.limit > 0) {
       queryParams.set('sysparm_limit', Math.min(params.limit, 1000).toString());
     } else {
@@ -617,7 +701,7 @@ export class ServiceNowClient {
   /**
    * Get a single record by sys_id
    */
-  async getRecord(table: string, sysId: string, fields?: string): Promise<ServiceNowRecord> {
+  async getRecord(table: string, sysId: string, fields?: string, displayValue?: boolean | 'all'): Promise<ServiceNowRecord> {
     validateTableName(table);
     validateSysId(sysId);
     await this.authenticate();
@@ -625,6 +709,9 @@ export class ServiceNowClient {
     const queryParams = new URLSearchParams();
     if (fields) {
       queryParams.set('sysparm_fields', fields);
+    }
+    if (displayValue) {
+      queryParams.set('sysparm_display_value', displayValue === 'all' ? 'all' : 'true');
     }
 
     const url = `${this.baseUrl}/api/now/table/${table}/${sysId}${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
@@ -1236,16 +1323,115 @@ export class ServiceNowClient {
     contentType: string,
     contentBase64: string
   ): Promise<any> {
+    // Decode base64 to binary, then hand off to the shared binary uploader.
+    const binary = Buffer.from(contentBase64, 'base64');
+    return this.uploadAttachmentBuffer(table, recordSysId, fileName, contentType, binary);
+  }
+
+  /**
+   * Attach a file to a record by fetching its bytes server-side from a URL, so the file content
+   * never has to travel through the LLM/tool call as a base64 argument. This is the reliable path
+   * for anything larger than a few hundred KB. `sourceHeaders` lets the caller pass auth (e.g. a
+   * bearer/basic credential) for any protected URL. Content type is taken from the caller, then
+   * the response's Content-Type, then guessed from the file extension.
+   */
+  async uploadAttachmentFromUrl(
+    table: string,
+    recordSysId: string,
+    fileName: string,
+    sourceUrl: string,
+    contentType?: string,
+    sourceHeaders?: Record<string, string>
+  ): Promise<any> {
+    const MAX_FETCH_BYTES = 50 * 1024 * 1024; // 50MB safety cap on server-side fetch
+
+    let src: URL;
+    try {
+      src = new URL(sourceUrl);
+    } catch {
+      throw new ServiceNowError(`source_url is not a valid URL: ${sourceUrl}`, 'INVALID_REQUEST');
+    }
+    if (src.protocol !== 'https:' && src.protocol !== 'http:') {
+      throw new ServiceNowError(`source_url must be http(s), got ${src.protocol}`, 'INVALID_REQUEST');
+    }
+
+    logger.info(`Fetching attachment "${fileName}" from source URL for ${table}:${recordSysId}`);
+
+    let fetched: Response;
+    try {
+      fetched = await fetch(src, { headers: sourceHeaders ?? {} });
+    } catch (error) {
+      throw new ServiceNowError(
+        `Failed to fetch source_url: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'ATTACHMENT_SOURCE_FETCH_FAILED'
+      );
+    }
+    if (!fetched.ok) {
+      throw new ServiceNowError(
+        `source_url returned HTTP ${fetched.status} ${fetched.statusText}`,
+        'ATTACHMENT_SOURCE_FETCH_FAILED'
+      );
+    }
+
+    const arrayBuf = await fetched.arrayBuffer();
+    const binary = Buffer.from(arrayBuf);
+    if (binary.length > MAX_FETCH_BYTES) {
+      throw new ServiceNowError(
+        `Fetched file is ${(binary.length / 1024 / 1024).toFixed(1)}MB, over the ${MAX_FETCH_BYTES / 1024 / 1024}MB limit`,
+        'ATTACHMENT_TOO_LARGE'
+      );
+    }
+
+    const responseType = fetched.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() || '';
+    const resolvedType = contentType || responseType || guessContentType(fileName);
+
+    // Phantom-attachment guard: a protected/expired link (e.g. SharePoint) often returns a tiny
+    // HTML/JSON error page with HTTP 200. Uploading that as "document.pdf" creates an empty, broken
+    // attachment that looks successful. Reject the obvious cases instead of attaching junk.
+    const expectedType = (contentType || guessContentType(fileName)).toLowerCase();
+    const expectsBinary = !expectedType.startsWith('text/') && !/json|xml|csv|html/.test(expectedType);
+    const looksLikeErrorPage = /text\/html|application\/json|application\/xml/.test(responseType);
+    const head = binary.subarray(0, 5).toString('latin1');
+    const magicOk =
+      !expectedType.includes('pdf') ? true : head.startsWith('%PDF'); // PDFs must start with %PDF
+    if (binary.length < 100 && expectsBinary) {
+      throw new ServiceNowError(
+        `source_url returned only ${binary.length} bytes for "${fileName}" — this is almost certainly an error/redirect page, not the file. ` +
+          'The link is likely protected or expired (for SharePoint, use the pre-authorised @microsoft.graph.downloadUrl). Nothing was attached.',
+        'ATTACHMENT_SOURCE_NOT_A_FILE'
+      );
+    }
+    if (expectsBinary && looksLikeErrorPage) {
+      throw new ServiceNowError(
+        `source_url returned ${responseType} but "${fileName}" was expected to be a binary file — this looks like an error page, not the document. Nothing was attached.`,
+        'ATTACHMENT_SOURCE_NOT_A_FILE'
+      );
+    }
+    if (!magicOk) {
+      throw new ServiceNowError(
+        `source_url content is not a valid PDF (missing %PDF header) for "${fileName}". The link likely returned an error page. Nothing was attached.`,
+        'ATTACHMENT_SOURCE_NOT_A_FILE'
+      );
+    }
+
+    return this.uploadAttachmentBuffer(table, recordSysId, fileName, resolvedType, binary);
+  }
+
+  /** Shared core: POST raw bytes to ServiceNow's native binary attachment endpoint. */
+  private async uploadAttachmentBuffer(
+    table: string,
+    recordSysId: string,
+    fileName: string,
+    contentType: string,
+    binary: Buffer
+  ): Promise<any> {
     await this.authenticate();
 
     const url = `${this.baseUrl}/api/now/attachment/file?table_name=${encodeURIComponent(table)}&table_sys_id=${encodeURIComponent(recordSysId)}&file_name=${encodeURIComponent(fileName)}`;
 
-    logger.info(`Uploading attachment "${fileName}" to ${table}:${recordSysId}`);
+    logger.info(`Uploading attachment "${fileName}" (${binary.length} bytes) to ${table}:${recordSysId}`);
 
     try {
-      // Decode base64 to binary
-      const binary = Buffer.from(contentBase64, 'base64');
-
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -1280,6 +1466,94 @@ export class ServiceNowClient {
         'ATTACHMENT_UPLOAD_FAILED'
       );
     }
+  }
+
+  /** Fetch an existing attachment's metadata + raw bytes, server-side (no LLM involvement). */
+  private async fetchAttachment(attachmentSysId: string): Promise<{ meta: any; bytes: Buffer }> {
+    await this.authenticate();
+    const id = validateSysId(attachmentSysId);
+
+    // Metadata (file_name, content_type, size) via the attachment record.
+    const metaRes = await fetch(`${this.baseUrl}/api/now/attachment/${encodeURIComponent(id)}`, {
+      headers: { Authorization: this.getAuthHeader(), Accept: 'application/json' },
+    });
+    if (!metaRes.ok) {
+      throw new ServiceNowError(
+        metaRes.status === 404 ? `Attachment not found: ${id}` : `HTTP ${metaRes.status}: ${metaRes.statusText}`,
+        metaRes.status === 404 ? 'NOT_FOUND' : 'ATTACHMENT_READ_FAILED'
+      );
+    }
+    const meta = ((await metaRes.json()) as any).result ?? {};
+
+    // Raw bytes via the binary file endpoint.
+    const fileRes = await fetch(`${this.baseUrl}/api/now/attachment/${encodeURIComponent(id)}/file`, {
+      headers: { Authorization: this.getAuthHeader() },
+    });
+    if (!fileRes.ok) {
+      throw new ServiceNowError(`HTTP ${fileRes.status}: ${fileRes.statusText}`, 'ATTACHMENT_READ_FAILED');
+    }
+    const bytes = Buffer.from(await fileRes.arrayBuffer());
+    return { meta, bytes };
+  }
+
+  /**
+   * Copy an existing ServiceNow attachment onto another record, entirely server-side. The bytes
+   * are fetched from the source attachment and re-posted to the target, so nothing passes through
+   * the LLM/tool call. Great for "attach the same document from the RITM onto the KB".
+   */
+  async copyAttachment(
+    attachmentSysId: string,
+    targetTable: string,
+    targetRecordSysId: string,
+    newFileName?: string
+  ): Promise<any> {
+    const { meta, bytes } = await this.fetchAttachment(attachmentSysId);
+    const fileName = newFileName || meta.file_name || `attachment-${attachmentSysId}`;
+    const contentType = meta.content_type || guessContentType(fileName);
+    logger.info(`Copying attachment ${attachmentSysId} (${bytes.length} bytes) to ${targetTable}:${targetRecordSysId}`);
+    return this.uploadAttachmentBuffer(targetTable, targetRecordSysId, fileName, contentType, bytes);
+  }
+
+  /**
+   * Read an existing ServiceNow attachment and return its text content when the file is text-based
+   * (txt/csv/json/xml/html/md). For binary formats (PDF/DOCX/images) it returns metadata plus a note
+   * rather than dumping bytes, since those need a dedicated extractor. All server-side.
+   */
+  async readAttachment(attachmentSysId: string, maxChars = 200_000): Promise<any> {
+    const { meta, bytes } = await this.fetchAttachment(attachmentSysId);
+    const ct = String(meta.content_type || guessContentType(meta.file_name || '')).toLowerCase();
+    const name = String(meta.file_name || '').toLowerCase();
+    const isTextual =
+      ct.startsWith('text/') ||
+      /json|xml|csv|html|yaml|markdown|javascript|x-www-form-urlencoded/.test(ct) ||
+      /\.(txt|csv|json|xml|html?|md|log|yaml|yml|tsv)$/.test(name);
+
+    const base = {
+      attachment_sys_id: attachmentSysId,
+      file_name: meta.file_name,
+      content_type: meta.content_type,
+      size_bytes: bytes.length,
+    };
+
+    if (isTextual) {
+      const text = bytes.toString('utf8');
+      const truncated = text.length > maxChars;
+      return {
+        ...base,
+        text: truncated ? text.slice(0, maxChars) : text,
+        truncated,
+        summary: `Read ${bytes.length} bytes of text from "${meta.file_name}"${truncated ? ` (truncated to ${maxChars} chars)` : ''}`,
+      };
+    }
+
+    return {
+      ...base,
+      text: null,
+      extractable: false,
+      note:
+        `"${meta.file_name}" is a binary format (${meta.content_type}) that needs a dedicated text extractor. ` +
+        'Use copy_attachment to move it between records, or process the file where it was uploaded.',
+    };
   }
 
   /**

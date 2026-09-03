@@ -185,7 +185,7 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'list_acls', 'get_acl', 'create_acl', 'update_acl',
     'list_notifications', 'get_notification', 'create_notification', 'update_notification',
     'list_email_logs', 'get_email_log',
-    'list_attachments', 'get_attachment_metadata', 'upload_attachment', 'delete_attachment',
+    'list_attachments', 'get_attachment_metadata', 'read_attachment', 'copy_attachment', 'upload_attachment', 'delete_attachment',
     'check_table_completeness', 'get_table_record_count', 'compare_record_counts',
     'list_pa_indicators', 'get_pa_indicator', 'get_pa_scorecard', 'get_pa_time_series',
     'list_pa_dashboards', 'get_pa_dashboard', 'create_dashboard', 'update_dashboard',
@@ -332,7 +332,7 @@ const SEARCH_TOOLS_DEF = {
 
 /** A minimal always-available core set used when MCP_TOOL_DISCOVERY=lean. */
 const LEAN_CORE_TOOL_NAMES = new Set([
-  'search_tools', 'query_records', 'get_record', 'get_table_schema', 'validate_query',
+  'search_tools', 'query_records', 'get_record', 'get_table_schema', 'get_mandatory_fields', 'validate_query',
   'create_record', 'update_record', 'delete_record', 'get_current_instance',
   'list_instances', 'switch_instance', 'natural_language_search',
 ]);

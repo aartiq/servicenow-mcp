@@ -19,19 +19,26 @@ New in 4.4 to 4.7: **impact analysis** to see what depends on a table, field, or
 
 ---
 
-## 🚀 Install (2 minutes)
+## 🚀 Get started (2 minutes)
 
 > Requires **Node.js 20+**.
 
-```bash
-# 1 — install
-npm install -g nowaikit
+**1. Install and run the wizard.** It connects you to ServiceNow and writes your AI client's config for you.
 
-# 2 — run the wizard: it detects your AI clients and writes their config for you
-npx nowaikit setup
+```bash
+npm install -g nowaikit
+nowaikit setup
 ```
 
-Restart your AI client (Claude Desktop, Cursor, …) and start asking. Done.
+For OAuth the wizard signs in once, detects an existing OAuth app, or creates one for you (with an admin sign-in), or falls back to username/password. No manual OAuth app steps. On newer ServiceNow releases it creates a public client with PKCE (no secret).
+
+**2. Sign in as yourself (per-user OAuth only).** Each user runs this once; the browser opens, you approve, and your queries then run in your own ServiceNow permission context.
+
+```bash
+nowaikit auth login
+```
+
+**3. Restart your AI client** (Claude Desktop, Cursor, …) and start asking. Done.
 
 **Keeping it up to date:** NowAIKit checks on startup and, when a newer version is out, asks a single **"Update now?"**. Say yes and it updates itself. You can also run `nowaikit update` any time, or `npm install -g nowaikit@latest`.
 

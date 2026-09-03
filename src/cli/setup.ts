@@ -364,6 +364,146 @@ async function fetchOpenAIModels(apiKey: string): Promise<string[]> {
   } catch { return []; }
 }
 
+/**
+ * Print the exact steps to register the NowAIKit OAuth app on the instance. For the CLI the redirect
+ * is the local loopback the login listens on; the gateway path uses one HTTPS redirect instead
+ * (see AUTH-MODES.md). Kept as concrete, do-able steps so setup never assumes an app that isn't there.
+ */
+function printOAuthAppSteps(instanceUrl: string): void {
+  console.log('');
+  box([
+    accent('Create an OAuth app (one time, ~2 minutes)'),
+    dim('Any OAuth app works — it does not have to be a NowAIKit one.'),
+  ], accent);
+  console.log('');
+  console.log('  ' + brand('1.') + ' Open ' + accent(`${instanceUrl}/nav_to.do?uri=oauth_entity_list.do`));
+  console.log('     ' + dim('System OAuth > Application Registry'));
+  console.log('  ' + brand('2.') + ' New > ' + accent('Create an OAuth API endpoint for external clients'));
+  console.log('  ' + brand('3.') + ' Name: ' + accent('NowAIKit') + dim(' (any name)   Grant type: ') + accent('Authorization Code'));
+  console.log('  ' + brand('4.') + ' Redirect URL: ' + accent('http://localhost:8765/callback'));
+  console.log('     ' + dim('(this is the CLI loopback; the gateway path uses its own https callback)'));
+  console.log('  ' + brand('5.') + ' Save, then open the record and copy the ' + accent('Client ID') + ' and ' + accent('Client Secret') + '.');
+  console.log('');
+  console.log('  ' + dim('Already have an OAuth app? Just add the redirect URL above to it and reuse its Client ID / Secret.'));
+  console.log('');
+}
+
+/**
+ * Look for an OAuth app already registered on the instance for the CLI loopback, so the user does not
+ * have to know whether an admin created one. Returns the app if found, 'forbidden' when the account
+ * cannot read oauth_entity (i.e. not an admin, so we cannot detect), or null when none exists.
+ * oauth_entity is admin-only, so this only detects for privileged accounts — regular users cannot.
+ */
+async function findExistingOAuthApp(
+  instanceUrl: string,
+  user: string,
+  pass: string,
+): Promise<{ clientId: string; clientSecret: string } | 'forbidden' | null> {
+  const authz = 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64');
+  const q = encodeURIComponent('type=client^active=true^redirect_urlLIKElocalhost:8765');
+  const resp = await fetch(
+    `${instanceUrl}/api/now/table/oauth_entity?sysparm_query=${q}&sysparm_fields=client_id,client_secret&sysparm_limit=1`,
+    { headers: { Authorization: authz, Accept: 'application/json' } },
+  );
+  if (resp.status === 401) throw new Error('Sign-in failed (401). Check the username and password.');
+  if (resp.status === 403) return 'forbidden';
+  if (!resp.ok) return null;
+  const data = await resp.json() as { result?: Array<{ client_id?: string; client_secret?: string }> };
+  const r = data.result?.[0];
+  if (!r || !r.client_id) return null;
+  return { clientId: r.client_id, clientSecret: r.client_secret || '' };
+}
+
+/**
+ * Auto-provision an OAuth app on the instance via the Table API so the customer never opens the OAuth
+ * UI. Needs a one-time admin sign-in. Creates an Authorization Code client with the redirect pre-set,
+ * then reads back the generated client id/secret. Throws a readable reason (bad login, missing role,
+ * masked secret) so the caller can fall back to the manual steps.
+ */
+/**
+ * Detect whether the instance supports modern OAuth (public client + PKCE, and CIMD) by probing the
+ * dictionary for the oauth_entity fields present on Australia+ releases. Returns all-false on any error
+ * so setup safely uses the older confidential-client path on instances that predate this.
+ */
+async function detectModernOAuth(
+  instanceUrl: string,
+  user: string,
+  pass: string,
+): Promise<{ publicPkce: boolean; cimd: boolean }> {
+  const authz = 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64');
+  try {
+    const q = encodeURIComponent('name=oauth_entity^elementINuse_pkce,public_client,auth_cimd_client');
+    const resp = await fetch(
+      `${instanceUrl}/api/now/table/sys_dictionary?sysparm_query=${q}&sysparm_fields=element&sysparm_limit=5`,
+      { headers: { Authorization: authz, Accept: 'application/json' } },
+    );
+    if (!resp.ok) return { publicPkce: false, cimd: false };
+    const data = await resp.json() as { result?: Array<{ element?: string }> };
+    const els = new Set((data.result || []).map(r => r.element));
+    return { publicPkce: els.has('use_pkce') && els.has('public_client'), cimd: els.has('auth_cimd_client') };
+  } catch {
+    return { publicPkce: false, cimd: false };
+  }
+}
+
+async function provisionOAuthApp(
+  instanceUrl: string,
+  adminUser: string,
+  adminPass: string,
+  redirectUrl: string,
+  opts: { publicPkce?: boolean } = {},
+): Promise<{ clientId: string; clientSecret: string }> {
+  const authz = 'Basic ' + Buffer.from(`${adminUser}:${adminPass}`).toString('base64');
+  // On instances with modern OAuth (public client + PKCE), create a PUBLIC client with no secret. That
+  // removes the masked-secret readback problem entirely and matches how CIMD/MCP clients authenticate.
+  const body: Record<string, any> = {
+    name: 'NowAIKit',
+    type: 'client',
+    active: 'true',
+    default_grant_type: 'authorization_code',
+    redirect_url: redirectUrl,
+    access_token_lifespan: '1800',
+    refresh_token_lifespan: '8640000',
+  };
+  if (opts.publicPkce) {
+    body.public_client = 'true';
+    body.use_pkce = 'true';
+  }
+  const resp = await fetch(
+    `${instanceUrl}/api/now/table/oauth_entity?sysparm_fields=sys_id,client_id,client_secret`,
+    {
+      method: 'POST',
+      headers: { Authorization: authz, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
+  if (resp.status === 401) throw new Error('Admin sign-in failed (401). Check the username and password.');
+  if (resp.status === 403) throw new Error('This account cannot create OAuth apps (403). It needs admin with security_admin elevation.');
+  if (!resp.ok) throw new Error(`Could not create the OAuth app: ${resp.status} ${resp.statusText}`);
+
+  const data = await resp.json() as { result?: { sys_id?: string; client_id?: string; client_secret?: string } };
+  const clientId = data.result?.client_id || '';
+  let clientSecret = data.result?.client_secret || '';
+  if (!clientId) throw new Error('The instance did not return a client id for the new app.');
+
+  // Public + PKCE client: no secret needed, the CLI login uses PKCE.
+  if (opts.publicPkce) return { clientId, clientSecret: '' };
+
+  // Confidential client: some instances mask client_secret in the create response; re-read it by sys_id.
+  if (!clientSecret && data.result?.sys_id) {
+    const re = await fetch(
+      `${instanceUrl}/api/now/table/oauth_entity/${data.result.sys_id}?sysparm_fields=client_secret`,
+      { headers: { Authorization: authz, Accept: 'application/json' } },
+    );
+    if (re.ok) {
+      const d = await re.json() as { result?: { client_secret?: string } };
+      clientSecret = d.result?.client_secret || '';
+    }
+  }
+  if (!clientSecret) throw new Error('Created the app but could not read its client secret. Open the record and copy it, then re-run and paste it.');
+  return { clientId, clientSecret };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN SETUP FLOW
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -509,7 +649,7 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
   sectionLabel('Choose how to authenticate with ServiceNow');
   console.log('');
 
-  const authMethod = await select<'basic' | 'oauth'>({
+  let authMethod = await select<'basic' | 'oauth'>({
     message: brand('?') + ' Auth method' + brand(':'),
     choices: [
       { name: `${brand('🔑')} Basic ${dim('(username + password) — good for dev/PDI')}`, value: 'basic' },
@@ -556,15 +696,103 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
     username = await input({ message: brand('?') + ' Username' + brand(':') });
     userPassword = await password({ message: brand('?') + ' Password' + brand(':'), mask: '•' });
   } else {
-    sectionLabel('OAuth 2.0 credentials');
+    sectionLabel('OAuth 2.0 sign-in');
+    console.log('  ' + dim('NowAIKit checks the instance for an OAuth app, so you do not have to know if one exists.'));
     console.log('');
-    clientId = await input({ message: brand('?') + ' Client ID' + brand(':') });
-    clientSecret = await password({ message: brand('?') + ' Client Secret' + brand(':'), mask: '•' });
-    console.log('');
-    sectionLabel('Service account for token generation');
-    console.log('');
-    username = await input({ message: brand('?') + ' Username' + brand(':') });
-    userPassword = await password({ message: brand('?') + ' Password' + brand(':'), mask: '•' });
+
+    // Detection-first: sign in once, then look for an existing app. This sign-in doubles as the
+    // setup connection-test account and, if the account is an admin, is used to create the app.
+    const signInUser = await input({ message: brand('?') + ' ServiceNow username' + brand(':') });
+    const signInPass = await password({ message: brand('?') + ' ServiceNow password' + brand(':'), mask: '•' });
+
+    // Detect modern OAuth (public client + PKCE, CIMD) so we can provision a secret-less client where
+    // supported, and point the customer at the zero-registration CIMD path on newer releases.
+    const caps = await detectModernOAuth(instanceUrl, signInUser, signInPass);
+    if (caps.cimd) {
+      console.log('  ' + dim('This instance supports CIMD (zero-registration OAuth). See OAUTH-ARCHITECTURE.md for the gateway path.'));
+    }
+
+    const detect = ora('  Checking the instance for an OAuth app…').start();
+    let found: { clientId: string; clientSecret: string } | 'forbidden' | null = null;
+    try {
+      found = await findExistingOAuthApp(instanceUrl, signInUser, signInPass);
+    } catch (e) {
+      detect.fail(err('  ' + (e instanceof Error ? e.message : String(e))));
+    }
+
+    if (found && found !== 'forbidden' && found.clientId) {
+      clientId = found.clientId;
+      clientSecret = found.clientSecret;
+      username = signInUser;
+      userPassword = signInPass;
+      if (clientSecret) {
+        detect.succeed(success('  Found an existing OAuth app — using it ') + dim(`(Client ID ${clientId})`));
+      } else if (caps.publicPkce) {
+        detect.succeed(success('  Found a public OAuth app — using it with PKCE ') + dim(`(Client ID ${clientId})`));
+      } else {
+        detect.succeed(success('  Found an OAuth app ') + dim(`(Client ID ${clientId})`));
+        console.log('  ' + dim('Could not read its secret over the API. Paste it, or leave blank to use PKCE.'));
+        clientSecret = await password({ message: brand('?') + ' Client Secret (blank = PKCE)' + brand(':'), mask: '•' });
+      }
+    } else {
+      if (found === 'forbidden') {
+        detect.info(dim('  This account cannot list OAuth apps (not an admin), so auto-detection is off.'));
+      } else {
+        detect.info(dim('  No OAuth app found on the instance.'));
+      }
+      console.log('');
+      const how = await select<'auto' | 'have' | 'manual' | 'basic'>({
+        message: brand('?') + ' How do you want to set up OAuth' + brand('?'),
+        choices: [
+          { name: `${success('✨')} Create it for me ${dim('— needs the sign-in above to be an ADMIN')}`, value: 'auto' },
+          { name: `${accent('🔑')} I was given a Client ID / Secret ${dim('— enter them')}`, value: 'have' },
+          { name: `${accent('🔧')} Show me the manual steps ${dim('(needs an admin)')}`, value: 'manual' },
+          { name: `${brand('🔒')} Skip OAuth — username/password ${dim('(no app, any user)')}`, value: 'basic' },
+        ],
+      });
+
+      if (how === 'auto') {
+        const spin = ora('  Creating the OAuth app on the instance…').start();
+        try {
+          const app = await provisionOAuthApp(instanceUrl, signInUser, signInPass, 'http://localhost:8765/callback', { publicPkce: caps.publicPkce });
+          clientId = app.clientId;
+          clientSecret = app.clientSecret;
+          spin.succeed(success('  OAuth app created — Client ID ') + accent(clientId) + (caps.publicPkce ? dim(' (public client, PKCE)') : ''));
+          username = signInUser;
+          userPassword = signInPass;
+        } catch (e) {
+          spin.fail(err('  ' + (e instanceof Error ? e.message : String(e))));
+          console.log('');
+          console.log('  ' + dim('Create it by hand with these steps, then enter the Client ID / Secret below:'));
+          printOAuthAppSteps(instanceUrl);
+        }
+      } else if (how === 'manual') {
+        printOAuthAppSteps(instanceUrl);
+      } else if (how === 'basic') {
+        console.log('');
+        box([
+          warn('Skipping OAuth, using username/password (works without an app).'),
+          dim('On SSO-only instances you will need the OAuth app or Entra instead — see AUTH-MODES.md.'),
+        ], warn);
+        console.log('');
+        authMethod = 'basic';
+        username = signInUser;
+        userPassword = signInPass;
+      }
+      // 'have' falls through to the Client ID / Secret prompt below.
+    }
+
+    if (authMethod === 'oauth') {
+      if (!clientId) {
+        clientId = await input({ message: brand('?') + ' Client ID' + brand(':') });
+        clientSecret = await password({ message: brand('?') + ' Client Secret' + brand(':'), mask: '•' });
+      }
+      // The sign-in above already serves as the setup-test / service account for per-user mode.
+      if (!username) {
+        username = signInUser;
+        userPassword = signInPass;
+      }
+    }
   }
 
   // ─── Step 4: Test Connection ──────────────────────────────────────────────

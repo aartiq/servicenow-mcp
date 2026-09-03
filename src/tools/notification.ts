@@ -124,6 +124,38 @@ export function getNotificationToolDefinitions() {
       },
     },
     {
+      name: 'read_attachment',
+      description:
+        'Read an existing ServiceNow attachment and return its text content, server-side. ' +
+        'Works for text formats (txt, csv, json, xml, html, md, log). Binary formats (PDF, DOCX, images) ' +
+        'return metadata plus a note. Use this to summarise or draft from a file already in ServiceNow.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          attachment_sys_id: { type: 'string', description: 'sys_id of the attachment to read' },
+          max_chars: { type: 'number', description: 'Max characters of text to return (default 200000)' },
+        },
+        required: ['attachment_sys_id'],
+      },
+    },
+    {
+      name: 'copy_attachment',
+      description:
+        'Copy an existing ServiceNow attachment onto another record, entirely server-side ' +
+        '(requires WRITE_ENABLED=true). The file bytes never pass through this tool call. ' +
+        'Ideal for "attach the same document from this record onto that KB / incident".',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          attachment_sys_id: { type: 'string', description: 'sys_id of the source attachment to copy' },
+          target_table: { type: 'string', description: 'Table to copy the attachment to (e.g. "kb_knowledge")' },
+          target_record_sys_id: { type: 'string', description: 'sys_id of the target record' },
+          file_name: { type: 'string', description: 'Optional new file name (defaults to the source name)' },
+        },
+        required: ['attachment_sys_id', 'target_table', 'target_record_sys_id'],
+      },
+    },
+    {
       name: 'delete_attachment',
       description: 'Delete an attachment from a record (requires WRITE_ENABLED=true)',
       inputSchema: {
@@ -137,25 +169,41 @@ export function getNotificationToolDefinitions() {
     {
       name: 'upload_attachment',
       description:
-        'Upload a base64-encoded attachment to a ServiceNow record (requires WRITE_ENABLED=true). ' +
-        'Useful for adding files, screenshots, or documents to incidents, changes, etc.',
+        'Attach a file to a ServiceNow record (requires WRITE_ENABLED=true). ' +
+        'Provide EITHER source_url (recommended) OR content_base64. ' +
+        'source_url has the server fetch the file directly, so large files never pass through this tool call; ' +
+        'content_base64 is only reliable for small files (a few hundred KB) and is rejected above ~4MB.',
       inputSchema: {
         type: 'object',
         properties: {
-          table: { type: 'string', description: 'Table name (e.g. "incident")' },
+          table: { type: 'string', description: 'Table name (e.g. "incident", "kb_knowledge")' },
           record_sys_id: { type: 'string', description: 'sys_id of the record to attach the file to' },
           file_name: { type: 'string', description: 'File name including extension (e.g. "screenshot.png")' },
           content_type: {
             type: 'string',
             description:
-              'MIME type (e.g. "image/png", "application/pdf", "text/plain", "application/json")',
+              'MIME type (e.g. "image/png", "application/pdf"). Optional when source_url is used ' +
+              '(inferred from the response or file extension).',
+          },
+          source_url: {
+            type: 'string',
+            description:
+              'PREFERRED. http(s) URL the server fetches the file from and attaches directly. ' +
+              'Use this for anything larger than a few hundred KB. Bytes never travel through this tool call.',
+          },
+          source_auth_header: {
+            type: 'string',
+            description:
+              'Optional Authorization header value sent when fetching source_url (e.g. "Bearer <token>" or ' +
+              '"Basic <creds>") for any protected URL that requires authentication.',
           },
           content_base64: {
             type: 'string',
-            description: 'Base64-encoded file content (use standard base64 encoding)',
+            description:
+              'Base64-encoded file content. Only for small files. Use source_url for anything larger.',
           },
         },
-        required: ['table', 'record_sys_id', 'file_name', 'content_type', 'content_base64'],
+        required: ['table', 'record_sys_id', 'file_name'],
       },
     },
     // ── Notification Templates ────────────────────────────────────────────────
@@ -304,6 +352,29 @@ export async function executeNotificationToolCall(
       if (!args.attachment_sys_id) throw new ServiceNowError('attachment_sys_id is required', 'INVALID_REQUEST');
       return await client.getRecord('sys_attachment', args.attachment_sys_id);
     }
+    case 'read_attachment': {
+      if (!args.attachment_sys_id) throw new ServiceNowError('attachment_sys_id is required', 'INVALID_REQUEST');
+      return await client.readAttachment(args.attachment_sys_id, args.max_chars ?? 200_000);
+    }
+    case 'copy_attachment': {
+      requireWrite();
+      if (!args.attachment_sys_id || !args.target_table || !args.target_record_sys_id) {
+        throw new ServiceNowError(
+          'attachment_sys_id, target_table, and target_record_sys_id are required',
+          'INVALID_REQUEST'
+        );
+      }
+      const result = await client.copyAttachment(
+        args.attachment_sys_id,
+        args.target_table,
+        args.target_record_sys_id,
+        args.file_name
+      );
+      return {
+        ...result,
+        summary: `Copied attachment ${args.attachment_sys_id} to ${args.target_table}:${args.target_record_sys_id}`,
+      };
+    }
     case 'delete_attachment': {
       requireWrite();
       if (!args.attachment_sys_id) throw new ServiceNowError('attachment_sys_id is required', 'INVALID_REQUEST');
@@ -312,19 +383,52 @@ export async function executeNotificationToolCall(
     }
     case 'upload_attachment': {
       requireWrite();
-      if (!args.table || !args.record_sys_id || !args.file_name || !args.content_type || !args.content_base64) {
+      if (!args.table || !args.record_sys_id || !args.file_name) {
         throw new ServiceNowError(
-          'table, record_sys_id, file_name, content_type, and content_base64 are required',
+          'table, record_sys_id, and file_name are required',
           'INVALID_REQUEST'
         );
       }
-      const result = await client.uploadAttachment(
-        args.table,
-        args.record_sys_id,
-        args.file_name,
-        args.content_type,
-        args.content_base64
-      );
+      if (!args.source_url && !args.content_base64) {
+        throw new ServiceNowError(
+          'Provide either source_url (preferred, server-side fetch) or content_base64. ' +
+            'For files larger than a few hundred KB, use source_url so the bytes are not passed through this tool call.',
+          'INVALID_REQUEST'
+        );
+      }
+
+      let result: any;
+      if (args.source_url) {
+        // Server-side fetch: bytes never travel through the LLM/tool call.
+        result = await client.uploadAttachmentFromUrl(
+          args.table,
+          args.record_sys_id,
+          args.file_name,
+          args.source_url,
+          args.content_type,
+          args.source_auth_header ? { Authorization: args.source_auth_header } : undefined
+        );
+      } else {
+        // Inline base64 path. Guard against payloads the tool interface can't reliably carry.
+        const MAX_BASE64_CHARS = 5_600_000; // ~4MB decoded
+        if (args.content_base64.length > MAX_BASE64_CHARS) {
+          throw new ServiceNowError(
+            `content_base64 is ~${(args.content_base64.length / 1024 / 1024).toFixed(1)}MB, too large to pass through a tool call reliably. ` +
+              'Use source_url instead so the server fetches the file directly, or upload the file to the record in the ServiceNow UI.',
+            'ATTACHMENT_TOO_LARGE'
+          );
+        }
+        if (!args.content_type) {
+          throw new ServiceNowError('content_type is required when using content_base64', 'INVALID_REQUEST');
+        }
+        result = await client.uploadAttachment(
+          args.table,
+          args.record_sys_id,
+          args.file_name,
+          args.content_type,
+          args.content_base64
+        );
+      }
       return {
         ...result,
         summary: `Uploaded attachment "${args.file_name}" to ${args.table}:${args.record_sys_id}`,

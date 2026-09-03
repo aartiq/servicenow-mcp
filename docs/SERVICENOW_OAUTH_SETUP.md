@@ -1,5 +1,11 @@
 # ServiceNow OAuth 2.0 Setup Guide
 
+> **The fast way:** run `nowaikit setup` and choose OAuth. The wizard signs in once, detects an existing
+> OAuth app, or creates one for you (with an admin sign-in), or falls back to username/password. On newer
+> ServiceNow releases it creates a public client with PKCE (no secret). Most people never need the manual
+> steps below. Per-user sign-in is then just `nowaikit auth login`, which opens the browser. Use this
+> guide only if you prefer to create the OAuth app by hand or your account cannot create one.
+
 This guide walks you through creating an OAuth 2.0 application profile in ServiceNow for use with NowAIKit.
 
 ## Prerequisites

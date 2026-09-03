@@ -50,6 +50,8 @@ export interface QueryRecordsParams {
   limit?: number;
   orderBy?: string;
   offset?: number;
+  /** Return reference fields as names. 'all' = both display name + value(sys_id); true = names only. */
+  displayValue?: boolean | 'all';
 }
 
 export interface QueryRecordsResponse {

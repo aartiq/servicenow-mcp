@@ -61,6 +61,20 @@ export function getCoreToolDefinitions() {
       },
     },
     {
+      name: 'get_mandatory_fields',
+      description:
+        'List the fields that ServiceNow Data Policies make mandatory on a table (and when they apply). ' +
+        'Call this before creating or updating a record so you can collect the required fields up front ' +
+        'and avoid a "Data Policy Exception: the following fields are mandatory" error.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          table: { type: 'string', description: 'Table name (e.g. "incident")' },
+        },
+        required: ['table'],
+      },
+    },
+    {
       name: 'get_record',
       description: 'Retrieve complete details of a specific record by sys_id',
       inputSchema: {
@@ -325,12 +339,22 @@ export async function executeCoreToolCall(
     case 'query_records': {
       const params = args as QueryRecordsParams;
       if (!params.table) throw new ServiceNowError('Table name is required', 'INVALID_REQUEST');
+      // Default to display values so reference fields (caller, assignment group, CI, ...) come back
+      // as readable names, not raw sys_ids. 'all' keeps the sys_id too so the agent can still act.
+      // Callers can pass display_value: false (raw) or 'true' (names only) to override.
+      if (params.displayValue === undefined) {
+        params.displayValue = (args.display_value === undefined ? 'all' : args.display_value) as any;
+      }
       const response = await client.queryRecords(params);
       return { count: response.count, records: response.records, summary: `Found ${response.count} record(s) in "${params.table}"` };
     }
     case 'get_table_schema':
       if (!args.table) throw new ServiceNowError('Table name is required', 'INVALID_REQUEST');
       return await client.getTableSchema(args.table);
+
+    case 'get_mandatory_fields':
+      if (!args.table) throw new ServiceNowError('Table name is required', 'INVALID_REQUEST');
+      return await client.getMandatoryFields(args.table);
 
     case 'validate_query': {
       if (typeof args.query !== 'string') throw new ServiceNowError('query is required', 'INVALID_REQUEST');
@@ -361,7 +385,8 @@ export async function executeCoreToolCall(
     case 'get_record': {
       const p = args as GetRecordParams;
       if (!p.table || !p.sys_id) throw new ServiceNowError('table and sys_id are required', 'INVALID_REQUEST');
-      return await client.getRecord(p.table, p.sys_id, p.fields);
+      const dv = (args.display_value === undefined ? 'all' : args.display_value) as boolean | 'all';
+      return await client.getRecord(p.table, p.sys_id, p.fields, dv);
     }
     case 'create_record': {
       requireWrite();
@@ -374,7 +399,9 @@ export async function executeCoreToolCall(
       try {
         const created = await client.createRecord(args.table, args.fields);
         await appendAudit({ instance, tool: 'create_record', action: 'create', table: args.table, sys_id: (created as any)?.sys_id, result: 'ok' }, args.fields);
-        return { action: 'created', table: args.table, ...created };
+        const cSysId = typeof (created as any)?.sys_id === 'object' ? (created as any).sys_id?.value : (created as any)?.sys_id;
+        const cUrl = cSysId && typeof (client as any).recordUrl === 'function' ? (client as any).recordUrl(args.table, cSysId) : undefined;
+        return { action: 'created', table: args.table, ...created, url: cUrl };
       } catch (err) {
         await appendAudit({ instance, tool: 'create_record', action: 'create', table: args.table, result: 'error', error: err instanceof Error ? err.message : String(err) }, args.fields);
         throw err;
