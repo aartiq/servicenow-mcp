@@ -18,7 +18,7 @@ describe('executeScript transport', () => {
 
   it('creates a one-time scheduled job to run the script', async () => {
     // Job create succeeds; then the poll finds the result property immediately.
-    fetchMock.mockImplementation(async (url: string, opts: any) => {
+    fetchMock.mockImplementation(async (url: string, _opts: any) => {
       if (String(url).includes('/sysauto_script')) return res(201, { result: { sys_id: 'JOB1' } });
       if (String(url).includes('sys_properties')) return res(200, { result: [{ sys_id: 'P1', value: JSON.stringify({ ok: true, result: 'hello' }) }] });
       return res(200, { result: {} });
