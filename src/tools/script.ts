@@ -434,16 +434,31 @@ export async function executeScriptToolCall(
     }
     case 'create_script_include': {
       if (!args.name || !args.script) throw new ServiceNowError('name and script are required', 'INVALID_REQUEST');
+      // NOTE: ServiceNow stamps application-file records (script includes) with the CALLER'S current
+      // application, NOT any sys_scope in the payload. So we do not send sys_scope (it is silently
+      // ignored). To honour `scope` we temporarily switch apps.current_app around the create.
       const data: Record<string, any> = { name: args.name, script: args.script, api_name: args.api_name || args.name, access: args.access || 'public', active: args.active !== false, client_callable: args.client_callable === true };
-      if (args.scope) data.sys_scope = args.scope;
-      const result: any = await client.createRecord('sys_script_include', data);
+      const doCreate = () => client.createRecord('sys_script_include', data);
+      let requestedScopeId: string | undefined;
+      let result: any;
+      if (args.scope) {
+        requestedScopeId = await client.resolveScopeSysId(String(args.scope));
+        result = await client.withCurrentApp(String(args.scope), doCreate);
+      } else {
+        result = await doCreate();
+      }
       const sc = result && (result.sys_scope ?? (result.record && result.record.sys_scope));
-      const landedScope = sc && typeof sc === 'object' ? (sc.display_value || sc.value) : sc;
+      const landedId = sc && typeof sc === 'object' ? sc.value : sc;
+      const landedScope = (sc && typeof sc === 'object' ? (sc.display_value || sc.value) : sc) || (landedId === 'global' ? 'global' : undefined);
+      const mismatch = requestedScopeId && landedId && String(landedId) !== String(requestedScopeId);
       return {
         ...result,
         summary: `Created script include ${args.name}${args.client_callable === true ? ' (client callable)' : ''}`,
         scope: landedScope || args.scope || 'current application',
-        note: `Landed in scope: ${landedScope || args.scope || 'your current application'}. Pass scope (a sys_scope sys_id or "global") to target a different one. Tip: the record uses the caller's current application unless scope is set. ES2021 (async/await, ?., ??) supported.`,
+        ...(mismatch ? { warning: `Requested scope "${args.scope}" but the record landed in "${landedScope || landedId}". ServiceNow stamps script includes with the caller's current application; if this user cannot switch into the target scope (e.g. it is protected or does not exist), the create falls back to the current app. Confirm the scope exists and is writable by this user.` } : {}),
+        note: args.scope
+          ? `Scope targeted by switching the app picker (apps.current_app) around the create, then restoring it. ServiceNow ignores any sys_scope sent in the body for application files; scope always follows the caller's current application. ES2021 (async/await, ?., ??) supported.`
+          : `Landed in scope: ${landedScope || 'your current application'}. Pass scope ("global", a scope name like x_myco_app, or a sys_scope sys_id) to target a different one. ES2021 (async/await, ?., ??) supported.`,
       };
     }
     case 'update_script_include': {

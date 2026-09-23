@@ -6,6 +6,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [4.21.0] - 2026-09-23
+
+### Added
+- Lean discovery is no longer a dead-end. `MCP_TOOL_DISCOVERY=lean` now exposes a `run_tool`
+  executor alongside `search_tools`, so a lean connection can reach the full 500+ catalog on demand:
+  find a tool with `search_tools`, then run it with `run_tool { name, arguments }`. Calls route through
+  the same handlers, so write/scripting/cmdb/atf capability guards still apply. `run_tool` refuses to
+  call the meta-tools and rejects unknown names with a "did you mean" suggestion. This fixes fresh
+  `nowaikit setup` installs (which default to lean for the full package), where `search_tools` could
+  previously surface tools the connection had no way to call.
+- `get_table_record_count` and `run_aggregate_query` are now in the lean core set, so counting and
+  grouped aggregation work in one direct call instead of paging a whole result set through the Table API.
+- Create/update tool results now include a `record_url` deep-link, a direct clickable link to open the
+  created or updated record.
+
+### Fixed
+- `create_script_include` now honours the `scope` argument. ServiceNow stamps application-file records
+  with the caller's current application and ignores any `sys_scope` in the request body, so the tool now
+  switches the current application (`apps.current_app`) around the create and restores it afterwards. If
+  the record still lands in a different scope it returns an explicit warning instead of silently
+  reporting success in the wrong scope.
+- A successful DELETE (HTTP 204 No Content, empty body) is no longer surfaced as a false
+  "No Record found" error. Empty 2xx responses are handled as clean, result-less successes; a genuine
+  404 still errors correctly.
+- Business-rule and data-policy aborts are labelled `OPERATION_ABORTED` rather than a privilege error,
+  with a checklist that fits the actual cause.
+
+### Docs
+- Added the delegated-auth contract, a configuration reference, and tool-discovery documentation, and
+  reorganised the docs index. Corrected stale "400+" tool counts to "500+" throughout.
+
+---
+
 ## [4.20.0] - 2026-09-15
 
 ### Added

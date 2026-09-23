@@ -336,11 +336,34 @@ const SEARCH_TOOLS_DEF = {
   },
 };
 
+/**
+ * Executor meta-tool: run ANY catalog tool by name. Paired with search_tools, this lets a lean
+ * connection reach the full 500+ catalog on demand without advertising every definition, so
+ * discovery is not a dead-end (search finds it, run_tool calls it). Capability guards (write,
+ * scripting, cmdb, atf, ...) still apply because the call routes through the same tool handler.
+ */
+const RUN_TOOL_DEF = {
+  name: 'run_tool',
+  description: 'Execute a NowAIKit tool by name that is not directly exposed (lean mode). Find the exact name and its parameters with search_tools first, then call it here. Read tools always work; write/scripting/cmdb/atf tools need the connection to have that mode enabled.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'Exact tool name to run, e.g. "get_table_record_count" or "run_aggregate_query"' },
+      arguments: { type: 'object', description: 'Arguments object for that tool (its own inputSchema)' },
+    },
+    required: ['name'],
+  },
+};
+
 /** A minimal always-available core set used when MCP_TOOL_DISCOVERY=lean. */
 const LEAN_CORE_TOOL_NAMES = new Set([
   'search_tools', 'query_records', 'get_record', 'get_table_schema', 'get_mandatory_fields', 'validate_query',
   'create_record', 'update_record', 'delete_record', 'get_current_instance',
   'list_instances', 'switch_instance', 'natural_language_search',
+  // Counting/aggregation is a fundamental read that query_records (Table API, no GROUP BY) can't do
+  // without paging a whole result set. Keep these in the core so a lean connection can count/aggregate
+  // in one call instead of being told to search for a tool it then can't invoke.
+  'get_table_record_count', 'run_aggregate_query',
 ]);
 
 /** Search the full catalog by keyword, returning ranked matches. */
@@ -406,7 +429,7 @@ export function getTools() {
   // Lean discovery mode: expose only a small core set + search_tools to keep
   // the tool list small; the model uses search_tools to find the rest.
   if (discovery === 'lean') {
-    return [SEARCH_TOOLS_DEF, ...ALL_TOOLS.filter((t) => LEAN_CORE_TOOL_NAMES.has(t.name)), ...dynamicTools].map(withAnnotations);
+    return [SEARCH_TOOLS_DEF, RUN_TOOL_DEF, ...ALL_TOOLS.filter((t) => LEAN_CORE_TOOL_NAMES.has(t.name)), ...dynamicTools].map(withAnnotations);
   }
 
   if (packageName === 'full') {
@@ -428,6 +451,19 @@ export async function executeTool(
   name: string,
   args: Record<string, any>
 ): Promise<any> {
+  // Meta-tool: execute any catalog tool by name (lets lean connections reach the full catalog).
+  if (name === 'run_tool') {
+    const target = String(args.name || '').trim();
+    if (!target) throw new ServiceNowError('run_tool requires a "name" (the tool to run). Use search_tools to find it.', 'INVALID_REQUEST');
+    if (target === 'run_tool' || target === 'search_tools') throw new ServiceNowError(`run_tool cannot call the meta-tool "${target}".`, 'INVALID_REQUEST');
+    if (!ALL_TOOLS.some((t) => t.name === target)) {
+      const near = searchTools(target, 5).map((m) => m.name);
+      throw new ServiceNowError(`Unknown tool "${target}".${near.length ? ` Did you mean: ${near.join(', ')}?` : ' Use search_tools to find the right name.'}`, 'INVALID_REQUEST');
+    }
+    const inner = (args.arguments && typeof args.arguments === 'object') ? args.arguments as Record<string, any> : {};
+    return executeTool(client, target, inner);
+  }
+
   // Meta-tool: catalog search (operates on the registry, not the instance).
   if (name === 'search_tools') {
     const matches = searchTools(String(args.query || ''), typeof args.limit === 'number' ? args.limit : 25);
@@ -435,7 +471,7 @@ export async function executeTool(
       query: args.query,
       count: matches.length,
       tools: matches.map(({ name, description }) => ({ name, description })),
-      hint: matches.length === 0 ? 'No tools matched. Try broader keywords.' : 'Call the most relevant tool by name.',
+      hint: matches.length === 0 ? 'No tools matched. Try broader keywords.' : 'Call the tool directly if it is exposed, otherwise run it via run_tool { name, arguments } (lean mode).',
     };
   }
 

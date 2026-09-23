@@ -570,8 +570,14 @@ export class ServiceNowClient {
           throw new ServiceNowError(errorMessage, errorCode);
         }
 
-        const data = await response.json();
-        return data as T;
+        // A successful DELETE (and some other 2xx responses) return 204 No Content with an empty
+        // body. Calling response.json() on an empty body throws, which previously surfaced a
+        // *successful* delete as a bogus "No Record found"/parse error. Treat an empty or
+        // no-content body as a clean, result-less success instead.
+        if (response.status === 204) return undefined as T;
+        const text = await response.text();
+        if (!text) return undefined as T;
+        return JSON.parse(text) as T;
 
       } catch (error) {
         lastError = error instanceof Error ? error : new Error('Unknown error');
@@ -709,6 +715,56 @@ export class ServiceNowClient {
     const url = `${this.baseUrl}/api/now/ui/user/current_user`;
     const response = await this.request<{ result: Record<string, any> }>(url);
     return response.result || {};
+  }
+
+  /**
+   * Resolve a scope argument to a sys_scope sys_id. Accepts "global", a scope name
+   * (e.g. "x_myco_app"), an application display name, or a 32-char sys_id. ServiceNow
+   * uses the literal value "global" as the sys_id of the global application.
+   */
+  async resolveScopeSysId(scope: string): Promise<string> {
+    const s = String(scope || '').trim();
+    if (!s || s.toLowerCase() === 'global') return 'global';
+    if (/^[0-9a-f]{32}$/i.test(s)) return s;
+    const resp = await this.queryRecords({ table: 'sys_scope', query: `scope=${s}^ORname=${s}`, limit: 1, fields: 'sys_id,scope,name' });
+    const rec = resp.records && resp.records[0];
+    if (rec && (rec as any).sys_id) return String((rec as any).sys_id);
+    throw new ServiceNowError(`Scope not found: "${scope}". Pass "global", a scope name (e.g. x_myco_app), or a sys_scope sys_id.`, 'INVALID_REQUEST');
+  }
+
+  /**
+   * Run `fn` with the current user's active application temporarily set to `scope`, then restore it.
+   * ServiceNow stamps application-file records (script includes, business rules, client scripts, UI
+   * actions/policies, ACLs, etc.) with the CALLER'S current application, NOT any sys_scope in the
+   * request body. Over the Table API the only reliable way to target a scope is to switch
+   * `apps.current_app` (the Studio/Developer app picker) around the create. This best-effort restores
+   * the prior value in a finally block. Note: on a shared integration user, concurrent scoped creates
+   * can race on this preference; per-user auth (the gateway default) switches only that user's picker.
+   */
+  async withCurrentApp<T>(scope: string, fn: () => Promise<T>): Promise<T> {
+    const target = await this.resolveScopeSysId(scope);
+    const me = await this.getCurrentUser();
+    const userSysId = me.user_sys_id;
+    if (!userSysId) throw new ServiceNowError('Cannot target a scope: current user sys_id is unavailable.', 'API_ERROR');
+    const prefResp = await this.queryRecords({ table: 'sys_user_preference', query: `name=apps.current_app^user=${userSysId}`, limit: 1, fields: 'sys_id,value' });
+    const existing = prefResp.records && prefResp.records[0];
+    const prefSysId = existing ? String((existing as any).sys_id) : undefined;
+    const prior = existing ? String((existing as any).value ?? '') : undefined;
+    let createdPrefSysId: string | undefined;
+    if (prefSysId) {
+      await this.updateRecord('sys_user_preference', prefSysId, { value: target });
+    } else {
+      const created = await this.createRecord('sys_user_preference', { name: 'apps.current_app', user: userSysId, value: target, type: 'string' });
+      createdPrefSysId = created && (created as any).sys_id ? String((created as any).sys_id) : undefined;
+    }
+    try {
+      return await fn();
+    } finally {
+      try {
+        if (prefSysId) await this.updateRecord('sys_user_preference', prefSysId, { value: prior ?? 'global' });
+        else if (createdPrefSysId) await this.deleteRecord('sys_user_preference', createdPrefSysId);
+      } catch { /* best-effort restore; leaving the picker switched is non-fatal */ }
+    }
   }
 
   /**
