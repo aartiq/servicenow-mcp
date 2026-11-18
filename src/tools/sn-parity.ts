@@ -13,16 +13,29 @@
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
-import { requireWrite } from '../utils/permissions.js';
+import { isScriptingEnabled, requireWrite } from '../utils/permissions.js';
+import { invokeNowAssistSkill } from './now-assist-skills.js';
 
-/** Best-effort Now Assist skill invocation by (partial) name. Returns null if unavailable. */
+/**
+ * Best-effort Now Assist skill invocation by (partial) name. Returns null if unavailable.
+ * Skills are registered in sn_nowassist_skill_config and run through the server-side
+ * sn_one_extend.OneExtendUtil API (no REST endpoint exists), exactly like test_now_assist_skill.
+ * That path needs SCRIPTING_ENABLED, so without it the caller falls back to returning context.
+ */
 async function tryInvokeSkill(client: ServiceNowClient, skillName: string, input: Record<string, any>): Promise<any | null> {
+  if (!isScriptingEnabled()) return null;
   try {
-    const found = await client.queryRecords({ table: 'sn_now_assist_skill', query: `nameCONTAINS${skillName}^active=true`, limit: 1 });
+    const found = await client.queryRecords({
+      table: 'sn_nowassist_skill_config',
+      query: `nameCONTAINS${skillName}^active=true^skill_table=sys_one_extend_capability`,
+      limit: 1,
+      fields: 'sys_id,name',
+    });
     if (found.count === 0) return null;
-    const skillId = (found.records[0] as any).sys_id;
-    const res = await client.callNowAssist('/api/sn_assist/skill/invoke', { skill: skillId, input });
-    return { skill: (found.records[0] as any).name, output: res };
+    const cfg = found.records[0] as any;
+    const run = await invokeNowAssistSkill(client, cfg.sys_id, input);
+    if (run.result === undefined || run.result === null) return null;
+    return { skill: cfg.name, output: run.result };
   } catch {
     return null;
   }

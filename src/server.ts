@@ -1,26 +1,29 @@
 #!/usr/bin/env node
+import { compatNotes } from './bootstrap-env.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
   GetPromptRequestSchema,
   ListPromptsRequestSchema,
   ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import dotenv from 'dotenv';
 import { instanceManager } from './servicenow/instances.js';
-import { getTools } from './tools/index.js';
-import { getResources, readResource } from './resources/index.js';
+import { getTools, getAppToolsFor, getCatalogTool, isLeanDiscovery } from './tools/index.js';
+import { clientSupportsApps, getAppResources, isAppResourceUri, readAppResource } from './apps/index.js';
+import { getResources, getResourceTemplates, readResource } from './resources/index.js';
 import { getPrompts, resolvePromptAsync } from './prompts/index.js';
 import { logger } from './utils/logging.js';
 import { ServiceNowError } from './utils/errors.js';
-import { connectTransport } from './transport/index.js';
+import { connectTransport, getTransportType } from './transport/index.js';
+import { enableLocalFileAccess } from './utils/local-files.js';
 import { getDelegatedAuth, strictDelegationViolation } from './utils/request-context.js';
 import { VERSION, SERVER_NAME } from './utils/version.js';
 
-// quiet: suppress dotenv v17+ startup banner (keeps MCP stdio + CLI output clean)
-dotenv.config({ quiet: true });
+// .env and documented aliases (SN_INSTANCE_URL, --allow-write, SN_PERSONA, ...) were applied by bootstrap-env.
+for (const note of compatNotes) logger.warn(note);
 
 // Require at least one instance to be configured
 const hasLegacy = !!process.env.SERVICENOW_INSTANCE_URL;
@@ -60,7 +63,8 @@ export function createServer(): Server {
     },
     {
       capabilities: {
-        tools: {},
+        // listChanged: lean sessions grow their tool list as search_tools finds tools.
+        tools: { listChanged: true },
         resources: {},
         prompts: {},
       },
@@ -71,8 +75,20 @@ export function createServer(): Server {
 
   // ─── Tools ──────────────────────────────────────────────────────────────────
 
+  /** MCP Apps views and their app-only tools, for clients that can render them. */
+  const appsEnabled = () => clientSupportsApps(server.getClientCapabilities(), server.getClientVersion()?.name);
+
+  // Lean discovery: tools that search_tools found in this session are added to the list, so the model
+  // can call them directly. Clients that ignore tools/list_changed can still use run_tool.
+  const discovered = new Set<string>();
+  const MAX_DISCOVERED = 60;
+
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return { tools: getTools() };
+    const listed = getTools();
+    const have = new Set(listed.map((t) => t.name));
+    const extra = [...discovered].filter((n) => !have.has(n)).map((n) => getCatalogTool(n)).filter((t): t is NonNullable<typeof t> => !!t);
+    const all = [...listed, ...extra];
+    return { tools: appsEnabled() ? [...all, ...getAppToolsFor(all)] : all };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -81,7 +97,9 @@ export function createServer(): Server {
     logger.info(`Tool called: ${name}`);
 
     try {
-      const tool = tools.find(t => t.name === name);
+      const tool = tools.find(t => t.name === name)
+        || getAppToolsFor(tools).find(t => t.name === name)
+        || (discovered.has(name) ? getCatalogTool(name) : undefined);
       if (!tool) {
         throw new ServiceNowError(`Unknown tool: ${name}`, 'UNKNOWN_TOOL');
       }
@@ -173,6 +191,17 @@ export function createServer(): Server {
         }
       }
 
+      // Lean discovery: expose what the search found and tell the client its tool list changed.
+      if (name === 'search_tools' && isLeanDiscovery() && result && typeof result === 'object') {
+        const found = ((result as { tools?: Array<{ name: string }> }).tools || []).slice(0, 10).map((t) => t.name);
+        const before = discovered.size;
+        for (const n of found) if (discovered.size < MAX_DISCOVERED && getCatalogTool(n)) discovered.add(n);
+        if (discovered.size > before) {
+          await server.sendToolListChanged().catch(() => { /* client may not support list_changed */ });
+          (result as Record<string, unknown>).hint = 'These tools are now available to call directly. If your client does not refresh its tool list, call them through run_tool { name, arguments }.';
+        }
+      }
+
       // Structured output: include the raw object so capable clients get typed
       // content, while keeping the text block for backward compatibility.
       const structured = typeof result === 'object' && result !== null && !Array.isArray(result)
@@ -217,14 +246,29 @@ export function createServer(): Server {
   // ─── Resources (@ mentions) ─────────────────────────────────────────────────
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    return { resources: getResources() };
+    return { resources: [...getResources(), ...getAppResources()] };
+  });
+
+  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+    return { resourceTemplates: getResourceTemplates() };
   });
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const { uri } = request.params;
 
+    // MCP Apps views are static HTML and need no instance connection.
+    if (isAppResourceUri(uri)) return readAppResource(uri)!;
+
     try {
-      const client = instanceManager.getClient();
+      // Same identity rules as tool calls: a delegated per-user token wins over base credentials.
+      if (strictDelegationViolation('read_resource') === 'DELEGATION_REQUIRED') {
+        throw new ServiceNowError('Delegation required: strict delegated-auth mode is on and this request carries no delegated token.', 'DELEGATION_REQUIRED');
+      }
+      const delegatedAuth = getDelegatedAuth();
+      const baseClient = instanceManager.getClient();
+      const client = delegatedAuth?.bearerToken
+        ? baseClient.withUser({ bearerToken: delegatedAuth.bearerToken, instanceUrl: delegatedAuth.instanceUrl })
+        : baseClient;
       const result = await readResource(client, uri);
       const mimeType = uri === 'servicenow://query-syntax' ? 'text/markdown' : 'application/json';
       const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
@@ -262,9 +306,12 @@ export function createServer(): Server {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 async function main() {
+  // Running as a local stdio server means we are on the user's own machine, so upload_attachment may
+  // read local files (file_path). HTTP mode stays off unless NOWAIKIT_LOCAL_FILES=true.
+  if (getTransportType() === 'stdio') enableLocalFileAccess();
   const server = createServer();
   const tools = getTools();
-  const httpServer = await connectTransport(server, tools.length);
+  const httpServer = await connectTransport(server, tools.length, createServer);
 
   // If HTTP-based transport, mount API routes and A2A
   if (httpServer) {

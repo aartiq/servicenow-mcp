@@ -78,3 +78,17 @@ describe('getTools – package system', () => {
     });
   });
 });
+
+describe('annotations for tools that change data', () => {
+  it('never marks a data-changing tool read-only', async () => {
+    const { getTools } = await import('../../src/tools/index.js');
+    const byName = Object.fromEntries(getTools().map((t: any) => [t.name, t]));
+    for (const n of ['grant_role', 'revoke_role', 'deactivate_user', 'recall_approval_request', 'advance_hr_case', 'copy_attachment',
+      'resubmit_ecc_probe', 'push_artifact', 'test_flow', 'cmdb_reconcile', 'natural_language_update', 'export_update_set', 'fluent_install', 'fluent_exec']) {
+      if (!byName[n]) continue;
+      expect(byName[n].annotations.readOnlyHint, n).toBe(false);
+    }
+    expect(byName.revoke_role?.annotations.destructiveHint).toBe(true);
+    expect(byName.list_business_rules.annotations.readOnlyHint).toBe(true);
+  });
+});

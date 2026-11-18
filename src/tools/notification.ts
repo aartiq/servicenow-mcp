@@ -169,16 +169,28 @@ export function getNotificationToolDefinitions() {
     {
       name: 'upload_attachment',
       description:
-        'Attach a file to a ServiceNow record (requires WRITE_ENABLED=true). ' +
-        'Provide EITHER source_url (recommended) OR content_base64. ' +
-        'source_url has the server fetch the file directly, so large files never pass through this tool call; ' +
-        'content_base64 is only reliable for small files (a few hundred KB) and is rejected above ~4MB.',
+        'Attach a file to a ServiceNow record (requires WRITE_ENABLED=true). Provide ONE of: ' +
+        'file_path (a file on the machine running NowAIKit, local server only), source_url (the server fetches it), ' +
+        'or content_base64 (small files only). file_path and source_url never pass the file through this tool call, ' +
+        'so prefer them for anything over ~20KB: a model can only write a limited amount of text in a single call. ' +
+        'Returns sha256 and size_bytes of what was sent so you can confirm the attachment is intact.',
       inputSchema: {
         type: 'object',
         properties: {
           table: { type: 'string', description: 'Table name (e.g. "incident", "kb_knowledge")' },
           record_sys_id: { type: 'string', description: 'sys_id of the record to attach the file to' },
-          file_name: { type: 'string', description: 'File name including extension (e.g. "screenshot.png")' },
+          file_name: {
+            type: 'string',
+            description: 'File name including extension (e.g. "screenshot.png"). Optional with file_path (defaults to the file\'s own name).',
+          },
+          file_path: {
+            type: 'string',
+            description:
+              'Path to a file on the machine running NowAIKit (local stdio server: Claude Desktop, Claude Code, Cursor, etc.). ' +
+              'Works on Windows, macOS and Linux: absolute paths (C:\\Users\\me\\report.xlsx, /Users/me/report.xlsx), ~/ paths, ' +
+              'file:// URLs, or paths relative to the server\'s working folder. Secrets (SSH/cloud keys, .env files, credential ' +
+              'stores, MCP client configs) are always refused. Not available on remote/hosted servers.',
+          },
           content_type: {
             type: 'string',
             description:
@@ -203,7 +215,7 @@ export function getNotificationToolDefinitions() {
               'Base64-encoded file content. Only for small files. Use source_url for anything larger.',
           },
         },
-        required: ['table', 'record_sys_id', 'file_name'],
+        required: ['table', 'record_sys_id'],
       },
     },
     // ── Notification Templates ────────────────────────────────────────────────
@@ -383,22 +395,34 @@ export async function executeNotificationToolCall(
     }
     case 'upload_attachment': {
       requireWrite();
-      if (!args.table || !args.record_sys_id || !args.file_name) {
+      if (!args.table || !args.record_sys_id) {
+        throw new ServiceNowError('table and record_sys_id are required', 'INVALID_REQUEST');
+      }
+      const sources = [args.file_path, args.source_url, args.content_base64].filter(Boolean).length;
+      if (sources === 0) {
         throw new ServiceNowError(
-          'table, record_sys_id, and file_name are required',
+          'Provide one of file_path (local file), source_url (server fetches it) or content_base64 (small files only).',
           'INVALID_REQUEST'
         );
       }
-      if (!args.source_url && !args.content_base64) {
-        throw new ServiceNowError(
-          'Provide either source_url (preferred, server-side fetch) or content_base64. ' +
-            'For files larger than a few hundred KB, use source_url so the bytes are not passed through this tool call.',
-          'INVALID_REQUEST'
-        );
+      if (sources > 1) {
+        throw new ServiceNowError('Provide only one of file_path, source_url or content_base64.', 'INVALID_REQUEST');
+      }
+      if (!args.file_path && !args.file_name) {
+        throw new ServiceNowError('file_name is required with source_url or content_base64', 'INVALID_REQUEST');
       }
 
       let result: any;
-      if (args.source_url) {
+      if (args.file_path) {
+        // Read from local disk: bytes never travel through the LLM/tool call.
+        result = await client.uploadAttachmentFromFile(
+          args.table,
+          args.record_sys_id,
+          args.file_path,
+          args.file_name,
+          args.content_type
+        );
+      } else if (args.source_url) {
         // Server-side fetch: bytes never travel through the LLM/tool call.
         result = await client.uploadAttachmentFromUrl(
           args.table,
@@ -431,7 +455,7 @@ export async function executeNotificationToolCall(
       }
       return {
         ...result,
-        summary: `Uploaded attachment "${args.file_name}" to ${args.table}:${args.record_sys_id}`,
+        summary: `Uploaded attachment "${result?.file_name || args.file_name}" to ${args.table}:${args.record_sys_id}`,
       };
     }
     // ── Templates ────────────────────────────────────────────────────────────

@@ -89,7 +89,12 @@ export async function executePlatformOpsToolCall(
   switch (name) {
     case 'list_scan_suites': {
       const query = args.query ? `nameCONTAINS${args.query}` : '';
-      return await client.queryRecords({ table: 'scan_suite', query, limit: args.limit ?? 50 });
+      return await client.queryRecords({
+        table: 'scan_check_suite',
+        query,
+        limit: args.limit ?? 50,
+        fields: 'sys_id,name,description,active,private,scorecard,sys_scope,sys_updated_on',
+      });
     }
     case 'get_instance_scan_findings': {
       const parts: string[] = [];

@@ -29,6 +29,8 @@ const __cliDir = path.dirname(fileURLToPath(import.meta.url));
 const __pkgJson = JSON.parse(readFileSync(path.resolve(__cliDir, '..', '..', 'package.json'), 'utf8'));
 const CLI_VERSION: string = __pkgJson.version;
 import { runShortcuts } from './shortcuts.js';
+import { runDoctor } from './doctor.js';
+import { isServerFlag } from '../utils/compat.js';
 
 // Brand colors (matches nowaitkit.com — teal/navy palette)
 // Terminal-adaptive: white/subtle/dim use chalk built-ins so text stays visible
@@ -142,8 +144,14 @@ async function maybePromptUpdate(latest: string | null): Promise<void> {
 // Desktop is running `nowaikit` and expects a JSON-RPC server on stdout. Start the MCP server
 // instead of the interactive CLI, so `npx nowaikit` works directly as an MCP command. Force with
 // NOWAIKIT_MCP=1. In this mode we skip the update check and CLI parsing so stdout stays clean.
+const LAUNCH_ARGS = process.argv.slice(2);
+// A client may also pass server flags (`npx nowaikit --allow-write`); those still mean "start the server".
+const ONLY_SERVER_FLAGS = LAUNCH_ARGS.length > 0 && LAUNCH_ARGS[0]!.startsWith('--') &&
+  LAUNCH_ARGS.every((a, i) => isServerFlag(a) || (i > 0 && isServerFlag(LAUNCH_ARGS[i - 1]!) && !a.startsWith('--')));
 const MCP_MODE = process.env.NOWAIKIT_MCP === "1"
-  || (process.argv.slice(2).length === 0 && !process.stdout.isTTY && !process.stdin.isTTY);
+  || LAUNCH_ARGS[0] === 'mcp'
+  || (!process.stdout.isTTY && !process.stdin.isTTY && (LAUNCH_ARGS.length === 0 || ONLY_SERVER_FLAGS))
+  || ONLY_SERVER_FLAGS;
 
 // Fire update check in background (non-blocking). Never in MCP mode — it writes to stdout.
 const updateCheckPromise: Promise<string | null> = MCP_MODE ? Promise.resolve(null) : checkForUpdate();
@@ -199,6 +207,40 @@ auth
   .action(async () => {
     await authTest();
   });
+
+// ─── doctor ───────────────────────────────────────────────────────────────────
+program
+  .command('doctor')
+  .description('Check your whole setup (Node, version, instance, login, roles, AI clients) and show how to fix problems')
+  .option('-i, --instance <name>', 'Instance to check (defaults to the default instance)')
+  .option('--json', 'Output machine-readable JSON')
+  .action(async (opts: { instance?: string; json?: boolean }) => {
+    process.exitCode = await runDoctor({ instance: opts.instance, json: opts.json });
+  });
+
+// ─── serve / mcp ──────────────────────────────────────────────────────────────
+program
+  .command('serve')
+  .description('Run NowAIKit as an HTTP server (Streamable HTTP MCP at /mcp, REST API at /api, dashboard at /)')
+  .option('-p, --port <port>', 'Port to listen on', process.env.PORT || process.env.HTTP_PORT || '3000')
+  .option('--host <host>', 'Interface to bind', process.env.HOST || '127.0.0.1')
+  .allowUnknownOption(true)
+  .action((opts: { port: string; host: string }) => {
+    process.env.TRANSPORT = 'http';
+    process.env.PORT = String(opts.port);
+    process.env.HOST = opts.host;
+    process.argv.splice(2, 1);
+    import('../server.js').catch((e: unknown) => {
+      console.error('nowaikit HTTP server failed to start:', e instanceof Error ? e.message : e);
+      process.exit(1);
+    });
+  });
+
+program
+  .command('mcp')
+  .description('Run the MCP server over stdio (what AI clients launch). Accepts --allow-write, --persona, --instance, ...')
+  .allowUnknownOption(true)
+  .action(() => { /* handled before CLI parsing */ });
 
 // ─── instances ────────────────────────────────────────────────────────────────
 const instances = program.command('instances').description('Manage configured ServiceNow instances');
@@ -581,6 +623,7 @@ program
 if (MCP_MODE) {
   // Launched as an MCP server by a client. Start the stdio server (keeps the process alive).
   // console.error goes to stderr, so stdout stays clean for the JSON-RPC protocol.
+  if (LAUNCH_ARGS[0] === 'mcp') process.argv.splice(2, 1); // `nowaikit mcp [flags]` → same as the bare launch
   import('../server.js').catch((e: unknown) => {
     console.error('nowaikit MCP server failed to start:', e instanceof Error ? e.message : e);
     process.exit(1);

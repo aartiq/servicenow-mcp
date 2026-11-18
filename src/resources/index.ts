@@ -49,22 +49,35 @@ export function getResources(): McpResource[] {
       mimeType: 'application/json',
     },
     {
-      uri: 'servicenow://ci:{name}',
-      name: 'ci:<name>',
-      description: 'CMDB Configuration Item by name (e.g. @ci:web-prod-01)',
-      mimeType: 'application/json',
-    },
-    {
-      uri: 'servicenow://kb:{title}',
-      name: 'kb:<title>',
-      description: 'Knowledge Base article by title (e.g. @kb:VPN-setup)',
-      mimeType: 'application/json',
-    },
-    {
       uri: 'servicenow://query-syntax',
       name: 'query-syntax',
       description: 'ServiceNow encoded query syntax reference — operators, patterns, date functions, anti-patterns',
       mimeType: 'text/markdown',
+    },
+  ];
+}
+
+export interface McpResourceTemplate {
+  uriTemplate: string;
+  name: string;
+  description: string;
+  mimeType: string;
+}
+
+/** Parameterised resources (RFC 6570 templates), listed via resources/templates/list. */
+export function getResourceTemplates(): McpResourceTemplate[] {
+  return [
+    {
+      uriTemplate: 'servicenow://ci:{name}',
+      name: 'ci',
+      description: 'CMDB Configuration Item by name (e.g. @ci:web-prod-01)',
+      mimeType: 'application/json',
+    },
+    {
+      uriTemplate: 'servicenow://kb:{title}',
+      name: 'kb',
+      description: 'Knowledge Base article by title (e.g. @kb:VPN-setup)',
+      mimeType: 'application/json',
     },
   ];
 }
@@ -74,7 +87,8 @@ export async function readResource(client: ServiceNowClient, uri: string): Promi
   if (uri === 'servicenow://my-incidents') {
     return client.queryRecords({
       table: 'incident',
-      query: 'active=true',
+      // Runs as the connected identity, so "me" is whoever the token or login belongs to.
+      query: 'active=true^assigned_to=javascript:gs.getUserID()^ORDERBYDESCsys_updated_on',
       limit: 20,
       fields: 'number,short_description,priority,state,assigned_to,sys_created_on,sys_updated_on',
     });

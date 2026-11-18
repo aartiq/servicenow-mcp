@@ -454,17 +454,34 @@ export async function executeReportingToolCall(
       return { ...result, summary: `Updated report ${args.sys_id}` };
     }
     case 'list_job_run_history': {
-      const parts: string[] = [];
-      if (args.job_sys_id) parts.push(`sysauto=${args.job_sys_id}`);
-      if (args.status) parts.push(`status=${args.status}`);
+      // ServiceNow keeps no per-run status table for scheduled jobs. Each execution is logged
+      // as a scheduler transaction (syslog_transaction, type=scheduler, url="JOB: <job name>").
+      const parts: string[] = ['type=scheduler'];
+      let jobName: string | undefined;
+      if (args.job_sys_id) {
+        const job = await client.getRecord('sysauto', args.job_sys_id, 'name');
+        jobName = String((job as any).name || '');
+        if (!jobName) throw new ServiceNowError(`Scheduled job ${args.job_sys_id} has no name to match run history against`, 'NOT_FOUND');
+        parts.push(`url=JOB: ${jobName}`);
+      }
       const resp = await client.queryRecords({
-        table: 'sysauto_trigger_log',
-        query: parts.join('^') || undefined,
+        table: 'syslog_transaction',
+        query: parts.join('^'),
         limit: args.limit || 25,
         orderBy: '-sys_created_on',
-        fields: 'sys_id,sysauto,status,run_time,error_message,sys_created_on',
+        fields: 'sys_id,url,response_time,transaction_processing_time,sql_count,system_id,sys_created_on',
       });
-      return { count: resp.count, history: resp.records };
+      const history = resp.records.map((r: any) => ({
+        ...r,
+        job_name: String(r.url || '').replace(/^JOB:\s*/, ''),
+        run_time_ms: r.response_time,
+      }));
+      return {
+        count: resp.count,
+        history,
+        ...(jobName ? { job_name: jobName } : {}),
+        ...(args.status ? { note: 'ServiceNow does not record a success/failure status per scheduled job run, so the status filter was not applied. Check get_sys_log for errors logged by the job.' } : {}),
+      };
     }
     case 'create_scheduled_report': {
       requireWrite();

@@ -4,7 +4,7 @@
  *
  * Tables (Now Assist AI Agents, sn_aia scope; availability depends on release/plugins):
  *   sn_aia_execution_plan       — agent execution plans/runs
- *   sn_aia_execution_plan_step  — steps/tool calls within a plan
+ *   sn_aia_execution_task       — tasks/tool calls within a plan (execution_plan, order)
  *   sn_aia_usecase              — AI Agent Studio use cases
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
@@ -27,7 +27,7 @@ export function getAiAgentExecToolDefinitions() {
     },
     {
       name: 'get_ai_agent_execution',
-      description: 'Get an AI Agent execution plan with its steps/tool calls (sn_aia_execution_plan + _step)',
+      description: 'Get an AI Agent execution plan with its steps/tool calls (sn_aia_execution_plan + sn_aia_execution_task)',
       inputSchema: {
         type: 'object',
         properties: {
@@ -71,7 +71,7 @@ export async function executeAiAgentExecToolCall(
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
       const plan = await client.getRecord('sn_aia_execution_plan', args.sys_id);
       const steps = await client
-        .queryRecords({ table: 'sn_aia_execution_plan_step', query: `execution_plan=${args.sys_id}^ORDERBYorder`, limit: 200 })
+        .queryRecords({ table: 'sn_aia_execution_task', query: `execution_plan=${args.sys_id}^ORDERBYorder`, limit: 200 })
         .catch(() => ({ records: [] }));
       return { execution_plan: plan, steps: (steps as any).records };
     }

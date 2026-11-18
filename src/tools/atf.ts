@@ -183,19 +183,31 @@ export async function executeAtfToolCall(
     }
     case 'list_atf_test_results': {
       let query = '';
-      if (args.suite_result_sys_id) query = `test_suite_result=${args.suite_result_sys_id}`;
-      const resp = await client.queryRecords({ table: 'sys_atf_result', query: query || undefined, limit: args.limit || 50, fields: 'sys_id,test,status,message,test_suite_result,sys_updated_on' });
+      if (args.suite_result_sys_id) query = `parent=${args.suite_result_sys_id}`;
+      const resp = await client.queryRecords({
+        table: 'sys_atf_test_result',
+        query: query || undefined,
+        limit: args.limit || 50,
+        orderBy: '-sys_created_on',
+        fields: 'sys_id,test,test_name,status,output,parent,first_failing_step,start_time,end_time,run_time,sys_updated_on',
+      });
       return { count: resp.count, results: resp.records };
     }
     case 'get_atf_failure_insight': {
       if (!args.result_sys_id) throw new ServiceNowError('result_sys_id is required', 'INVALID_REQUEST');
-      // ATF Failure Insight: query sys_atf_failure_insight table
-      const resp = await client.queryRecords({ table: 'sys_atf_failure_insight', query: `test_suite_result=${args.result_sys_id}` });
+      // Failure Insight stores its "what changed" diffs in sys_atf_what_changed, keyed by the
+      // failing test result. Accept a suite result (its tests' rows) or a single test result.
+      const resp = await client.queryRecords({
+        table: 'sys_atf_what_changed',
+        query: `sys_atf_test_result.parent=${args.result_sys_id}^ORsys_atf_test_result=${args.result_sys_id}`,
+        limit: 200,
+        fields: 'sys_id,type,sys_atf_test_result,previous_test_result,sys_atf_step,application_file,update_name,update_set,sys_created_on',
+      });
       return {
         result_sys_id: args.result_sys_id,
         failure_insight: resp.records,
         summary: `Found ${resp.count} metadata change(s) between last passing and failing run`,
-        note: 'Failure Insight (latest release) surfaces role changes, field value changes, and configuration diffs that caused test failures',
+        note: 'Failure Insight (sys_atf_what_changed) lists the application files and update sets that changed between the last passing run and the failing run',
       };
     }
     default:

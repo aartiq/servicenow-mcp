@@ -40,6 +40,7 @@ export function getNowAssistToolDefinitions() {
         properties: {
           query: { type: 'string', description: 'Natural language search query' },
           sources: { type: 'array', items: { type: 'string' }, description: 'Sources to search: ["kb", "catalog", "incident"] (default: all)' },
+          search_app: { type: 'string', description: 'Optional AI Search application (sys_search_context_config) name or sys_id. Default: Service Portal Default Search Application' },
           limit: { type: 'number', description: 'Max results (default: 10)' },
         },
         required: ['query'],
@@ -98,6 +99,63 @@ const NOW_ASSIST_TOOL_NAMES = new Set([
   'get_ms_copilot_topics', 'get_pi_models',
 ]);
 
+const SOURCE_TABLES: Record<string, string[]> = {
+  kb: ['kb_knowledge'],
+  knowledge: ['kb_knowledge'],
+  catalog: ['sc_cat_item', 'sc_cat_item_producer', 'sc_cat_item_guide'],
+  incident: ['incident'],
+};
+
+// AI Search runs through the AI Search Assist API (POST /api/now/aisa/search) against a search
+// application (sys_search_context_config). Default: the Service Portal default search application.
+async function aiSearch(
+  client: ServiceNowClient,
+  term: string,
+  opts: { limit?: number; sources?: string[]; table?: string; searchApp?: string },
+): Promise<any> {
+  const appQuery = opts.searchApp
+    ? (/^[0-9a-f]{32}$/i.test(opts.searchApp) ? `sys_id=${opts.searchApp}` : `name=${opts.searchApp}`)
+    : 'search_engine=ai_search^name=Service Portal Default Search Application';
+  let apps = await client.queryRecords({ table: 'sys_search_context_config', query: appQuery, limit: 1, fields: 'sys_id,name' })
+    .catch(() => ({ count: 0, records: [] as any[] }));
+  if (!apps.count && !opts.searchApp) {
+    apps = await client.queryRecords({ table: 'sys_search_context_config', query: 'search_engine=ai_search', limit: 1, fields: 'sys_id,name' })
+      .catch(() => ({ count: 0, records: [] as any[] }));
+  }
+  if (!apps.count) {
+    throw new ServiceNowError(
+      opts.searchApp
+        ? `Search application not found: ${opts.searchApp}`
+        : "This needs the AI Search plugin (com.glide.ais), which isn't active on this instance (no AI Search application found).",
+      opts.searchApp ? 'NOT_FOUND' : 'PLUGIN_NOT_ACTIVE',
+    );
+  }
+  const app = apps.records[0] as any;
+  let resp: any;
+  try {
+    resp = await client.callNowAssist('/api/now/aisa/search', { searchContextConfigId: app.sys_id, searchTerm: term, rpSysId: 'nowaikit' });
+  } catch (e) {
+    if (e instanceof ServiceNowError && e.code === 'NOT_FOUND') {
+      throw new ServiceNowError("This needs the AI Search Assist plugin (com.glide.ais.aisa), which isn't active on this instance.", 'PLUGIN_NOT_ACTIVE');
+    }
+    throw e;
+  }
+  let results: any[] = resp?.result?.search?.searchResults ?? [];
+  const tables = new Set<string>([
+    ...(opts.sources ?? []).flatMap((src) => SOURCE_TABLES[String(src).toLowerCase()] ?? [String(src)]),
+    ...(opts.table ? [opts.table] : []),
+  ]);
+  if (tables.size) results = results.filter((r) => tables.has(r.table));
+  results = results.slice(0, opts.limit || 10).map((r) => ({
+    sys_id: r.sysId,
+    table: r.table,
+    title: typeof r.title === 'string' ? r.title.replace(/<\/?highlight>/g, '') : r.title,
+    text: typeof r.text === 'string' ? r.text.replace(/<\/?highlight>/g, '') : r.text,
+    fields: Object.fromEntries((r.columns ?? []).map((c: any) => [c.fieldName, c.displayValue || c.value])),
+  }));
+  return { search_application: app.name, count: results.length, results };
+}
+
 export async function executeNowAssistToolCall(
   client: ServiceNowClient,
   name: string,
@@ -110,20 +168,18 @@ export async function executeNowAssistToolCall(
   switch (name) {
     case 'nlq_query': {
       if (!args.question) throw new ServiceNowError('question is required', 'INVALID_REQUEST');
-      // ServiceNow NLQ API: POST /api/sn_nl_text_to_value/text_query
-      const result = await client.callNowAssist('/api/sn_nl_text_to_value/text_query', {
+      // NLQ has no public REST endpoint (the old /api/sn_nl_text_to_value/text_query never existed;
+      // /api/now/nlq only exposes the query log). Answer the question with AI Search instead.
+      const result = await aiSearch(client, args.question, { limit: args.limit, table: args.table });
+      return {
         question: args.question,
-        table: args.table,
-        limit: args.limit || 10,
-      });
-      return { question: args.question, ...result };
+        ...result,
+        note: 'ServiceNow Natural Language Query has no public REST API, so this question was answered with AI Search. For counts and aggregates, use aggregate_report or query_records.',
+      };
     }
     case 'ai_search': {
       if (!args.query) throw new ServiceNowError('query is required', 'INVALID_REQUEST');
-      // ServiceNow AI Search API: GET /api/now/ai_search/search
-      const params = new URLSearchParams({ q: args.query, limit: String(args.limit || 10) });
-      if (args.sources) params.set('sources', args.sources.join(','));
-      const result = await client.callNowAssist(`/api/now/ai_search/search?${params.toString()}`, {});
+      const result = await aiSearch(client, args.query, { limit: args.limit, sources: args.sources, searchApp: args.search_app });
       return { query: args.query, ...result };
     }
     case 'categorize_incident': {

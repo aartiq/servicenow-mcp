@@ -49,7 +49,7 @@ describe('executeNowAssistSkillsToolCall', () => {
   });
 
   describe('list_now_assist_skills', () => {
-    it('queries the sn_now_assist_skill table', async () => {
+    it('queries the sn_nowassist_skill_config table', async () => {
       (mockClient.queryRecords as ReturnType<typeof vi.fn>).mockResolvedValue({
         count: 2,
         records: [
@@ -64,7 +64,7 @@ describe('executeNowAssistSkillsToolCall', () => {
       expect(result.skills).toHaveLength(2);
       expect(mockClient.queryRecords).toHaveBeenCalledWith(
         expect.objectContaining({
-          table: 'sn_now_assist_skill',
+          table: 'sn_nowassist_skill_config',
           limit: 25,
         })
       );
@@ -107,7 +107,7 @@ describe('executeNowAssistSkillsToolCall', () => {
 
       expect(result.skill.sys_id).toBe('sk1');
       expect(result.skill.name).toBe('Summarizer');
-      expect(mockClient.getRecord).toHaveBeenCalledWith('sn_now_assist_skill', 'sk1');
+      expect(mockClient.getRecord).toHaveBeenCalledWith('sn_nowassist_skill_config', 'sk1');
     });
 
     it('throws when sys_id is missing', async () => {
@@ -184,23 +184,46 @@ describe('executeNowAssistSkillsToolCall', () => {
   });
 
   describe('test_now_assist_skill', () => {
-    it('calls callNowAssist with correct parameters', async () => {
-      (mockClient.callNowAssist as ReturnType<typeof vi.fn>).mockResolvedValue({
-        output: 'Summarized text here',
+    const skillConfig = { sys_id: 'cfg1', name: 'Summarizer', skill_table: 'sys_one_extend_capability', skill_id: { value: 'cap1' } };
+
+    it('explains the scripting requirement when scripting is disabled', async () => {
+      delete process.env.SCRIPTING_ENABLED;
+      (mockClient.queryRecords as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, records: [skillConfig] });
+
+      await expect(
+        executeNowAssistSkillsToolCall(mockClient, 'test_now_assist_skill', {
+          skill_sys_id: 'cfg1',
+          test_input: { text: 'Long article...' },
+        })
+      ).rejects.toThrow(/no REST endpoint.*capability cap1, skill config cfg1/s);
+      expect(mockClient.executeScript).not.toHaveBeenCalled();
+      expect(mockClient.callNowAssist).not.toHaveBeenCalled();
+    });
+
+    it('runs the skill through OneExtendUtil when scripting is enabled', async () => {
+      process.env.SCRIPTING_ENABLED = 'true';
+      (mockClient.queryRecords as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, records: [skillConfig] });
+      (mockClient.executeScript as ReturnType<typeof vi.fn>).mockResolvedValue({
+        status: 200,
+        ok: true,
+        result: { capabilities: { cap1: { response: { result: JSON.stringify({ model_output: 'Summarized text here' }) } } } },
       });
 
       const result = await executeNowAssistSkillsToolCall(mockClient, 'test_now_assist_skill', {
-        skill_sys_id: 'sk1',
+        skill_sys_id: 'cfg1',
         test_input: { text: 'Long article...' },
       });
 
-      expect(result.skill_sys_id).toBe('sk1');
+      expect(result.skill_sys_id).toBe('cfg1');
+      expect(result.capability_id).toBe('cap1');
+      expect(result.skill_config_id).toBe('cfg1');
       expect(result.test_input).toEqual({ text: 'Long article...' });
-      expect(result.result.output).toBe('Summarized text here');
-      expect(mockClient.callNowAssist).toHaveBeenCalledWith('/api/sn_assist/skill/invoke', {
-        skill: 'sk1',
-        input: { text: 'Long article...' },
-      });
+      expect(result.result).toBe('Summarized text here');
+      const script = (mockClient.executeScript as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(script).toContain('sn_one_extend.OneExtendUtil.execute(');
+      expect(script).toContain('"capabilityId":"cap1"');
+      expect(script).toContain('"skillConfigId":"cfg1"');
+      delete process.env.SCRIPTING_ENABLED;
     });
 
     it('throws when skill_sys_id is missing', async () => {

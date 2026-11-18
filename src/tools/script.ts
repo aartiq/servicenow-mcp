@@ -390,7 +390,9 @@ export async function executeScriptToolCall(
 ): Promise<any> {
   // Only gate scripting tools — return null for unrelated tools so dispatch continues
   if (!SCRIPT_TOOL_NAMES.has(name)) return null;
-  requireScripting();
+  // Reading scripts, ACLs and update sets is a read (ServiceNow ACLs still apply); only changes need
+  // WRITE_ENABLED + SCRIPTING_ENABLED.
+  if (!/^(list|get)_/.test(name)) requireScripting();
 
   switch (name) {
     case 'list_business_rules': {

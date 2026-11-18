@@ -90,6 +90,13 @@ import { getMobileToolDefinitions, executeMobileToolCall } from './mobile.js';
 import { getDeploymentToolDefinitions, executeDeploymentToolCall } from './deployment.js';
 // Fluent / GlideQuery / Batch API
 import { getFluentToolDefinitions, executeFluentToolCall } from './fluent.js';
+// Interactive forms (MCP Apps)
+import { getAppsToolDefinitions, getAppOnlyToolDefinitions, executeAppsToolCall } from './apps.js';
+// ServiceNow Action Fabric (instance MCP servers + A2A agents)
+import { getActionFabricToolDefinitions, executeActionFabricToolCall } from './action-fabric.js';
+// Otto AI Agent Studio parity + AI Control Tower / Knowledge Graph / Otto status
+import { getAgentStudioToolDefinitions, executeAgentStudioToolCall } from './agent-studio.js';
+import { getAiGovernanceToolDefinitions, executeAiGovernanceToolCall } from './ai-governance.js';
 import { getDocsToolDefinitions, executeDocsToolCall } from './docs.js';
 // Now Assist Skills
 import { getNowAssistSkillsToolDefinitions, executeNowAssistSkillsToolCall } from './now-assist-skills.js';
@@ -145,6 +152,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'list_changesets', 'get_changeset', 'commit_changeset', 'publish_changeset',
   ],
   service_desk: [
+    // Interactive forms (MCP Apps)
+    'open_catalog_form', 'open_record_form', 'open_approvals',
     // Core read
     'query_records', 'get_record', 'get_user', 'get_group',
     // Incident full lifecycle
@@ -161,6 +170,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'natural_language_search',
   ],
   change_coordinator: [
+    // Interactive forms (MCP Apps)
+    'open_record_form', 'open_approvals',
     'query_records', 'get_record', 'get_user', 'get_group',
     'create_change_request', 'get_change_request', 'update_change_request', 'list_change_requests', 'submit_change_for_approval', 'close_change_request',
     'get_my_approvals', 'approve_request', 'reject_request',
@@ -175,6 +186,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'retire_knowledge_article',
   ],
   catalog_builder: [
+    // Interactive forms (MCP Apps)
+    'open_catalog_form', 'open_approvals',
     'query_records', 'get_record', 'get_user',
     'list_catalog_items', 'search_catalog', 'get_catalog_item', 'create_catalog_item', 'update_catalog_item', 'order_catalog_item',
     'create_approval_rule',
@@ -218,6 +231,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'fluent_query', 'batch_request', 'execute_script', 'generate_report',
     // v4.0 Fluent SDK + discovery
     'fluent_explain', 'fluent_init', 'fluent_build', 'fluent_validate',
+    // @servicenow/sdk 4.14 CLI coverage
+    'fluent_install', 'fluent_download', 'fluent_transform', 'fluent_dependencies', 'fluent_pack', 'fluent_exec', 'fluent_cicd',
     // @servicenow/sdk 4.8 parity
     'fluent_sdk_query', 'fluent_version',
     'discover_table',
@@ -242,6 +257,9 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'list_users',
   ],
   ai_developer: [
+    // ServiceNow Action Fabric: instance MCP servers + A2A agents
+    'sn_mcp_status', 'sn_mcp_list_servers', 'sn_mcp_list_tools', 'sn_mcp_call_tool', 'sn_mcp_activate_server',
+    'sn_a2a_list_agents', 'sn_a2a_get_agent_card', 'sn_a2a_send_message', 'sn_a2a_get_task', 'sn_a2a_expose_agent',
     'query_records', 'get_record', 'natural_language_search', 'create_record', 'update_record', 'delete_record',
     'nlq_query', 'ai_search', 'categorize_incident',
     'get_virtual_agent_topics', 'get_ms_copilot_topics', 'get_pi_models',
@@ -310,6 +328,10 @@ const ALL_TOOLS = [
   ...getMobileToolDefinitions(),
   ...getDeploymentToolDefinitions(),
   ...getFluentToolDefinitions(),
+  ...getAppsToolDefinitions(),
+  ...getActionFabricToolDefinitions(),
+  ...getAgentStudioToolDefinitions(),
+  ...getAiGovernanceToolDefinitions(),
   ...getDocsToolDefinitions(),
   ...getNowAssistSkillsToolDefinitions(),
   ...getAiAgentsToolDefinitions(),
@@ -366,22 +388,81 @@ const LEAN_CORE_TOOL_NAMES = new Set([
   'get_table_record_count', 'run_aggregate_query',
 ]);
 
+/** Everyday ServiceNow words → the terms tool names and descriptions actually use. */
+const SEARCH_SYNONYMS: Record<string, string[]> = {
+  ticket: ['incident', 'task', 'request'],
+  tickets: ['incident', 'task', 'request'],
+  rfc: ['change'],
+  cr: ['change'],
+  kb: ['knowledge', 'article'],
+  ci: ['cmdb'],
+  cis: ['cmdb'],
+  ritm: ['request_item', 'catalog'],
+  req: ['request', 'catalog'],
+  order: ['catalog', 'order'],
+  form: ['open_catalog_form', 'open_record_form', 'form'],
+  approve: ['approval', 'approve'],
+  approvals: ['approval'],
+  sla: ['sla'],
+  script: ['script', 'business_rule'],
+  br: ['business_rule'],
+  acl: ['acl'],
+  otto: ['now_assist', 'ai_agent', 'otto'],
+  agent: ['ai_agent', 'agent'],
+  agents: ['ai_agent', 'agent'],
+  mcp: ['sn_mcp'],
+  a2a: ['sn_a2a'],
+  sdk: ['fluent'],
+  fluent: ['fluent'],
+  upload: ['attachment', 'upload'],
+  file: ['attachment'],
+  user: ['user'],
+  users: ['user'],
+  count: ['count', 'aggregate'],
+  chart: ['visualize', 'chart'],
+  graph: ['visualize', 'kg'],
+};
+
+function searchTerms(query: string): string[] {
+  const base = query.toLowerCase().split(/[\s,]+/).filter(Boolean);
+  const out = new Set<string>();
+  for (const term of base) {
+    out.add(term);
+    if (term.length > 3 && term.endsWith('s')) out.add(term.slice(0, -1)); // incidents → incident
+    for (const syn of SEARCH_SYNONYMS[term] || []) out.add(syn);
+  }
+  return [...out];
+}
+
 /** Search the full catalog by keyword, returning ranked matches. */
 export function searchTools(query: string, limit = 25): Array<{ name: string; description: string; score: number }> {
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = searchTerms(query);
   const scored = ALL_TOOLS.map((t) => {
     const name = t.name.toLowerCase();
+    const parts = name.split('_');
     const desc = (t.description || '').toLowerCase();
     let score = 0;
     for (const term of terms) {
       if (name === term) score += 10;
-      if (name.includes(term)) score += 5;
+      if (parts.includes(term)) score += 6;
+      else if (name.includes(term)) score += 4;
       if (desc.includes(term)) score += 2;
     }
     return { name: t.name, description: t.description || '', score };
   }).filter((t) => t.score > 0);
-  scored.sort((a, b) => b.score - a.score);
+  scored.sort((x, y) => y.score - x.score || x.name.length - y.name.length);
   return scored.slice(0, limit);
+}
+
+/** Any catalog tool by name (lean sessions call tools that search_tools added to their list). */
+export function getCatalogTool(name: string) {
+  const t = ALL_TOOLS.find((x) => x.name === name);
+  return t ? withAnnotations(t) : undefined;
+}
+
+/** True when the server runs with a reduced tool list that search_tools can grow at runtime. */
+export function isLeanDiscovery(): boolean {
+  return (process.env.MCP_TOOL_DISCOVERY || '').toLowerCase() === 'lean';
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -389,13 +470,13 @@ export function searchTools(query: string, limit = 25): Array<{ name: string; de
 // ─── MCP tool annotations (read/write/destructive hints) ─────────────────────
 // Lets clients (Claude, Cursor, …) auto-approve safe reads and prompt before
 // writes/deletes — makes NowAIKit's "read-only by default" promise machine-readable.
-const DESTRUCTIVE_PREFIX = /^(delete_|retire_|remove_|close_|cancel_|reject_|rollback_)/;
+const DESTRUCTIVE_PREFIX = /^(delete_|retire_|remove_|close_|cancel_|reject_|rollback_|revoke_|deactivate_|detach_)/;
 const DESTRUCTIVE_NAMED = new Set([
   'delete_record', 'delete_attachment', 'delete_system_property', 'delete_uib_page',
   'retire_asset', 'retire_knowledge_article', 'rollback_deployment', 'execute_background_script',
   'execute_script', 'send_emergency_broadcast', 'send_push_notification',
 ]);
-const WRITE_PREFIX = /^(create_|update_|add_|set_|order_|submit_|publish_|commit_|trigger_|fire_|run_|execute_|bulk_|import_|upload_|assign_|approve_|resolve_|complete_|move_|switch_|configure_|register_|clone_|schedule_|send_|track_|ensure_|provision_|preview_|reconcile_|scan_|train_|ml_train)/;
+const WRITE_PREFIX = /^(create_|update_|add_|set_|order_|submit_|publish_|commit_|trigger_|fire_|run_|execute_|bulk_|import_|upload_|assign_|approve_|resolve_|complete_|move_|switch_|configure_|register_|clone_|schedule_|send_|track_|ensure_|provision_|preview_|reconcile_|scan_|train_|ml_train|grant_|recall_|advance_|copy_|resubmit_|push_|test_|attach_|cmdb_reconcile|natural_language_update|export_update_set|fluent_(init|build|install|download|transform|dependencies|exec|cicd))/;
 const IDEMPOTENT_PREFIX = /^(update_|set_|configure_|switch_|ensure_)/;
 
 interface ToolAnnotations { readOnlyHint: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint: boolean }
@@ -410,6 +491,17 @@ function toolAnnotations(name: string): ToolAnnotations {
 }
 function withAnnotations<T extends { name: string; annotations?: unknown }>(tool: T): T {
   return tool.annotations ? tool : { ...tool, annotations: toolAnnotations(tool.name) };
+}
+
+/**
+ * Extra tools for clients that render MCP Apps: the open_* view tools (so lean/core/package modes still
+ * get the forms) plus the app-only tools the views call. Never duplicates a tool already listed.
+ */
+export function getAppToolsFor(listed: Array<{ name: string }>) {
+  const have = new Set(listed.map((t) => t.name));
+  return [...getAppsToolDefinitions(), ...getAppOnlyToolDefinitions()]
+    .filter((t) => !have.has(t.name))
+    .map(withAnnotations);
 }
 
 export function getTools() {
@@ -525,6 +617,10 @@ export async function executeTool(
     () => executeMobileToolCall(client, name, args),
     () => executeDeploymentToolCall(client, name, args),
     () => executeFluentToolCall(client, name, args),
+    () => executeAppsToolCall(client, name, args),
+    () => executeActionFabricToolCall(client, name, args),
+    () => executeAgentStudioToolCall(client, name, args),
+    () => executeAiGovernanceToolCall(client, name, args),
     () => executeDocsToolCall(name, args),
     () => executeNowAssistSkillsToolCall(client, name, args),
     () => executeAiAgentsToolCall(client, name, args),

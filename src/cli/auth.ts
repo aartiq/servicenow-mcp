@@ -63,6 +63,24 @@ function captureCodeViaLoopback(authUrl: string, port: number, expectedState?: s
   });
 }
 
+/** First port in the list nothing else is listening on (the OAuth callback listener needs it free). */
+export async function pickLoopbackPort(ports: number[]): Promise<number> {
+  const { connect } = await import('node:net');
+  // Something already answering on localhost (IPv4 or IPv6) would catch the browser's callback, so a
+  // port only counts as free when nothing accepts a connection on either loopback address.
+  const answers = (port: number, host: string) => new Promise<boolean>((resolve) => {
+    const sock = connect({ port, host });
+    const done = (v: boolean) => { sock.destroy(); resolve(v); };
+    sock.once('connect', () => done(true));
+    sock.once('error', () => done(false));
+    sock.setTimeout(500, () => done(false));
+  });
+  for (const p of ports) {
+    if (!(await answers(p, '127.0.0.1')) && !(await answers(p, '::1'))) return p;
+  }
+  return ports[0]!;
+}
+
 interface UserToken {
   instanceUrl: string;
   accessToken: string;
@@ -132,8 +150,12 @@ export async function authLogin(): Promise<void> {
   const instanceUrl = instance.instanceUrl;
   // Loopback port for the OAuth redirect. Defaults to 8765 (what the docs tell you to register);
   // override with NOWAIKIT_OAUTH_PORT if 8765 is taken, but the OAuth app's redirect URL must match.
-  const port = Number(process.env.NOWAIKIT_OAUTH_PORT) || 8765;
+  const port = Number(process.env.NOWAIKIT_OAUTH_PORT) || (await pickLoopbackPort([8765, 8766, 8767]));
   const redirectUri = `http://localhost:${port}/callback`;
+  if (port !== 8765 && !process.env.NOWAIKIT_OAUTH_PORT) {
+    console.log(chalk.dim(`Port 8765 is in use on this machine, so sign-in uses ${port}. Apps created by \`nowaikit setup\` 5.0+ allow it;`));
+    console.log(chalk.dim(`for an older OAuth app add ${redirectUri} to its Redirect URL, or free port 8765.`));
+  }
 
   console.log('');
   console.log(chalk.bold('Per-user OAuth login'));

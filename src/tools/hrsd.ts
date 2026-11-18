@@ -219,6 +219,17 @@ export function getHrsdToolDefinitions() {
   ];
 }
 
+async function withPlugin<T>(plugin: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof ServiceNowError && /Invalid table/i.test(e.message)) {
+      throw new ServiceNowError(`This needs the ${plugin} plugin, which isn't active on this instance.`, 'PLUGIN_NOT_ACTIVE');
+    }
+    throw e;
+  }
+}
+
 export async function executeHrsdToolCall(
   client: ServiceNowClient,
   name: string,
@@ -347,15 +358,28 @@ export async function executeHrsdToolCall(
     }
     case 'get_hr_lifecycle_events': {
       if (!args.employee_sys_id) throw new ServiceNowError('employee_sys_id is required', 'INVALID_REQUEST');
-      let query = `employee=${args.employee_sys_id}`;
-      if (args.event_type) query += `^type=${args.event_type}`;
-      return await client.queryRecords({ table: 'sn_hr_le_lifecycle_event', query, limit: args.limit ?? 25 });
+      // Lifecycle events are HR cases on sn_hr_le_case; the event type lives on the case's
+      // HR service -> Lifecycle Event Type (event_type: onboarding, offboarding, transitions, hr_services).
+      let query = `subject_person=${args.employee_sys_id}`;
+      if (args.event_type) query += `^hr_service.le_type.event_type=${args.event_type}^ORhr_service.le_type.titleLIKE${args.event_type}`;
+      return await withPlugin('HR Lifecycle Events (com.sn_hr_lifecycle_events)', () => client.queryRecords({
+        table: 'sn_hr_le_case',
+        query,
+        limit: args.limit ?? 25,
+        orderBy: '-sys_created_on',
+        fields: 'sys_id,number,short_description,state,hr_service,subject_person,opened_for,opened_at,closed_at,le_progress,sys_created_on',
+      }));
     }
     case 'list_hr_document_templates': {
       const parts: string[] = [];
       if (args.active !== false) parts.push('active=true');
-      if (args.category) parts.push(`category=${args.category}`);
-      return await client.queryRecords({ table: 'sn_hr_core_document_template', query: parts.join('^') || '', limit: args.limit ?? 25 });
+      if (args.category) parts.push(`category.nameLIKE${args.category}`);
+      return await withPlugin('Document Templates (com.snc.document_templates)', () => client.queryRecords({
+        table: 'sn_doc_template',
+        query: parts.join('^') || '',
+        limit: args.limit ?? 25,
+        fields: 'sys_id,name,category,table,active,state,owner,signing_type,sys_updated_on',
+      }));
     }
     default:
       return null;

@@ -260,8 +260,22 @@ export async function executeMlToolCall(
       if (!args.model_sys_id) throw new ServiceNowError('model_sys_id is required', 'INVALID_REQUEST');
       const days = args.days || 90;
       const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 19).replace('T', ' ');
-      const runs = await client.queryRecords({ table: 'ml_solution_version', query: `solution=${args.model_sys_id}^sys_created_on>=${since}`, limit: 50, fields: 'sys_id,version,accuracy,training_status,sys_created_on' });
-      return { model_sys_id: args.model_sys_id, period_days: days, training_runs: runs.records };
+      // Each training run creates a new ml_solution version sharing the same solution_name
+      // (and solution definition). Accept either an ml_solution or an ml_solution_definition sys_id.
+      let match = `solution_definition=${args.model_sys_id}`;
+      try {
+        const model = await client.getRecord('ml_solution', args.model_sys_id, 'solution_name');
+        if ((model as any).solution_name) match = `solution_name=${(model as any).solution_name}`;
+      } catch { /* not an ml_solution sys_id: treat it as a solution definition */ }
+      const runs = await client.queryRecords({
+        table: 'ml_solution',
+        query: `${match}^sys_created_on>=${since}`,
+        limit: 50,
+        orderBy: '-sys_created_on',
+        fields: 'sys_id,solution_name,version,state,active,solution_precision,solution_recall,solution_coverage,row_count,sys_created_on',
+      });
+      const training_runs = runs.records.map((r: any) => ({ ...r, accuracy: r.solution_precision, training_status: r.state }));
+      return { model_sys_id: args.model_sys_id, period_days: days, training_runs };
     }
 
     case 'ml_virtual_agent_nlu': {

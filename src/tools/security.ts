@@ -260,6 +260,17 @@ export function getSecurityToolDefinitions() {
   ];
 }
 
+async function withPlugin<T>(plugin: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof ServiceNowError && /Invalid table/i.test(e.message)) {
+      throw new ServiceNowError(`This needs the ${plugin} plugin, which isn't active on this instance.`, 'PLUGIN_NOT_ACTIVE');
+    }
+    throw e;
+  }
+}
+
 export async function executeSecurityToolCall(
   client: ServiceNowClient,
   name: string,
@@ -347,10 +358,17 @@ export async function executeSecurityToolCall(
       return await client.queryRecords({ table: 'sn_ti_observable', query: q, limit: args.limit ?? 25 });
     }
     case 'list_security_playbooks': {
-      const parts: string[] = [];
+      // Security response playbooks are Playbooks (Process Automation Designer) definitions in
+      // sys_pd_process_definition, shipped by the Security Operations apps (sn_si*, sn_sec*, sn_vul*, sn_ti_*).
+      const parts: string[] = ['sys_scope.scopeSTARTSWITHsn_si^ORsys_scope.scopeSTARTSWITHsn_sec^ORsys_scope.scopeSTARTSWITHsn_vul^ORsys_scope.scopeSTARTSWITHsn_ti_'];
       if (args.active !== false) parts.push('active=true');
-      if (args.category) parts.push(`category=${args.category}`);
-      return await client.queryRecords({ table: 'sn_si_playbook', query: parts.join('^') || '', limit: args.limit ?? 25 });
+      if (args.category) parts.push(`labelLIKE${args.category}^ORdescriptionLIKE${args.category}`);
+      return await withPlugin('Playbooks for Security Incident Response (sn_si)', () => client.queryRecords({
+        table: 'sys_pd_process_definition',
+        query: parts.join('^'),
+        limit: args.limit ?? 25,
+        fields: 'sys_id,name,label,description,active,status,process_type,sys_scope,sys_updated_on',
+      }));
     }
     case 'run_security_playbook': {
       requireWrite();
@@ -393,10 +411,18 @@ export async function executeSecurityToolCall(
       return await client.queryRecords({ table: 'sn_compliance_assessment', query, limit: 50 });
     }
     case 'list_audit_results': {
+      // GRC Audit Management stores audit work as engagements (sn_audit_engagement, a planned task).
       const parts: string[] = [];
       if (args.state) parts.push(`state=${args.state}`);
-      if (args.severity) parts.push(`severity=${args.severity}`);
-      return await client.queryRecords({ table: 'sn_audit_result', query: parts.join('^') || '', limit: args.limit ?? 25 });
+      const resp = await withPlugin('GRC: Audit Management (com.sn_audit)', () => client.queryRecords({
+        table: 'sn_audit_engagement',
+        query: parts.join('^') || '',
+        limit: args.limit ?? 25,
+        orderBy: '-sys_created_on',
+      }));
+      return args.severity
+        ? { ...resp, note: 'Audit engagements have no severity field, so the severity filter was not applied.' }
+        : resp;
     }
     default:
       return null;

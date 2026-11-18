@@ -16,15 +16,17 @@ export function getAiAgentsToolDefinitions() {
         properties: {
           name: { type: 'string', description: 'Agent name' },
           description: { type: 'string', description: 'Agent description' },
-          capabilities: { type: 'array', items: { type: 'string' }, description: 'List of capability identifiers the agent supports' },
-          auto_generate_acls: { type: 'boolean', description: 'Automatically create ACL records for the agent (default true)' },
+          capabilities: { type: 'array', items: { type: 'string' }, description: 'Tools to attach: AI Agent tool (sn_aia_tool) names or sys_ids. Unknown entries are reported, not created' },
+          auto_generate_acls: { type: 'boolean', description: 'Create the execute ACL (type gen_ai_agent) that controls who can invoke the agent (default true)' },
+          role: { type: 'string', description: 'Agent role/purpose, e.g. "Service desk triage specialist" (default: the description)' },
+          instructions: { type: 'string', description: 'Agent instructions for its first version (default: the description)' },
         },
         required: ['name', 'description', 'capabilities'],
       },
     },
     {
       name: 'list_ai_agents',
-      description: 'List AI agent definitions',
+      description: 'List AI agent definitions (AI Agent Studio, sn_aia_agent) with their active flag from sn_aia_agent_config',
       inputSchema: {
         type: 'object',
         properties: {
@@ -36,7 +38,7 @@ export function getAiAgentsToolDefinitions() {
     },
     {
       name: 'get_ai_agent',
-      description: 'Get an AI agent definition and its related ACLs',
+      description: 'Get an AI agent definition with its config, tools, versions and execute ACLs',
       inputSchema: {
         type: 'object',
         properties: {
@@ -69,6 +71,7 @@ export function getAiAgentsToolDefinitions() {
             },
           },
           trigger_conditions: { type: 'string', description: 'Optional trigger condition expression' },
+          execution_mode: { type: 'string', description: 'copilot (default) or autopilot' },
         },
         required: ['name', 'description', 'agent_sys_id', 'steps'],
       },
@@ -79,6 +82,63 @@ export function getAiAgentsToolDefinitions() {
 const AI_AGENT_TOOL_NAMES = new Set([
   'create_ai_agent', 'list_ai_agents', 'get_ai_agent', 'create_agentic_workflow',
 ]);
+
+function refValue(v: any): string {
+  return v && typeof v === 'object' ? String(v.value ?? '') : String(v ?? '');
+}
+
+async function withAiaPlugin<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof ServiceNowError && /Invalid table/i.test(e.message)) {
+      throw new ServiceNowError("This needs the AI Agents (sn_aia) plugin, which isn't active on this instance.", 'PLUGIN_NOT_ACTIVE');
+    }
+    throw e;
+  }
+}
+
+/** Return the record's latest version, giving it the instructions; create V1 (draft) if there is none. */
+async function ensureVersion(client: ServiceNowClient, targetTable: string, targetId: string, instructions: string): Promise<any> {
+  const existing = await client.queryRecords({ table: 'sn_aia_version', query: `target_id=${targetId}`, limit: 1, orderBy: '-version_number', fields: 'sys_id,instructions' });
+  if (existing.count) {
+    const v = existing.records[0] as any;
+    return v.instructions === instructions ? await client.getRecord('sn_aia_version', String(v.sys_id)) : await client.updateRecord('sn_aia_version', String(v.sys_id), { instructions });
+  }
+  return await client.createRecord('sn_aia_version', {
+    target_table: targetTable,
+    target_id: targetId,
+    version_name: 'V1',
+    version_number: '1',
+    state: 'draft',
+    instructions,
+  });
+}
+
+/**
+ * Create the execute ACL that controls who can invoke an AI agent / agentic workflow. ServiceNow names
+ * these ACLs after the record's internal_name and types them gen_ai_agent / gen_ai_workflow.
+ */
+async function createExecuteAcl(client: ServiceNowClient, aclType: 'gen_ai_agent' | 'gen_ai_workflow', record: any, description: string): Promise<any> {
+  const table = aclType === 'gen_ai_agent' ? 'sn_aia_agent' : 'sn_aia_usecase';
+  const fresh = await client.getRecord(table, String(record.sys_id), 'internal_name');
+  const internalName = String((fresh as any).internal_name || '');
+  if (!internalName) throw new ServiceNowError(`${table} ${record.sys_id} has no internal_name yet`, 'NOT_FOUND');
+  const [type, op] = await Promise.all([
+    client.queryRecords({ table: 'sys_security_type', query: `name=${aclType}`, limit: 1, fields: 'sys_id' }),
+    client.queryRecords({ table: 'sys_security_operation', query: 'name=execute', limit: 1, fields: 'sys_id' }),
+  ]);
+  if (!type.count || !op.count) throw new ServiceNowError(`ACL type ${aclType} or operation execute not found`, 'NOT_FOUND');
+  return await client.createRecord('sys_security_acl', {
+    name: internalName,
+    type: String(type.records[0].sys_id),
+    operation: String(op.records[0].sys_id),
+    decision_type: 'allow',
+    admin_overrides: 'true',
+    active: 'true',
+    description,
+  });
+}
 
 export async function executeAiAgentsToolCall(
   client: ServiceNowClient,
@@ -97,81 +157,127 @@ export async function executeAiAgentsToolCall(
         throw new ServiceNowError('capabilities must be an array of strings', 'INVALID_REQUEST');
       }
 
-      const agentData: Record<string, any> = {
+      // Same record model as the now-sdk AiAgent API: sn_aia_agent + sn_aia_agent_config + sn_aia_version.
+      const instructions = args.instructions || args.description;
+      const agentRecord = await withAiaPlugin(() => client.createRecord('sn_aia_agent', {
         name: args.name,
         description: args.description,
-        capabilities: args.capabilities.join(','),
-        active: true,
-      };
-
-      const agentRecord = await client.createRecord('sys_ai_agent', agentData);
+        role: args.role || args.description,
+        instructions,
+        agent_type: 'internal',
+        channel: 'nap_and_va',
+        record_type: 'custom',
+      }));
       const agentSysId = String(agentRecord.sys_id);
-      const autoAcls = args.auto_generate_acls !== false;
+
+      const existingConfig = await client.queryRecords({ table: 'sn_aia_agent_config', query: `agent=${agentSysId}`, limit: 1, fields: 'sys_id' });
+      const config = existingConfig.count
+        ? await client.updateRecord('sn_aia_agent_config', String(existingConfig.records[0].sys_id), { active: 'true' })
+        : await client.createRecord('sn_aia_agent_config', { agent: agentSysId, active: 'true', public: 'false' });
+
+      // Current releases create the config and a published V1 version on insert (from the agent's
+      // instructions); only create them when the instance didn't.
+      const version = await ensureVersion(client, 'sn_aia_agent', agentSysId, instructions);
+
+      const tools: any[] = [];
+      const unresolvedCapabilities: string[] = [];
+      for (const cap of args.capabilities as string[]) {
+        const query = /^[0-9a-f]{32}$/i.test(cap) ? `sys_id=${cap}` : `name=${cap}`;
+        const found = await client.queryRecords({ table: 'sn_aia_tool', query, limit: 1, fields: 'sys_id,name' });
+        if (!found.count) { unresolvedCapabilities.push(cap); continue; }
+        const tool = found.records[0] as any;
+        tools.push(await client.createRecord('sn_aia_agent_tool_m2m', {
+          agent: agentSysId,
+          tool: tool.sys_id,
+          name: tool.name,
+          active: 'true',
+          execution_mode: 'copilot',
+        }));
+      }
+
       const createdAcls: any[] = [];
-
-      if (autoAcls) {
-        // Create read ACL for the agent
-        const readAcl = await client.createRecord('sys_security_acl', {
-          name: `${args.name} - Read`,
-          type: 'record',
-          operation: 'read',
-          admin_overrides: true,
-          active: true,
-          description: `Auto-generated read ACL for AI agent: ${args.name}`,
-          condition: `sys_ai_agent=${agentSysId}`,
-        });
-        createdAcls.push(readAcl);
-
-        // Create write ACL for the agent
-        const writeAcl = await client.createRecord('sys_security_acl', {
-          name: `${args.name} - Write`,
-          type: 'record',
-          operation: 'write',
-          admin_overrides: true,
-          active: true,
-          description: `Auto-generated write ACL for AI agent: ${args.name}`,
-          condition: `sys_ai_agent=${agentSysId}`,
-        });
-        createdAcls.push(writeAcl);
+      let aclError: string | undefined;
+      if (args.auto_generate_acls !== false) {
+        try {
+          createdAcls.push(await createExecuteAcl(client, 'gen_ai_agent', agentRecord, `Execute ACL for AI agent: ${args.name}`));
+        } catch (e) {
+          aclError = (e instanceof Error ? e.message : String(e)).split('\n')[0];
+        }
       }
 
       return {
         message: 'AI agent created',
         agent: agentRecord,
+        config,
+        version,
+        tools,
+        ...(unresolvedCapabilities.length ? { unresolved_capabilities: unresolvedCapabilities } : {}),
         acls_created: createdAcls.length,
         acls: createdAcls,
+        ...(aclError ? { acl_error: `Agent created, but its execute ACL was not: ${aclError}. Create it in AI Agent Studio (Define security controls) or with the security_admin role.` } : {}),
       };
     }
 
     case 'list_ai_agents': {
-      const parts: string[] = [];
-      if (args.active !== undefined) parts.push(`active=${args.active}`);
-      const query = parts.length > 0 ? parts.join('^') : undefined;
-
-      const resp = await client.queryRecords({
-        table: 'sys_ai_agent',
-        query,
-        limit: args.limit || 25,
-        fields: 'sys_id,name,description,capabilities,active,sys_updated_on',
-      });
-      return { count: resp.count, agents: resp.records };
+      // sn_aia_agent has no active field: the flag lives on sn_aia_agent_config (agent -> sn_aia_agent).
+      const agentFields = 'sys_id,name,description,role,agent_type,channel,record_type,internal_name,sys_updated_on';
+      let agents: any[];
+      if (args.active !== undefined) {
+        const cfgs = await withAiaPlugin(() => client.queryRecords({
+          table: 'sn_aia_agent_config',
+          query: `active=${args.active}`,
+          limit: args.limit || 25,
+          fields: 'agent',
+        }));
+        const ids = cfgs.records.map((c: any) => refValue(c.agent)).filter(Boolean);
+        agents = ids.length
+          ? (await client.queryRecords({ table: 'sn_aia_agent', query: `sys_idIN${ids.join(',')}`, limit: ids.length, fields: agentFields })).records
+          : [];
+      } else {
+        agents = (await withAiaPlugin(() => client.queryRecords({ table: 'sn_aia_agent', limit: args.limit || 25, fields: agentFields }))).records;
+      }
+      const activeById = new Map<string, string>();
+      if (agents.length) {
+        const cfgs = await client.queryRecords({
+          table: 'sn_aia_agent_config',
+          query: `agentIN${agents.map((a: any) => a.sys_id).join(',')}`,
+          limit: agents.length,
+          fields: 'agent,active',
+        });
+        for (const c of cfgs.records as any[]) activeById.set(refValue(c.agent), String(c.active));
+      }
+      const records = agents.map((a: any) => ({ ...a, active: activeById.get(String(a.sys_id)) ?? null }));
+      return { count: records.length, agents: records };
     }
 
     case 'get_ai_agent': {
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
 
-      const agent = await client.getRecord('sys_ai_agent', args.sys_id);
+      const agent = await withAiaPlugin(() => client.getRecord('sn_aia_agent', args.sys_id));
       const agentSysId = String(agent.sys_id);
+      const [config, tools, versions] = await Promise.all([
+        client.queryRecords({ table: 'sn_aia_agent_config', query: `agent=${agentSysId}`, limit: 1 }),
+        client.queryRecords({ table: 'sn_aia_agent_tool_m2m', query: `agent=${agentSysId}`, limit: 100, fields: 'sys_id,name,tool,active,execution_mode,description' }),
+        client.queryRecords({ table: 'sn_aia_version', query: `target_id=${agentSysId}`, limit: 20, orderBy: '-version_number', fields: 'sys_id,version_name,version_number,state,sys_updated_on' }),
+      ]);
+      // Agent execute ACLs are type gen_ai_agent and named after the agent's internal_name.
+      const aclResp = (agent as any).internal_name
+        ? await client.queryRecords({
+            table: 'sys_security_acl',
+            query: `type.name=gen_ai_agent^name=${(agent as any).internal_name}`,
+            limit: 20,
+            fields: 'sys_id,name,type,operation,active,decision_type,description',
+          })
+        : { count: 0, records: [] };
 
-      // Fetch related ACLs
-      const aclResp = await client.queryRecords({
-        table: 'sys_security_acl',
-        query: `conditionLIKEsys_ai_agent=${agentSysId}`,
-        limit: 20,
-        fields: 'sys_id,name,type,operation,active,description',
-      });
-
-      return { agent, acls: aclResp.records, acl_count: aclResp.count };
+      return {
+        agent: { ...agent, active: config.records[0] ? (config.records[0] as any).active : null },
+        config: config.records[0] ?? null,
+        tools: tools.records,
+        versions: versions.records,
+        acls: aclResp.records,
+        acl_count: aclResp.count,
+      };
     }
 
     case 'create_agentic_workflow': {
@@ -184,17 +290,51 @@ export async function executeAiAgentsToolCall(
         throw new ServiceNowError('steps must be an array', 'INVALID_REQUEST');
       }
 
-      const workflowData: Record<string, any> = {
+      // Same record model as the now-sdk AiAgenticWorkflow API: sn_aia_usecase with a team of
+      // agents (sn_aia_team + sn_aia_team_member), instructions on sn_aia_version, and the active
+      // flag on sn_aia_usecase_config_override. Steps become the version's instructions.
+      await withAiaPlugin(() => client.getRecord('sn_aia_agent', args.agent_sys_id, 'sys_id'));
+      const instructions = (args.steps as any[]).map((st, i) => {
+        const inputs = st.inputs && Object.keys(st.inputs).length ? ` with inputs ${JSON.stringify(st.inputs)}` : '';
+        const cond = st.condition ? ` (only when ${st.condition})` : '';
+        return `${i + 1}. ${st.name}: ${st.action}${inputs}${cond}`;
+      }).join('\n');
+
+      const team = await client.createRecord('sn_aia_team', { name: `${args.name} Team`, description: args.description });
+      const teamMember = await client.createRecord('sn_aia_team_member', { team: String(team.sys_id), agent: args.agent_sys_id, memory_scope: 'global' });
+      const record = await client.createRecord('sn_aia_usecase', {
         name: args.name,
         description: args.description,
-        agent: args.agent_sys_id,
-        steps: JSON.stringify(args.steps),
-        active: true,
-      };
-      if (args.trigger_conditions) workflowData.trigger_conditions = args.trigger_conditions;
+        team: String(team.sys_id),
+        record_type: 'custom',
+        execution_mode: args.execution_mode === 'autopilot' ? 'autopilot' : 'copilot',
+        ...(args.trigger_conditions ? { condition: args.trigger_conditions } : {}),
+      });
+      const usecaseSysId = String(record.sys_id);
+      const version = await ensureVersion(client, 'sn_aia_usecase', usecaseSysId, instructions);
+      const existingOverride = await client.queryRecords({ table: 'sn_aia_usecase_config_override', query: `usecase_configuration=${usecaseSysId}`, limit: 1, fields: 'sys_id' });
+      const configOverride = existingOverride.count
+        ? await client.updateRecord('sn_aia_usecase_config_override', String(existingOverride.records[0].sys_id), { active: 'true' })
+        : await client.createRecord('sn_aia_usecase_config_override', { usecase_configuration: usecaseSysId, active: 'true' });
 
-      const record = await client.createRecord('sys_ai_agentic_workflow', workflowData);
-      return { message: 'Agentic workflow created', workflow: record };
+      let acl: any;
+      let aclError: string | undefined;
+      try {
+        acl = await createExecuteAcl(client, 'gen_ai_workflow', record, `Execute ACL for agentic workflow: ${args.name}`);
+      } catch (e) {
+        aclError = (e instanceof Error ? e.message : String(e)).split('\n')[0];
+      }
+
+      return {
+        message: 'Agentic workflow created',
+        workflow: record,
+        team,
+        team_members: [teamMember],
+        version,
+        config_override: configOverride,
+        ...(acl ? { acl } : {}),
+        ...(aclError ? { acl_error: `Workflow created, but its execute ACL was not: ${aclError}. Create it in AI Agent Studio or with the security_admin role.` } : {}),
+      };
     }
 
     default:

@@ -156,12 +156,18 @@ export async function executeVaToolCall(
     case 'get_va_conversation': {
       if (!args.conversation_id) throw new ServiceNowError('conversation_id is required', 'INVALID_REQUEST');
       const resp = await client.queryRecords({
-        table: 'sys_cs_conversation_message',
-        query: `conversation=${args.conversation_id}`,
+        table: 'sys_cs_message',
+        query: `conversation=${args.conversation_id}^ORsession=${args.conversation_id}`,
         limit: args.limit || 50,
-        fields: 'sys_id,message,speaker,sys_created_on',
+        orderBy: 'sys_created_on',
+        fields: 'sys_id,conversation,sequence,direction,sender,is_bot_message,is_agent,message_type,payload,status,sys_created_on',
       });
-      return { conversation_id: args.conversation_id, message_count: resp.count, messages: resp.records };
+      const messages = resp.records.map((m: any) => ({
+        ...m,
+        message: m.payload,
+        speaker: m.is_bot_message === 'true' ? 'bot' : m.is_agent === 'true' ? 'agent' : 'user',
+      }));
+      return { conversation_id: args.conversation_id, message_count: resp.count, messages };
     }
 
     case 'list_va_conversations': {
@@ -179,9 +185,9 @@ export async function executeVaToolCall(
 
     case 'list_va_categories': {
       const resp = await client.queryRecords({
-        table: 'sys_cs_category',
+        table: 'sys_cb_topic_category',
         limit: args.limit || 25,
-        fields: 'sys_id,title,active,description,order',
+        fields: 'sys_id,name,description,visible,sys_updated_on',
       });
       return { count: resp.count, categories: resp.records };
     }

@@ -28,6 +28,8 @@ export function getTransportType(): TransportType {
 export async function connectTransport(
   server: Server,
   toolCount: number,
+  /** Builds a fresh server per HTTP/SSE session. Without it every session shares `server` (one client only). */
+  createSession?: () => Server,
 ): Promise<NowAIKitHttpServer | null> {
   const transportType = getTransportType();
 
@@ -41,10 +43,11 @@ export async function connectTransport(
   // HTTP-based transports (SSE or Streamable HTTP)
   const httpServer = createHttpServer();
 
+  const factory = createSession || (() => server);
   if (transportType === 'sse') {
-    await setupSseTransport(server, httpServer);
+    await setupSseTransport(factory, httpServer);
   } else {
-    await setupStreamableHttpTransport(server, httpServer);
+    await setupStreamableHttpTransport(factory, httpServer);
   }
 
   logger.info(`NowAIKit server running on ${transportType} [${toolCount} tools]`);
@@ -54,7 +57,7 @@ export async function connectTransport(
 /**
  * SSE Transport — GET /sse opens an SSE stream, POST /messages sends client messages.
  */
-async function setupSseTransport(server: Server, httpServer: NowAIKitHttpServer): Promise<void> {
+async function setupSseTransport(factory: () => Server, httpServer: NowAIKitHttpServer): Promise<void> {
   const { SSEServerTransport } = await import('@modelcontextprotocol/sdk/server/sse.js');
 
   const sessions = new Map<string, InstanceType<typeof SSEServerTransport>>();
@@ -69,7 +72,7 @@ async function setupSseTransport(server: Server, httpServer: NowAIKitHttpServer)
       logger.info(`SSE session closed: ${sessionId}`);
     });
 
-    await server.connect(transport);
+    await factory().connect(transport);
     logger.info(`SSE session connected: ${sessionId}`);
   }, true);
 
@@ -97,13 +100,38 @@ async function setupSseTransport(server: Server, httpServer: NowAIKitHttpServer)
 /**
  * Streamable HTTP Transport — POST/GET/DELETE /mcp for all MCP communication.
  */
-async function setupStreamableHttpTransport(server: Server, httpServer: NowAIKitHttpServer): Promise<void> {
+async function setupStreamableHttpTransport(factory: () => Server, httpServer: NowAIKitHttpServer): Promise<void> {
   const { StreamableHTTPServerTransport } = await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
+  const { isInitializeRequest } = await import('@modelcontextprotocol/sdk/types.js');
   const { randomUUID } = await import('crypto');
 
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
-  });
+  // One transport + server per MCP session, so any number of clients can connect at once.
+  const sessions = new Map<string, InstanceType<typeof StreamableHTTPServerTransport>>();
+
+  const headerSession = (req: { headers: Record<string, unknown> }) => {
+    const v = req.headers['mcp-session-id'];
+    return Array.isArray(v) ? String(v[0]) : v ? String(v) : undefined;
+  };
+
+  const sendError = (res: any, status: number, message: string) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message }, id: null }));
+  };
+
+  /** The transport for this request, creating a new session on initialize. */
+  const transportFor = async (req: any, body: unknown) => {
+    const sid = headerSession(req);
+    if (sid) return sessions.get(sid);
+    const messages = Array.isArray(body) ? body : [body];
+    if (!messages.some((m) => isInitializeRequest(m))) return undefined;
+    const transport: InstanceType<typeof StreamableHTTPServerTransport> = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (id: string) => { sessions.set(id, transport); },
+    });
+    transport.onclose = () => { if (transport.sessionId) sessions.delete(transport.sessionId); };
+    await factory().connect(transport);
+    return transport;
+  };
 
   // Mount transport on /mcp
   httpServer.post('/mcp', async (req, res) => {
@@ -114,6 +142,11 @@ async function setupStreamableHttpTransport(server: Server, httpServer: NowAIKit
     // the MCP transport (3rd arg) — otherwise it re-reads an empty stream and the
     // request fails with a JSON-RPC parse error (-32700).
     const parsedBody = (req as { body?: unknown }).body;
+    const transport = await transportFor(req, parsedBody);
+    if (!transport) {
+      sendError(res, headerSession(req) ? 404 : 400, headerSession(req) ? 'Session not found. Start a new session with initialize.' : 'Bad Request: no session. Send initialize first.');
+      return;
+    }
     if (isDelegatedAuthEnabled()) {
       const ctx = parseDelegatedAuthHeaders(req.headers as Record<string, string | string[] | undefined>);
       await runWithDelegatedAuth(ctx, () => transport.handleRequest(req, res, parsedBody));
@@ -122,22 +155,21 @@ async function setupStreamableHttpTransport(server: Server, httpServer: NowAIKit
     }
   }, true);
 
-  httpServer.get('/mcp', async (req, res) => {
+  const bySession = async (req: any, res: any) => {
+    const transport = sessions.get(headerSession(req) || '');
+    if (!transport) { sendError(res, 404, 'Session not found.'); return; }
     await transport.handleRequest(req, res);
-  }, true);
-
-  httpServer.delete('/mcp', async (req, res) => {
-    await transport.handleRequest(req, res);
-  }, true);
+  };
+  httpServer.get('/mcp', bySession, true);
+  httpServer.delete('/mcp', bySession, true);
 
   addHealthRoute(httpServer);
-  await server.connect(transport);
   await httpServer.start();
 }
 
 /** Shared health endpoint — no auth required. */
 function addHealthRoute(httpServer: NowAIKitHttpServer): void {
-  httpServer.get('/health', async (_req, res) => {
+  const health = async (_req: unknown, res: { writeHead: (s: number, h: Record<string, string>) => void; end: (b: string) => void }) => {
     const { getTools } = await import('../tools/index.js');
     const tools = getTools();
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -149,7 +181,9 @@ function addHealthRoute(httpServer: NowAIKitHttpServer): void {
       tools_count: tools.length,
       timestamp: new Date().toISOString(),
     }));
-  }, false);
+  };
+  httpServer.get('/health', health as any, false);
+  httpServer.get('/api/health', health as any, false); // alias used in older docs
 }
 
 export { NowAIKitHttpServer } from './http-server.js';

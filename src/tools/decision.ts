@@ -5,8 +5,8 @@
  *
  * Tables:
  *   sys_decision         — the Decision Table (metadata)
- *   sys_decision_input   — inputs to a decision (referenced by `decision`)
- *   sys_decision_answer  — answer/result rows for a decision (referenced by `decision`)
+ *   sys_decision_input    — inputs to a decision (referenced by `model`)
+ *   sys_decision_question — rows of a decision table, each with its answer (referenced by `decision_table`)
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
@@ -127,17 +127,24 @@ export async function executeDecisionToolCall(
         decision = resp.records[0];
       }
       const sysId = (decision as any).sys_id;
-      const inputs = await client.queryRecords({ table: 'sys_decision_input', query: `decision=${sysId}`, limit: 100 }).catch(() => ({ records: [] }));
-      const answers = await client.queryRecords({ table: 'sys_decision_answer', query: `decision=${sysId}`, limit: 100 }).catch(() => ({ records: [] }));
+      const inputs = await client.queryRecords({ table: 'sys_decision_input', query: `model=${sysId}`, limit: 100 }).catch(() => ({ records: [] }));
+      const answers = await client.queryRecords({ table: 'sys_decision_question', query: `decision_table=${sysId}`, limit: 100, orderBy: 'order' }).catch(() => ({ records: [] }));
       return { decision, inputs: (inputs as any).records, answers: (answers as any).records };
     }
     case 'list_decision_inputs': {
       if (!args.decision_sys_id) throw new ServiceNowError('decision_sys_id is required', 'INVALID_REQUEST');
-      return await client.queryRecords({ table: 'sys_decision_input', query: `decision=${args.decision_sys_id}`, limit: 100 });
+      return await client.queryRecords({ table: 'sys_decision_input', query: `model=${args.decision_sys_id}`, limit: 100 });
     }
     case 'list_decision_answers': {
       if (!args.decision_sys_id) throw new ServiceNowError('decision_sys_id is required', 'INVALID_REQUEST');
-      return await client.queryRecords({ table: 'sys_decision_answer', query: `decision=${args.decision_sys_id}`, limit: args.limit ?? 100 });
+      // Each decision table row (sys_decision_question) holds its conditions and the answer it returns.
+      return await client.queryRecords({
+        table: 'sys_decision_question',
+        query: `decision_table=${args.decision_sys_id}`,
+        limit: args.limit ?? 100,
+        orderBy: 'order',
+        fields: 'sys_id,label,order,answer,default_answer,condition,active,decision_table',
+      });
     }
     case 'create_decision_table': {
       requireWrite();
@@ -150,7 +157,7 @@ export async function executeDecisionToolCall(
       requireWrite();
       if (!args.decision_sys_id) throw new ServiceNowError('decision_sys_id is required', 'INVALID_REQUEST');
       if (!args.name) throw new ServiceNowError('name is required', 'INVALID_REQUEST');
-      const payload: Record<string, any> = { decision: args.decision_sys_id, name: args.name, ...(args.fields ?? {}) };
+      const payload: Record<string, any> = { model: args.decision_sys_id, name: args.name, ...(args.fields ?? {}) };
       if (args.type !== undefined) payload.type = args.type;
       if (args.order !== undefined) payload.order = args.order;
       const result = await client.createRecord('sys_decision_input', payload);

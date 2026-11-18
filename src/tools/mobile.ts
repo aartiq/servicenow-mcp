@@ -2,8 +2,8 @@
  * ServiceNow Mobile tools — mobile app configuration, layout management,
  * push notifications, offline sync, and mobile analytics.
  *
- * ServiceNow tables: sys_sg_mobile_app_config, sys_sg_mobile_layout,
- *   sys_sg_mobile_applet, sys_sg_push_notification, sys_sg_offline_sync
+ * ServiceNow tables: sys_sg_native_client (app configs), sys_sg_screen (applets),
+ *   sys_sg_view_config (cards/layouts), sys_sg_push_notification, sys_sg_offline_sync
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
@@ -71,12 +71,13 @@ export async function executeMobileToolCall(
 ): Promise<any> {
   switch (name) {
     case 'list_mobile_app_configs': {
-      const resp = await client.queryRecords({ table: 'sys_sg_mobile_app_config', query: args.active !== false ? 'active=true' : undefined, limit: args.limit || 25, fields: 'sys_id,name,description,active,sys_updated_on' });
+      // Mobile app configs live in sys_sg_native_client (no active flag, so the active filter is a no-op).
+      const resp = await client.queryRecords({ table: 'sys_sg_native_client', limit: args.limit || 25, orderBy: 'order', fields: 'sys_id,name,type,offline_enabled,required_roles,access_control_type,order,sys_scope,sys_updated_on' });
       return { count: resp.count, configs: resp.records };
     }
     case 'get_mobile_app_config': {
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
-      return await client.getRecord('sys_sg_mobile_app_config', args.sys_id);
+      return await client.getRecord('sys_sg_native_client', args.sys_id);
     }
     case 'create_mobile_app_config': {
       requireWrite();
@@ -85,8 +86,14 @@ export async function executeMobileToolCall(
       return { action: 'created', ...result };
     }
     case 'list_mobile_applets': {
-      const resp = await client.queryRecords({ table: 'sys_sg_mobile_applet', query: args.app_config ? `app_config=${args.app_config}` : undefined, limit: args.limit || 25, fields: 'sys_id,name,table,icon,app_config,order,sys_updated_on' });
-      return { count: resp.count, applets: resp.records };
+      // Applets are mobile screens (sys_sg_screen and its list/form/details/... subclasses). Screens are not
+      // tied to an app config directly (they're reached through launchers and navigation), so app_config is not applied.
+      const resp = await client.queryRecords({ table: 'sys_sg_screen', limit: args.limit || 25, fields: 'sys_id,name,description,icon,sys_class_name,available_offline,roles_override,sys_scope,sys_updated_on' });
+      return {
+        count: resp.count,
+        applets: resp.records,
+        ...(args.app_config ? { note: 'Mobile screens are not linked to an app config directly, so the app_config filter was not applied.' } : {}),
+      };
     }
     case 'create_mobile_applet': {
       requireWrite();
@@ -95,7 +102,8 @@ export async function executeMobileToolCall(
       return { action: 'created', ...result };
     }
     case 'list_mobile_layouts': {
-      const resp = await client.queryRecords({ table: 'sys_sg_mobile_layout', limit: args.limit || 25, fields: 'sys_id,name,table,type,sys_updated_on' });
+      // Mobile record layouts are cards (sys_sg_view_config): a table plus a card template.
+      const resp = await client.queryRecords({ table: 'sys_sg_view_config', limit: args.limit || 25, fields: 'sys_id,name,table,template,description,active,sys_updated_on' });
       return { count: resp.count, layouts: resp.records };
     }
     case 'create_mobile_layout': {
@@ -119,9 +127,28 @@ export async function executeMobileToolCall(
     case 'get_mobile_analytics': {
       const days = args.days || 30;
       const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 19).replace('T', ' ');
-      const sessions = await client.queryRecords({ table: 'sys_sg_mobile_session', query: `sys_created_on>=${since}`, limit: 1, fields: 'sys_id' });
-      const configs = await client.queryRecords({ table: 'sys_sg_mobile_app_config', query: 'active=true', limit: 100, fields: 'sys_id,name' });
-      return { period_days: days, total_sessions: sessions.count, active_apps: configs.count, apps: configs.records };
+      // There is no mobile session table. Mobile app traffic goes through the /api/now/sg/ API,
+      // so usage is read from the transaction log (syslog_transaction), grouped by user.
+      const byUser = await client.runStats('syslog_transaction', {
+        query: `urlSTARTSWITH/api/now/sg/^sys_created_on>=${since}`,
+        groupBy: 'sys_created_by',
+      });
+      const users = byUser
+        .map((g: any) => ({ user: g.groupby_fields?.[0]?.value, requests: Number(g.stats?.count || 0) }))
+        .filter((u: any) => u.user)
+        .sort((a: any, b: any) => b.requests - a.requests);
+      const totalRequests = users.reduce((n: number, u: any) => n + u.requests, 0);
+      const configs = await client.queryRecords({ table: 'sys_sg_native_client', limit: 100, fields: 'sys_id,name,type' });
+      return {
+        period_days: days,
+        total_sessions: totalRequests,
+        total_requests: totalRequests,
+        active_users: users.length,
+        top_users: users.slice(0, 10),
+        active_apps: configs.count,
+        apps: configs.records,
+        note: 'Usage counts mobile API transactions (/api/now/sg/) in syslog_transaction, which only holds recent history (transaction log rotation).',
+      };
     }
     default:
       return null;

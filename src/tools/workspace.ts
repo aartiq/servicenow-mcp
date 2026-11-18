@@ -167,13 +167,14 @@ export async function executeWorkspaceToolCall(
       return { action: 'created', ...result };
     }
     case 'list_workspaces': {
-      const resp = await client.queryRecords({ table: 'sys_aw_workspace', query: args.active !== false ? 'active=true' : undefined, limit: args.limit || 25, fields: 'sys_id,name,description,table,active,icon,sys_updated_on' });
+      // Configurable (Next Experience) and Agent Workspaces share one config record per workspace: sys_aw_master_config.
+      const resp = await client.queryRecords({ table: 'sys_aw_master_config', query: args.active !== false ? 'active=true' : undefined, limit: args.limit || 25, fields: 'sys_id,name,description,active,workspace_url,primary_color,sys_scope,sys_updated_on' });
       return { count: resp.count, workspaces: resp.records };
     }
     case 'get_workspace': {
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
-      const ws = await client.getRecord('sys_aw_workspace', args.sys_id);
-      const lists = await client.queryRecords({ table: 'sys_aw_list', query: `workspace=${args.sys_id}`, limit: 50, fields: 'sys_id,title,table,query,columns' });
+      const ws = await client.getRecord('sys_aw_master_config', args.sys_id);
+      const lists = await client.queryRecords({ table: 'sys_aw_list', query: `workspace=${args.sys_id}`, limit: 50, fields: 'sys_id,title,table,condition,columns,category,active,order' });
       return { ...ws, lists: lists.records };
     }
     case 'create_workspace': {

@@ -5,7 +5,7 @@
  *                  get_deployment, get_devops_insights
  * Tier 1 (Write): create_devops_change, track_deployment
  *
- * ServiceNow tables: sn_devops_pipeline, sn_devops_artifact, sn_devops_deploy_task,
+ * ServiceNow tables: sn_devops_pipeline, sn_devops_artifact, sn_devops_task_execution,
  *                    sn_devops_change_request
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
@@ -81,7 +81,7 @@ export function getDevopsToolDefinitions() {
     },
     {
       name: 'track_deployment',
-      description: 'Record a deployment event in ServiceNow for audit and velocity tracking. **[Write]**',
+      description: 'Record a deployment event in ServiceNow (a DevOps task execution, linked to the pipeline deploy step and environment when they exist) for audit and velocity tracking. **[Write]**',
       inputSchema: {
         type: 'object',
         properties: {
@@ -91,6 +91,7 @@ export function getDevopsToolDefinitions() {
           artifact_version: { type: 'string', description: 'Version or build number' },
           status: { type: 'string', description: 'Deployment status: success, failed, rolled_back' },
           notes: { type: 'string', description: 'Deployment notes' },
+          execution_url: { type: 'string', description: 'Optional link to the pipeline run (CI/CD job URL)' },
         },
         required: ['environment', 'artifact_name', 'status'],
       },
@@ -108,6 +109,21 @@ export function getDevopsToolDefinitions() {
       },
     },
   ];
+}
+
+// DevOps records a deployment as a task execution whose orchestration task runs on a deploy step.
+const DEPLOY_EXECUTIONS = 'orchestration_task.step.typeINdeploy,prod_deploy,deploy_test';
+const DEPLOY_FIELDS = 'sys_id,number,orchestration_task,environment,result,build_number,start_time,end_time,duration,execution_url,trigger_type,sys_created_on,sys_updated_on';
+
+async function withDevOpsPlugin<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof ServiceNowError && /Invalid table/i.test(e.message)) {
+      throw new ServiceNowError("This needs the DevOps Change Velocity (sn_devops_chgsvc) plugin, which isn't active on this instance.", 'PLUGIN_NOT_ACTIVE');
+    }
+    throw e;
+  }
 }
 
 export async function executeDevopsToolCall(
@@ -134,22 +150,23 @@ export async function executeDevopsToolCall(
     }
 
     case 'list_deployments': {
-      let query = '';
-      if (args.pipeline_sys_id) query = `pipeline=${args.pipeline_sys_id}`;
-      if (args.environment) query = query ? `${query}^stage=${args.environment}` : `stage=${args.environment}`;
-      if (args.state) query = query ? `${query}^status=${args.state}` : `status=${args.state}`;
-      const resp = await client.queryRecords({
-        table: 'sn_devops_deploy_task',
-        query: query || undefined,
+      const parts: string[] = [DEPLOY_EXECUTIONS];
+      if (args.pipeline_sys_id) parts.push(`orchestration_task.step.pipeline=${args.pipeline_sys_id}`);
+      if (args.environment) parts.push(`environment.name=${args.environment}^ORenvironment=${args.environment}`);
+      if (args.state) parts.push(`result=${args.state}`);
+      const resp = await withDevOpsPlugin(() => client.queryRecords({
+        table: 'sn_devops_task_execution',
+        query: parts.join('^'),
         limit: args.limit || 25,
-        fields: 'sys_id,name,pipeline,stage,status,artifact_name,artifact_version,sys_created_on,sys_updated_on',
-      });
+        orderBy: '-sys_created_on',
+        fields: DEPLOY_FIELDS,
+      }));
       return { count: resp.count, deployments: resp.records };
     }
 
     case 'get_deployment': {
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
-      const result = await client.getRecord('sn_devops_deploy_task', args.sys_id);
+      const result = await withDevOpsPlugin(() => client.getRecord('sn_devops_task_execution', args.sys_id));
       return result;
     }
 
@@ -175,32 +192,72 @@ export async function executeDevopsToolCall(
         throw new ServiceNowError('environment, artifact_name, and status are required', 'INVALID_REQUEST');
       }
       requireWrite();
-      const payload: Record<string, any> = {
-        stage: args.environment,
-        artifact_name: args.artifact_name,
-        status: args.status,
+      // DevOps records a deployment as a task execution (sn_devops_task_execution); it counts as a
+      // deployment in DevOps Insights when its orchestration task runs on a deploy step.
+      const RESULT_MAP: Record<string, string> = {
+        success: 'successful', successful: 'successful', succeeded: 'successful', passed: 'successful',
+        failed: 'failed', failure: 'failed', error: 'failed',
+        rolled_back: 'cancelled', rollback: 'cancelled', cancelled: 'cancelled', canceled: 'cancelled',
+        pending: 'pending', in_progress: 'building', running: 'building', building: 'building', skipped: 'skipped',
       };
-      if (args.pipeline) payload.pipeline = args.pipeline;
-      if (args.artifact_version) payload.artifact_version = args.artifact_version;
-      if (args.notes) payload.description = args.notes;
-      const result = await client.createRecord('sn_devops_deploy_task', payload);
-      return { action: 'tracked', artifact: args.artifact_name, environment: args.environment, status: args.status, ...result };
+      const result = RESULT_MAP[String(args.status).toLowerCase()] || 'pending';
+      const notes: string[] = [];
+      const env = await withDevOpsPlugin(() => client.queryRecords({
+        table: 'sn_devops_environment',
+        query: /^[0-9a-f]{32}$/i.test(args.environment) ? `sys_id=${args.environment}` : `name=${args.environment}`,
+        limit: 1, fields: 'sys_id,name',
+      }));
+      let orchestrationTask: string | undefined;
+      if (args.pipeline) {
+        const pipeQuery = /^[0-9a-f]{32}$/i.test(args.pipeline) ? `step.pipeline=${args.pipeline}` : `step.pipeline.name=${args.pipeline}`;
+        const task = await client.queryRecords({
+          table: 'sn_devops_orchestration_task',
+          query: `${pipeQuery}^step.typeINdeploy,prod_deploy,deploy_test`,
+          limit: 1, fields: 'sys_id',
+        });
+        if (task.count) orchestrationTask = (task.records[0] as any).sys_id;
+        else notes.push(`No deploy-step orchestration task found for pipeline "${args.pipeline}", so the execution is not linked to it.`);
+      }
+      if (!env.count) notes.push(`No DevOps environment named "${args.environment}"; it is recorded in the execution log only.`);
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const logLines = [
+        `Deployment of ${args.artifact_name}${args.artifact_version ? ` ${args.artifact_version}` : ''} to ${args.environment}: ${args.status}`,
+        ...(args.notes ? [args.notes] : []),
+      ];
+      const payload: Record<string, any> = {
+        result,
+        trigger_type: 'user',
+        execution_url: args.execution_url || `${client.instanceUrl}/sn_devops_task_execution_list.do`,
+        native_id: `nowaikit-${Date.now()}`,
+        start_time: now,
+        end_time: now,
+        log: logLines.join('\n'),
+      };
+      if (env.count) payload.environment = (env.records[0] as any).sys_id;
+      if (orchestrationTask) payload.orchestration_task = orchestrationTask;
+      if (args.artifact_version) payload.build_number = args.artifact_version;
+      const created = await withDevOpsPlugin(() => client.createRecord('sn_devops_task_execution', payload));
+      return {
+        action: 'tracked', artifact: args.artifact_name, environment: args.environment, status: args.status, result,
+        ...created,
+        ...(notes.length ? { notes } : {}),
+      };
     }
 
     case 'get_devops_insights': {
       const days = args.days || 30;
       const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 19).replace('T', ' ');
-      let query = `sys_created_on>=${since}`;
-      if (args.pipeline_sys_id) query += `^pipeline=${args.pipeline_sys_id}`;
-      const resp = await client.queryRecords({
-        table: 'sn_devops_deploy_task',
+      let query = `${DEPLOY_EXECUTIONS}^sys_created_on>=${since}`;
+      if (args.pipeline_sys_id) query += `^orchestration_task.step.pipeline=${args.pipeline_sys_id}`;
+      const resp = await withDevOpsPlugin(() => client.queryRecords({
+        table: 'sn_devops_task_execution',
         query,
         limit: 1000,
-        fields: 'status,sys_created_on',
-      });
+        fields: 'result,sys_created_on',
+      }));
       const total = resp.count;
-      const success = resp.records.filter((r: any) => r.status === 'success').length;
-      const failed = resp.records.filter((r: any) => r.status === 'failed').length;
+      const success = resp.records.filter((r: any) => r.result === 'successful').length;
+      const failed = resp.records.filter((r: any) => r.result === 'failed').length;
       return {
         period_days: days,
         total_deployments: total,
@@ -209,7 +266,7 @@ export async function executeDevopsToolCall(
         success_rate: total > 0 ? `${Math.round((success / total) * 100)}%` : 'N/A',
         failure_rate: total > 0 ? `${Math.round((failed / total) * 100)}%` : 'N/A',
         deployment_frequency: total > 0 ? `${(total / days).toFixed(1)} per day` : 'N/A',
-        note: 'Lead time requires change_request linkage; enable DevOps plugin for full DORA metrics',
+        note: 'Deployments are DevOps task executions on deploy steps. Lead time requires change_request linkage; enable DevOps Change Velocity for full DORA metrics',
       };
     }
 

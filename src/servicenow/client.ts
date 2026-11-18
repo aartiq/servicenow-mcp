@@ -10,6 +10,9 @@ import type {
 import { ServiceNowError } from '../utils/errors.js';
 import { logger } from '../utils/logging.js';
 import { missingRequiredFields } from './mandatory-fields.js';
+import { createHash } from 'node:crypto';
+import { basename } from 'node:path';
+import { readLocalUploadFile } from '../utils/local-files.js';
 
 /**
  * Actionable checklist appended to a 401 on Basic auth. A raw "User is not
@@ -126,8 +129,12 @@ function validateSysId(sysId: string): string {
   return sysId;
 }
 
-/** Allowlist of safe GlideSystem functions permitted in javascript: query expressions */
-const SAFE_GS_PATTERN = /^javascript:gs\.(getUserID|beginningOfToday|endOfToday|beginningOfYesterday|endOfYesterday|beginningOfLastMonth|endOfLastMonth|beginningOfThisMonth|endOfThisMonth|beginningOfThisQuarter|endOfThisQuarter|beginningOfThisYear|endOfThisYear|beginningOfNextMonth|endOfNextMonth|beginningOfLast7Days|endOfLast7Days|beginningOfLastYear|endOfLastYear|daysAgo|hoursAgo|minutesAgo|monthsAgo|quartersAgo|yearsAgo|now|dateGenerate)\([\d,\s'":-]*\)$/i;
+/**
+ * Allowlist of safe GlideSystem functions permitted in javascript: query expressions: the current user,
+ * and the read-only date helpers (every gs.beginningOf... and gs.endOf... function, e.g. beginningOfThisWeek,
+ * plus the *Ago / *AgoStart / *AgoEnd family). Arguments may only be numbers, quotes, commas and dashes.
+ */
+const SAFE_GS_PATTERN = /^javascript:\s*gs\.(getUserID|getUserName|now|nowDateTime|dateGenerate|(?:beginningOf|endOf)[A-Za-z0-9]{2,40}|(?:days|hours|minutes|months|quarters|years)Ago(?:Start|End)?)\([\d,\s'":-]*\)\s*;?$/i;
 
 /** Validate and sanitize ServiceNow encoded query strings */
 export function validateQuery(query: string): string {
@@ -1313,6 +1320,23 @@ export class ServiceNowClient {
   /**
    * Call Now Assist / Generative AI endpoints (latest release)
    */
+  /** Authenticated REST call to any instance path (scoped Scripted REST APIs, A2A, MCP Server Console APIs). Returns parsed JSON. */
+  async apiRequest<T = any>(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
+    await this.authenticate();
+    const url = `${this.baseUrl}${path.startsWith('/') ? path : '/' + path}`;
+    return this.request<T>(url, {
+      method: method.toUpperCase(),
+      body: body === undefined ? undefined : JSON.stringify(body),
+      headers,
+    });
+  }
+
+  /** The Authorization header for this client's identity, for bridging to other instance protocols (MCP, A2A). */
+  async authorizationHeader(): Promise<string> {
+    await this.authenticate();
+    return this.getAuthHeader();
+  }
+
   async callNowAssist(endpoint: string, payload: Record<string, any>): Promise<any> {
     await this.authenticate();
     logger.info(`Calling Now Assist endpoint: ${endpoint}`);
@@ -1438,6 +1462,25 @@ export class ServiceNowClient {
     // Decode base64 to binary, then hand off to the shared binary uploader.
     const binary = Buffer.from(contentBase64, 'base64');
     return this.uploadAttachmentBuffer(table, recordSysId, fileName, contentType, binary);
+  }
+
+  /**
+   * Attach a file read straight from local disk (local stdio server only). The bytes never pass
+   * through the model's tool call, so size is limited only by NOWAIKIT_UPLOAD_MAX_MB. Access rules
+   * (off unless running locally, secret block list, optional folder allowlist) live in local-files.ts.
+   */
+  async uploadAttachmentFromFile(
+    table: string,
+    recordSysId: string,
+    filePath: string,
+    fileName?: string,
+    contentType?: string
+  ): Promise<any> {
+    const file = await readLocalUploadFile(filePath);
+    const name = (fileName && fileName.trim()) || basename(file.path);
+    const type = contentType || guessContentType(name);
+    const result = await this.uploadAttachmentBuffer(table, recordSysId, name, type, file.bytes);
+    return result && typeof result === 'object' ? { ...result, source_path: file.path } : result;
   }
 
   /**
@@ -1570,7 +1613,10 @@ export class ServiceNowClient {
       }
 
       const data = await response.json() as any;
-      return data.result ?? data;
+      const rec = data.result ?? data;
+      // Hash of exactly what was sent, so the caller can confirm the attachment matches the source.
+      const sha256 = createHash('sha256').update(binary).digest('hex');
+      return rec && typeof rec === 'object' ? { ...rec, sha256, size_bytes: binary.length } : rec;
     } catch (error) {
       if (error instanceof ServiceNowError) throw error;
       throw new ServiceNowError(

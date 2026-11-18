@@ -51,12 +51,36 @@ interface InstanceEntry {
   client: ServiceNowClient;
 }
 
-class InstanceManager {
+export class InstanceManager {
   private instances: Map<string, InstanceEntry> = new Map();
   private currentName: string = 'default';
 
   constructor() {
     this.loadInstances();
+  }
+
+  /**
+   * Decide the starting instance. SN_DEFAULT_INSTANCE always wins over a config file's own default,
+   * whichever source loaded the instances (SN_INSTANCES_CONFIG, the wizard store, or env groups).
+   * Matched case-insensitively, since env names are lower-cased but file names keep their case.
+   * Returns the registered instance name, or undefined if neither choice matches.
+   */
+  private pickDefault(fileDefault?: string): string | undefined {
+    const find = (want: string) => {
+      const w = want.toLowerCase();
+      for (const name of this.instances.keys()) if (name.toLowerCase() === w) return name;
+      return undefined;
+    };
+    const fromEnv = (process.env.SN_DEFAULT_INSTANCE || '').trim();
+    if (fromEnv) {
+      const hit = find(fromEnv);
+      if (hit) return hit;
+      process.stderr.write(
+        `[nowaikit] SN_DEFAULT_INSTANCE="${fromEnv}" does not match any configured instance ` +
+          `(${[...this.instances.keys()].join(', ') || 'none'}). Falling back to the config default.\n`
+      );
+    }
+    return fileDefault ? find(fileDefault) : undefined;
   }
 
   private loadInstances(): void {
@@ -74,7 +98,8 @@ class InstanceManager {
             c
           ), c.group || 'Default', c.environment || '');
         }
-        if (this.instances.has(defaultName)) this.currentName = defaultName;
+        const chosen = this.pickDefault(defaultName);
+        if (chosen) this.currentName = chosen;
         return;
       } catch {
         // fall through to env vars
@@ -133,12 +158,14 @@ class InstanceManager {
             },
           }, group, environment);
         }
-        if (this.instances.has(defaultName)) this.currentName = defaultName;
+        const chosen = this.pickDefault(defaultName);
+        if (chosen) this.currentName = chosen;
 
-        // Apply permission flags from the default instance to process.env
-        // so permissions.ts can read them. Only set if not already provided
-        // by the client config (env vars from Claude Desktop, Cursor, etc.).
-        const defaultCfg = raw.instances?.[defaultName] as Record<string, unknown> | undefined;
+        // Apply permission flags from the instance actually selected (not the file's default, which
+        // would hand e.g. MRE the write/scripting flags configured for demo2) to process.env so
+        // permissions.ts can read them. Only set if not already provided by the client config
+        // (env vars from Claude Desktop, Cursor, etc.).
+        const defaultCfg = (chosen ? raw.instances?.[chosen] : undefined) as Record<string, unknown> | undefined;
         if (defaultCfg) {
           const permMap: Record<string, string> = {
             writeEnabled: 'WRITE_ENABLED',
@@ -186,9 +213,9 @@ class InstanceManager {
       });
     }
 
-    const defaultEnvName = (process.env.SN_DEFAULT_INSTANCE || '').toLowerCase();
-    if (defaultEnvName && this.instances.has(defaultEnvName)) {
-      this.currentName = defaultEnvName;
+    if (envNames.length) {
+      const chosen = this.pickDefault();
+      if (chosen) this.currentName = chosen;
     }
 
     // 4. Legacy single-instance env vars → register as "default" if no others loaded
@@ -220,8 +247,9 @@ class InstanceManager {
         instanceUrl: legacyUrl,
         authMethod: auth,
         basic: {
-          username: process.env.SERVICENOW_BASIC_USERNAME,
-          password: process.env.SERVICENOW_BASIC_PASSWORD,
+          // SERVICENOW_USERNAME / _PASSWORD (and the SN_USERNAME alias) also work for basic auth.
+          username: process.env.SERVICENOW_BASIC_USERNAME || process.env.SERVICENOW_USERNAME,
+          password: process.env.SERVICENOW_BASIC_PASSWORD || process.env.SERVICENOW_PASSWORD,
         },
         oauth: {
           clientId: process.env.SERVICENOW_OAUTH_CLIENT_ID || process.env.SERVICENOW_CLIENT_ID,

@@ -395,10 +395,11 @@ export async function executePerformanceToolCall(
       const parts: string[] = [];
       if (args.query) parts.push(`titleCONTAINS${args.query}`);
       return await client.queryRecords({
-        table: 'sys_ui_hp',
+        // Legacy (UI16) homepages are stored as portal pages.
+        table: 'sys_portal_page',
         query: parts.join('^') || undefined,
         limit: args.limit ?? 25,
-        fields: 'sys_id,title,roles,sys_updated_on',
+        fields: 'sys_id,title,roles,read_roles,user,view,selectable,sys_updated_on',
       });
     }
     // ── PA Jobs ──────────────────────────────────────────────────────────────
@@ -407,15 +408,23 @@ export async function executePerformanceToolCall(
       if (args.active !== false) parts.push('active=true');
       if (args.query) parts.push(`nameCONTAINS${args.query}`);
       return await client.queryRecords({
-        table: 'pa_job',
+        // PA data collection jobs are scheduled jobs of class sysauto_pa.
+        table: 'sysauto_pa',
         query: parts.join('^') || '',
         limit: args.limit ?? 25,
-        fields: 'sys_id,name,active,schedule,sys_updated_on',
+        fields: 'sys_id,name,active,run_type,run_time,run_dayofweek,run_dayofmonth,run_period,run_as,collect,description,sys_updated_on',
       });
     }
     case 'get_pa_job': {
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
-      return await client.getRecord('pa_job', args.sys_id);
+      const job = await client.getRecord('sysauto_pa', args.sys_id);
+      const indicators = await client.queryRecords({
+        table: 'pa_job_indicators',
+        query: `job=${args.sys_id}`,
+        limit: 200,
+        fields: 'sys_id,indicator,active,collect',
+      }).catch(() => ({ count: 0, records: [] }));
+      return { ...job, indicators: indicators.records, indicator_count: indicators.count };
     }
     // ── Data Quality ─────────────────────────────────────────────────────────
     case 'check_table_completeness': {

@@ -446,6 +446,32 @@ async function detectModernOAuth(
   }
 }
 
+/** The configured redirect plus two spare ports (8765 → 8766, 8767), matching the CLI's port fallback. */
+export function loopbackRedirects(redirectUrl: string): string[] {
+  const m = redirectUrl.match(/^(http:\/\/(?:localhost|127\.0\.0\.1)):(\d+)(\/.*)$/);
+  if (!m) return [redirectUrl];
+  const port = Number(m[2]);
+  return [0, 1, 2].map((i) => `${m[1]}:${port + i}${m[3]}`);
+}
+
+/**
+ * Give the new app the auth scopes ServiceNow's MCP servers and A2A agents check for (useraccount,
+ * a2aauthscope) when the instance has them. Best effort: older instances without these scopes skip it.
+ */
+async function mapActionFabricScopes(instanceUrl: string, authz: string, appSysId: string): Promise<void> {
+  const headers = { Authorization: authz, 'Content-Type': 'application/json', Accept: 'application/json' };
+  try {
+    const r = await fetch(`${instanceUrl}/api/now/table/sys_auth_scope?sysparm_query=nameINuseraccount,a2aauthscope&sysparm_fields=sys_id,name`, { headers });
+    if (!r.ok) return;
+    const scopes = ((await r.json()) as { result?: Array<{ sys_id: string }> }).result || [];
+    for (const sc of scopes) {
+      await fetch(`${instanceUrl}/api/now/table/oauth_entity_auth_scope_mapping`, {
+        method: 'POST', headers, body: JSON.stringify({ oauth_entity: appSysId, auth_scope: sc.sys_id }),
+      });
+    }
+  } catch { /* scopes are an extra; the app works for the REST API without them */ }
+}
+
 async function provisionOAuthApp(
   instanceUrl: string,
   adminUser: string,
@@ -461,9 +487,12 @@ async function provisionOAuthApp(
     type: 'client',
     active: 'true',
     default_grant_type: 'authorization_code',
-    redirect_url: redirectUrl,
+    // Spare loopback ports so sign-in still works when 8765 is taken on the user's machine.
+    redirect_url: loopbackRedirects(redirectUrl).join(','),
     access_token_lifespan: '1800',
     refresh_token_lifespan: '8640000',
+    // JWT tokens work for the REST API AND for ServiceNow's own MCP servers and A2A agents (opaque ones don't).
+    token_format: 'jwt',
   };
   if (opts.publicPkce) {
     body.public_client = 'true';
@@ -483,6 +512,7 @@ async function provisionOAuthApp(
 
   const data = await resp.json() as { result?: { sys_id?: string; client_id?: string; client_secret?: string } };
   const clientId = data.result?.client_id || '';
+  if (data.result?.sys_id) await mapActionFabricScopes(instanceUrl, authz, data.result.sys_id);
   let clientSecret = data.result?.client_secret || '';
   if (!clientId) throw new Error('The instance did not return a client id for the new app.');
 

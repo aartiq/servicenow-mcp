@@ -279,14 +279,21 @@ export async function executeFlowToolCall(
       const parts: string[] = [];
       if (args.active !== false) parts.push('active=true');
       if (args.query) parts.push(`nameCONTAINS${args.query}`);
-      return await client.queryRecords({ table: 'sys_hub_subflow', query: parts.join('^') || '', limit: args.limit ?? 50 });
+      return await client.queryRecords({
+        table: 'sys_hub_flow',
+        query: ['type=subflow', ...parts].join('^'),
+        limit: args.limit ?? 50,
+        fields: 'sys_id,name,internal_name,description,active,status,category,run_as,sys_scope,sys_updated_on',
+      });
     }
     case 'get_subflow': {
       if (!args.name_or_sysid) throw new ServiceNowError('name_or_sysid is required', 'INVALID_REQUEST');
       if (/^[0-9a-f]{32}$/i.test(args.name_or_sysid)) {
-        return await client.getRecord('sys_hub_subflow', args.name_or_sysid);
+        const rec = await client.getRecord('sys_hub_flow', args.name_or_sysid);
+        if ((rec as any).type && (rec as any).type !== 'subflow') throw new ServiceNowError(`${args.name_or_sysid} is a ${(rec as any).type}, not a subflow. Use get_flow for flows.`, 'INVALID_REQUEST');
+        return rec;
       }
-      const resp = await client.queryRecords({ table: 'sys_hub_subflow', query: `nameCONTAINS${args.name_or_sysid}`, limit: 1 });
+      const resp = await client.queryRecords({ table: 'sys_hub_flow', query: `type=subflow^nameCONTAINS${args.name_or_sysid}^ORinternal_name=${args.name_or_sysid}`, limit: 1 });
       if (resp.count === 0) throw new ServiceNowError(`Subflow not found: ${args.name_or_sysid}`, 'NOT_FOUND');
       return resp.records[0];
     }
@@ -300,17 +307,22 @@ export async function executeFlowToolCall(
     case 'get_process_automation': {
       if (!args.name_or_sysid) throw new ServiceNowError('name_or_sysid is required', 'INVALID_REQUEST');
       if (/^[0-9a-f]{32}$/i.test(args.name_or_sysid)) {
-        return await client.getRecord('pa_process', args.name_or_sysid);
+        return await client.getRecord('sys_pd_process_definition', args.name_or_sysid);
       }
-      const resp = await client.queryRecords({ table: 'pa_process', query: `nameCONTAINS${args.name_or_sysid}`, limit: 1 });
+      const resp = await client.queryRecords({ table: 'sys_pd_process_definition', query: `nameCONTAINS${args.name_or_sysid}^ORlabelCONTAINS${args.name_or_sysid}`, limit: 1 });
       if (resp.count === 0) throw new ServiceNowError(`Process automation not found: ${args.name_or_sysid}`, 'NOT_FOUND');
       return resp.records[0];
     }
     case 'list_process_automations': {
       const parts: string[] = [];
       if (args.active !== false) parts.push('active=true');
-      if (args.query) parts.push(`nameCONTAINS${args.query}^ORdescriptionCONTAINS${args.query}`);
-      return await client.queryRecords({ table: 'pa_process', query: parts.join('^') || '', limit: args.limit ?? 50 });
+      if (args.query) parts.push(`nameCONTAINS${args.query}^ORlabelCONTAINS${args.query}^ORdescriptionCONTAINS${args.query}`);
+      return await client.queryRecords({
+        table: 'sys_pd_process_definition',
+        query: parts.join('^') || '',
+        limit: args.limit ?? 50,
+        fields: 'sys_id,name,label,description,active,status,process_type,execution_type,sys_scope,sys_updated_on',
+      });
     }
     case 'create_flow': {
       requireWrite();
@@ -321,7 +333,7 @@ export async function executeFlowToolCall(
     case 'create_subflow': {
       requireWrite();
       if (!args.name) throw new ServiceNowError('name is required', 'INVALID_REQUEST');
-      const result = await client.createRecord('sys_hub_subflow', { name: args.name, active: 'false', ...(args.description ? { description: args.description } : {}), ...(args.scope ? { sys_scope: args.scope } : {}) });
+      const result = await client.createRecord('sys_hub_flow', { name: args.name, type: 'subflow', active: 'false', ...(args.description ? { description: args.description } : {}), ...(args.scope ? { sys_scope: args.scope } : {}) });
       return { action: 'created', ...result };
     }
     case 'create_flow_action': {
@@ -333,14 +345,14 @@ export async function executeFlowToolCall(
     case 'publish_flow': {
       requireWrite();
       if (!args.flow_sys_id) throw new ServiceNowError('flow_sys_id is required', 'INVALID_REQUEST');
-      const table = args.type === 'subflow' ? 'sys_hub_subflow' : 'sys_hub_flow';
+      const table = 'sys_hub_flow'; // flows and subflows share sys_hub_flow (type=flow|subflow)
       const result = await client.updateRecord(table, args.flow_sys_id, { active: 'true' });
       return { action: 'published', ...result };
     }
     case 'update_flow': {
       requireWrite();
       if (!args.flow_sys_id) throw new ServiceNowError('flow_sys_id is required', 'INVALID_REQUEST');
-      const table = args.type === 'subflow' ? 'sys_hub_subflow' : 'sys_hub_flow';
+      const table = 'sys_hub_flow'; // flows and subflows share sys_hub_flow (type=flow|subflow)
       // Metadata-only, safe fields. Step editing is intentionally not supported (see the
       // tool description): it would desync the compiled flow snapshot.
       const fields: Record<string, unknown> = {};
