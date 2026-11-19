@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## Unreleased
+
+- The server now starts from the `nowaikit setup` config alone, so a bare `npx nowaikit` works after setup without any environment variables.
+
 ## [5.0.0] - 2026-11-19
 
 NowAIKit 5.0 adds interactive forms inside the chat, works alongside ServiceNow's own MCP servers and

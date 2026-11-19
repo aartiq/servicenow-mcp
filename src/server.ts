@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import { compatNotes } from './bootstrap-env.js';
 import { modelText } from './utils/model-output.js';
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import {
   Server,
   ProtocolError,
@@ -45,8 +48,10 @@ for (const note of compatNotes) logger.warn(note);
 const hasLegacy = !!process.env.SERVICENOW_INSTANCE_URL;
 const hasMulti = Object.keys(process.env).some(k => /^SN_INSTANCE_[A-Z0-9_]+_URL$/.test(k));
 const hasConfig = !!process.env.SN_INSTANCES_CONFIG;
-if (!hasLegacy && !hasMulti && !hasConfig) {
-  logger.error('No ServiceNow instance configured. Set SERVICENOW_INSTANCE_URL or SN_INSTANCES_CONFIG.');
+// `nowaikit setup` stores instances here; the instance manager reads it, so a bare `npx nowaikit` works after setup.
+const hasWizardStore = existsSync(join(homedir(), '.config', 'nowaikit', 'instances.json'));
+if (!hasLegacy && !hasMulti && !hasConfig && !hasWizardStore) {
+  logger.error('No ServiceNow instance configured. Run `nowaikit setup`, or set SERVICENOW_INSTANCE_URL or SN_INSTANCES_CONFIG.');
   process.exit(1);
 }
 
