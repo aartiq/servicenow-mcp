@@ -39,7 +39,7 @@ export interface InstanceConfig {
   apexEnabled?: boolean;
   /** AI provider for direct mode capabilities */
   aiProvider?: LlmProvider;
-  /** AI model name (e.g. 'claude-sonnet-5', 'llama3.3') */
+  /** AI model name (e.g. 'claude-sonnet-5-5', 'qwen3.8') */
   aiModel?: string;
   /** API key for cloud providers (Anthropic/OpenAI) */
   aiApiKey?: string;

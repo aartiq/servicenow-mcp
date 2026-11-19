@@ -1,13 +1,13 @@
-# OpenAI Codex / GPT-4.1 Setup Guide
+# OpenAI Codex / GPT-6.2 Setup Guide
 
-Integrate the ServiceNow MCP server with OpenAI Codex or GPT-4.1 using function calling.
+Integrate the ServiceNow MCP server with OpenAI Codex or GPT-6.2 Sol (`gpt-6.2-sol`) using function calling.
 
 ## How It Works
 
 The Python client in this directory:
 1. Spawns the MCP server as a subprocess
 2. Fetches all tool definitions and converts them to OpenAI function schemas
-3. Sends your query to GPT-4.1 with the tools available
+3. Sends your query to GPT-6.2 Sol with the tools available
 4. Executes any tool calls the model makes against the live MCP server
 5. Returns the final answer
 
@@ -70,7 +70,7 @@ MCP_SERVER_PATH=../../dist/server.js
 python servicenow_openai_client.py
 ```
 
-The client will prompt you to enter a query, then use GPT-4.1 with ServiceNow tools to answer it.
+The client will prompt you to enter a query, then use GPT-6.2 Sol with ServiceNow tools to answer it.
 
 ## Example Queries
 

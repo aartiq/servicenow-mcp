@@ -86,7 +86,7 @@ def call_mcp_tool(name: str, arguments: dict) -> str:
 
 def run_agent(user_message: str) -> str:
     """
-    Simple agentic loop: sends a message to GPT-4o with ServiceNow tools
+    Simple agentic loop: sends a message to GPT-6.2 Sol with ServiceNow tools
     available and resolves any tool calls until a final text answer is produced.
     """
     mcp_tools = get_mcp_tools()
@@ -97,7 +97,7 @@ def run_agent(user_message: str) -> str:
 
     while True:
         response = client.chat.completions.create(
-            model="gpt-5.6-terra",
+            model="gpt-6.2-sol",
             messages=messages,
             tools=openai_tools,
             tool_choice="auto",

@@ -24,7 +24,7 @@ from mcp.client.stdio import stdio_client
 load_dotenv()
 
 # Override with GEMINI_MODEL if you want a different Gemini model.
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-4-hydrogen")
 
 # Run the installed `nowaikit` package. Lean discovery keeps the tool list small for the model;
 # it can still reach every tool through search_tools / run_tool.

@@ -357,7 +357,7 @@ async function fetchOpenAIModels(apiKey: string): Promise<string[]> {
     const data = await res.json() as any;
     const models: string[] = (data.data || [])
       .map((m: { id: string }) => m.id)
-      .filter((id: string) => /^gpt-/.test(id) && !id.includes('instruct') && !id.includes('realtime') && !id.includes('audio') && !id.includes('search'))
+      .filter((id: string) => /^gpt-/.test(id) && !/instruct|realtime|audio|search|image|transcribe|tts|live|cyber/.test(id))
       .sort()
       .reverse();
     return models;
@@ -1144,8 +1144,8 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
         console.log(`  ${success('✓')} LM Studio configured with ${accent(aiModel)} — no API key needed`);
       } else if (selectedProvider === 'ollama') {
         aiModel = await input({
-          message: brand('?') + ' Ollama model name ' + dim('(e.g. llama3.3, codellama)') + brand(':'),
-          default: 'llama3.3',
+          message: brand('?') + ' Ollama model name ' + dim('(e.g. qwen3.8, gemma4, gpt-oss:20b)') + brand(':'),
+          default: 'qwen3.8',
         });
         console.log(`  ${success('✓')} Ollama configured with ${accent(aiModel)} — no API key needed`);
       } else if (selectedProvider === 'lmstudio') {
@@ -1169,7 +1169,7 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
         } else {
           aiModel = await input({
             message: brand('?') + ' Model ' + dim('(API fetch failed — enter manually)') + brand(':'),
-            default: 'claude-sonnet-5',
+            default: 'claude-sonnet-5-5',
           });
         }
         console.log(`  ${success('✓')} Anthropic configured with ${accent(aiModel)}`);
@@ -1188,7 +1188,7 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
         } else {
           aiModel = await input({
             message: brand('?') + ' Model ' + dim('(API fetch failed — enter manually)') + brand(':'),
-            default: 'gpt-5.6-terra',
+            default: 'gpt-6.2-sol',
           });
         }
         console.log(`  ${success('✓')} OpenAI configured with ${accent(aiModel)}`);
@@ -1198,8 +1198,8 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
           mask: '•',
         });
         aiModel = await input({
-          message: brand('?') + ' Model ' + dim('(e.g. gemini-3.5-flash, gemini-3.1-pro-preview)') + brand(':'),
-          default: 'gemini-3.5-flash',
+          message: brand('?') + ' Model ' + dim('(e.g. gemini-4-hydrogen, gemini-4-carbon, gemini-3.8-flash)') + brand(':'),
+          default: 'gemini-4-hydrogen',
         });
         console.log(`  ${success('✓')} Google Gemini configured with ${accent(aiModel)}`);
       }
