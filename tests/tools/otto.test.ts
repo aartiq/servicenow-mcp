@@ -8,6 +8,7 @@ const mockClient = {
   instanceUrl: 'https://example.service-now.com',
   queryRecords: vi.fn(),
   updateRecord: vi.fn(),
+  createRecord: vi.fn(),
   apiRequest: vi.fn(),
   authorizationHeader: vi.fn(),
 } as unknown as ServiceNowClient;
@@ -263,18 +264,24 @@ describe('executeOttoToolCall', () => {
       expect(r.other_candidates).toHaveLength(2);
     });
 
-    it('returns clear guidance when the instance runs A2A in async mode', async () => {
+    it('handles an instance that runs A2A asynchronously: registers the callback, resends and polls', async () => {
       process.env.WRITE_ENABLED = 'true';
       process.env.NOWAIKIT_SN_MCP_TOKEN = 'a.b.c';
       process.env.NOWAIKIT_OTTO_AGENT = AGENT;
-      tables({ sn_aia_agent: [{ sys_id: AGENT, name: 'Otto' }] });
-      api.mockImplementation(async (method: string) => {
-        if (method === 'GET') return { result: {} };
-        throw new Error('Push notification URL is required');
+      tables({ sn_aia_agent: [{ sys_id: AGENT, name: 'Otto' }], sn_aia_external_agent_callback_registry: [] });
+      const create = mockClient.createRecord as ReturnType<typeof vi.fn>;
+      create.mockResolvedValue({ sys_id: 'cb' });
+      let posts = 0;
+      api.mockImplementation(async (method: string, _path: string, body: any) => {
+        if (method === 'GET') return { result: { defaultOutputModes: ['text/plain'] } };
+        posts++;
+        if (posts === 1) throw new Error('Invalid method parameters: Push Notification URL is required for asynchronous requests');
+        expect(body.params.configuration.pushNotificationConfig.url).toMatch(/\.invalid\//);
+        return { result: { id: 't1', status: { state: 'completed', message: { parts: [{ kind: 'text', text: 'All done' }] } } } };
       });
-      await expect(executeOttoToolCall(mockClient, 'ask_otto', { message: 'hi' })).rejects.toMatchObject({
-        code: 'A2A_ASYNC_MODE', message: expect.stringMatching(/Communication mode = Synchronous/),
-      });
+      const r = await executeOttoToolCall(mockClient, 'ask_otto', { message: 'hi' });
+      expect(create).toHaveBeenCalledWith('sn_aia_external_agent_callback_registry', expect.objectContaining({ state: 'verified' }));
+      expect(r).toMatchObject({ route: 'a2a', reply: 'All done', state: 'completed', mode: 'async (polled)' });
     });
 
     it('prefers NOWAIKIT_OTTO_AGENT over Moveworks in auto mode', async () => {

@@ -116,8 +116,7 @@ ITSM, ITOM, CMDB and SPM servers) and talk to ServiceNow AI agents over A2A.
 the REST API, MCP and A2A. If you made the OAuth app yourself, set its **Token Format** to **JWT** and
 sign in again. Basic auth can't reach these endpoints.
 
-**A2A mode.** The A2A tools need the instance's A2A channel in synchronous mode: AI Agent Studio >
-Settings > External AI agents > Discoverability > Communication mode.
+**A2A mode.** A2A works in both of the instance's modes: in synchronous mode the agent answers directly; in asynchronous mode (the default) NowAIKit registers a callback address that never resolves, so no data leaves the instance, and polls for the answer. Set NOWAIKIT_A2A_CALLBACK_URL to use your own callback endpoint instead.
 
 ## Configuration example
 

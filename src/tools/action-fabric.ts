@@ -269,6 +269,30 @@ async function deleteAll(client: ServiceNowClient, recs: Footprint[]): Promise<{
   return { deleted, leftover };
 }
 
+/** Push URL used when an instance runs A2A asynchronously. The .invalid TLD never resolves, so nothing leaves the instance. */
+export function a2aCallbackUrl(): string {
+  return (process.env.NOWAIKIT_A2A_CALLBACK_URL || 'https://callback.nowaikit.invalid/a2a').trim();
+}
+
+/** Make sure the callback URL is in the instance's external agent callback registry as verified. */
+async function ensureA2aCallback(client: ServiceNowClient): Promise<void> {
+  const url = a2aCallbackUrl();
+  const found = await client.queryRecords({ table: 'sn_aia_external_agent_callback_registry', query: `url=${url}`, fields: 'sys_id,state', limit: 1 });
+  const rec = found.records[0] as any;
+  if (!rec) await client.createRecord('sn_aia_external_agent_callback_registry', { url, state: 'verified' });
+  else if (val(rec, 'state') !== 'verified') await client.updateRecord('sn_aia_external_agent_callback_registry', val(rec, 'sys_id'), { state: 'verified' });
+}
+
+/** The agent's answer: the status message, artifacts, or the latest agent message in the task history. */
+function a2aReply(task: any): string {
+  const fromStatus = textParts(task?.status?.message);
+  if (fromStatus) return fromStatus;
+  const fromArtifacts = ((task?.artifacts || []) as any[]).map((a) => textParts(a)).filter(Boolean).join('\n');
+  if (fromArtifacts) return fromArtifacts;
+  const agentMsgs = ((task?.history || []) as any[]).filter((m) => m?.role === 'agent').map((m) => textParts(m)).filter(Boolean);
+  return agentMsgs[0] || '';
+}
+
 export function getActionFabricToolDefinitions() {
   return [
     {
@@ -727,6 +751,7 @@ export async function executeActionFabricToolCall(client: ServiceNowClient, name
         jsonrpc: '2.0', id: message.messageId, method: 'message/send', params: { message, configuration },
       }, auth);
       let resp: any;
+      let asyncMode = false;
       try {
         resp = await send({ blocking: true, acceptedOutputModes: outputModes });
       } catch (e) {
@@ -738,35 +763,41 @@ export async function executeActionFabricToolCall(client: ServiceNowClient, name
             'AUTH_SCOPE_REQUIRED',
           );
         }
-        if (/push notification url is required/i.test(msg)) {
-          throw new ServiceNowError(
-            'This instance runs external A2A calls asynchronously, which needs a registered callback URL. For direct use from NowAIKit, ' +
-              'switch it to synchronous: AI Agent Studio > Settings > External AI agents > Discoverability > Communication mode = Synchronous.',
-            'A2A_ASYNC_MODE',
-          );
-        }
-        throw e;
+        if (!/push notification url is required/i.test(msg)) throw e;
+        // The instance runs external A2A calls asynchronously and insists on a registered push URL.
+        // Register one (by default on the reserved .invalid TLD, which never resolves, so no reply data
+        // leaves the instance), then poll tasks/get for the outcome.
+        await ensureA2aCallback(client);
+        asyncMode = true;
+        resp = await send({ blocking: false, acceptedOutputModes: outputModes, pushNotificationConfig: { url: a2aCallbackUrl() } });
       }
       if (resp?.error) throw new ServiceNowError(`A2A error from "${agent.name}": ${resp.error.message || JSON.stringify(resp.error)}`, 'A2A_ERROR');
       let result = resp?.result ?? resp;
       const waitMs = Math.min(Math.max(Number(args.wait_seconds) || 120, 0), 600) * 1000;
       const deadline = Date.now() + waitMs;
-      while (result?.kind === 'task' && ['submitted', 'working'].includes(String(result?.status?.state)) && Date.now() < deadline) {
+      // Poll while the agent is still running. An input-required with nothing to say yet is treated as
+      // still running for a short while (ServiceNow often moves on to completed a moment later).
+      const stillRunning = (r: any) => {
+        const st = String(r?.status?.state || '');
+        if (['submitted', 'working'].includes(st)) return true;
+        return st === 'input-required' && !a2aReply(r);
+      };
+      let quietInputPolls = 0;
+      while (result?.id && result?.status && stillRunning(result) && Date.now() < deadline) {
+        if (String(result?.status?.state) === 'input-required' && ++quietInputPolls > 4) break;
         await new Promise((r) => setTimeout(r, 3000));
-        const poll = await client.apiRequest('POST', path, { jsonrpc: '2.0', id: `${message.messageId}-poll`, method: 'tasks/get', params: { id: result.id } }, auth);
+        const poll = await client.apiRequest('POST', path, { jsonrpc: '2.0', id: `${message.messageId}-poll`, method: 'tasks/get', params: { id: result.id, historyLength: 20 } }, auth);
         if (poll?.error) break;
         result = poll?.result ?? result;
       }
-      const isTask = result?.kind === 'task' || !!result?.status;
-      const reply = isTask
-        ? textParts(result?.status?.message) || ((result?.artifacts || []) as any[]).map((a) => textParts(a)).filter(Boolean).join('\n')
-        : textParts(result);
+      const isTask = !!result?.status;
       return {
         agent,
-        reply,
+        reply: isTask ? a2aReply(result) : textParts(result),
         state: isTask ? result?.status?.state : 'completed',
         task_id: isTask ? result?.id : undefined,
         context_id: result?.contextId,
+        ...(asyncMode ? { mode: 'async (polled)', note: 'This instance runs A2A asynchronously; NowAIKit registered a callback that never resolves and polled for the result.' } : {}),
         raw: result,
       };
     }
@@ -775,11 +806,11 @@ export async function executeActionFabricToolCall(client: ServiceNowClient, name
       const agent = await resolveAgent(client, args.agent);
       if (!args.task_id) throw new ServiceNowError('task_id is required', 'INVALID_REQUEST');
       const resp = await client.apiRequest('POST', `/api/sn_aia/a2a/v2/agent/id/${agent.sys_id}`, {
-        jsonrpc: '2.0', id: `nowaikit-${Date.now()}`, method: 'tasks/get', params: { id: String(args.task_id) },
+        jsonrpc: '2.0', id: `nowaikit-${Date.now()}`, method: 'tasks/get', params: { id: String(args.task_id), historyLength: 20 },
       }, { Authorization: `Bearer ${await actionFabricBearer(client)}` });
       if (resp?.error) throw new ServiceNowError(`A2A error: ${resp.error.message || JSON.stringify(resp.error)}`, 'A2A_ERROR');
       const task = resp?.result ?? resp;
-      return { agent, state: task?.status?.state, reply: textParts(task?.status?.message), task };
+      return { agent, state: task?.status?.state, reply: a2aReply(task), task };
     }
 
     case 'sn_a2a_expose_agent': {

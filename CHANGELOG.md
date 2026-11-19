@@ -25,9 +25,10 @@ working, see Compatibility below.
   out-of-box ITSM, ITOM, CMDB and SPM servers) with `sn_mcp_status`, `sn_mcp_list_servers`,
   `sn_mcp_list_tools`, `sn_mcp_call_tool` and `sn_mcp_activate_server`, and ServiceNow AI agents over
   A2A with `sn_a2a_list_agents`, `sn_a2a_get_agent_card`, `sn_a2a_send_message`, `sn_a2a_get_task` and
-  `sn_a2a_expose_agent`. These need an OAuth sign-in with JWT tokens. A2A also needs the instance's A2A
-  channel in synchronous mode (AI Agent Studio > Settings > External AI agents > Discoverability >
-  Communication mode). `NOWAIKIT_SN_MCP_TOKEN` overrides the token if you need to.
+  `sn_a2a_expose_agent`. These need an OAuth sign-in with JWT tokens. A2A works whether the instance runs external agents
+  synchronously or asynchronously (the default): for async, NowAIKit registers a callback address that
+  never resolves, so no data leaves the instance, and polls for the answer. `NOWAIKIT_SN_MCP_TOKEN`
+  overrides the token if you need to.
 - **AI Agent Studio tools:** `list_agent_tools`, `attach_agent_tool`, `detach_agent_tool`,
   `list_agent_triggers`, `get_agent_versions`, `list_agent_memory`, `get_agent_execution_trace`,
   `list_agent_evaluations`, `get_evaluation_results` and `list_external_agents`.
