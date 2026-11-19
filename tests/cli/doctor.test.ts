@@ -26,3 +26,14 @@ describe('doctor helpers', () => {
     expect(inspectClientConfig(JSON.stringify({ mcpServers: { other: { command: 'x' } } }), 'mcpServers').found).toBe(false);
   });
 });
+
+describe('doctor tool-list cost', () => {
+  it('flags a client that lists the full catalog and not one using lean or a package', () => {
+    const full = inspectClientConfig(JSON.stringify({ mcpServers: { nowaikit: { command: 'npx', args: ['-y', 'nowaikit'] } } }), 'mcpServers');
+    expect(full.fullToolList).toBe(true);
+    const lean = inspectClientConfig(JSON.stringify({ mcpServers: { nowaikit: { command: 'npx', args: ['-y', 'nowaikit'], env: { MCP_TOOL_DISCOVERY: 'lean' } } } }), 'mcpServers');
+    expect(lean.fullToolList).toBe(false);
+    const flag = inspectClientConfig(JSON.stringify({ mcpServers: { nowaikit: { command: 'npx', args: ['-y', 'nowaikit', '--lean'] } } }), 'mcpServers');
+    expect(flag.fullToolList).toBe(false);
+  });
+});

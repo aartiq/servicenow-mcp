@@ -251,6 +251,45 @@ function guessTable(toolName: string): string | null {
   return map[toolName] || null;
 }
 
+// ─── NowAIKit MCP bridge (served by serve.cjs) ───────────────────────────────
+
+let bridgeProbe: Promise<boolean> | null = null;
+
+/** True when the web server exposes /api/mcp/* (a real NowAIKit server behind it). */
+function hasMcpBridge(): Promise<boolean> {
+  if (!bridgeProbe) {
+    bridgeProbe = fetch('/api/mcp/status')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => Boolean(d && d.available))
+      .catch(() => false);
+  }
+  return bridgeProbe;
+}
+
+async function bridgePost<T>(route: string, body: Record<string, unknown>): Promise<T> {
+  const instance = getActiveInstance();
+  const resp = await fetch(`/api/mcp/${route}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-NowAIKit-Proxy': '1' },
+    body: JSON.stringify({ ...body, instanceUrl: instance?.instanceUrl || '' }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((data as { error?: string }).error || `NowAIKit server error ${resp.status}`);
+  return data as T;
+}
+
+/** Run a tool on the real server. Returns the MCP CallToolResult; tool errors throw. */
+async function callBridgeTool(name: string, args: Record<string, unknown>): Promise<McpCallToolResult> {
+  const { result } = await bridgePost<{ result: McpCallToolResult }>('call', { name, arguments: args });
+  if (result?.isError) {
+    const text = (result.content || []).map(c => c.text || '').join('\n').trim();
+    const err = new Error(text || `Tool ${name} failed`);
+    (err as Error & { toolResult?: McpCallToolResult }).toolResult = result;
+    throw err;
+  }
+  return result;
+}
+
 // ─── Browser implementation ──────────────────────────────────────────────────
 
 const webApi: ElectronAPI = {
@@ -406,15 +445,24 @@ const webApi: ElectronAPI = {
 
   // ── Tools ──
   listTools: async () => {
+    // Real NowAIKit server through the web server's MCP bridge (includes MCP Apps metadata);
+    // falls back to the static catalog when the bridge is not there (e.g. `vite preview`).
+    if (await hasMcpBridge()) {
+      try {
+        const r = await bridgePost<{ tools?: ToolDef[] }>('tools', {});
+        if (r.tools?.length) return r.tools;
+      } catch { /* fall through */ }
+    }
     return TOOL_DEFINITIONS;
   },
   executeTool: async (name: string, args: Record<string, unknown>) => {
-    if (!serverRunning) {
+    const bridge = await hasMcpBridge();
+    if (!bridge && !serverRunning) {
       return { success: false, error: 'Server is not running. Start the server first.' };
     }
     const start = Date.now();
     try {
-      const result = await executeSnowTool(name, args);
+      const result = bridge ? await callBridgeTool(name, args) : await executeSnowTool(name, args);
       appendAuditEntry({
         ts: new Date().toISOString(),
         event: 'tool:call',
@@ -436,6 +484,21 @@ const webApi: ElectronAPI = {
         durationMs: Date.now() - start,
       });
       return { success: false, error: errMsg };
+    }
+  },
+
+  readResource: async (uri: string) => {
+    if (!(await hasMcpBridge())) return null;
+    return bridgePost<McpReadResourceResult>('resource', { uri });
+  },
+  runDoctor: async () => {
+    if (!(await hasMcpBridge())) {
+      return { error: 'Health checks need the NowAIKit web server (npm run serve) or the desktop app.' };
+    }
+    try {
+      return await bridgePost<{ checks?: DoctorCheck[]; instance?: string | null; error?: string }>('doctor', {});
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   },
 

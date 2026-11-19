@@ -2,11 +2,14 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { AppInstance, AppSettings, AiProviderId } from '../App.js';
 import { PROVIDER_ICONS } from '../components/ProviderIcons.js';
 import { api as unifiedApi } from '../api.js';
+import { useTheme } from '../App.js';
+import McpAppFrame, { viewUriOf, isAppOnlyTool } from '../components/McpAppFrame.js';
 
 // ── Message types (Anthropic format, used across all providers) ───────────────
 type CPText   = { type: 'text'; text: string };
 type CPTool   = { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> };
-type CPResult = { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean };
+// `raw` keeps the MCP CallToolResult for MCP Apps views. It is host-only and stripped before provider calls.
+type CPResult = { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean; raw?: McpCallToolResult };
 type ContentPart = CPText | CPTool | CPResult;
 
 export interface ChatMessage {
@@ -124,7 +127,7 @@ function ExportToolbar({ text }: { text: string }) {
 }
 
 // ── Collapsible tool call card ────────────────────────────────────────────────
-function ToolCard({ tu, result }: { tu: CPTool; result?: CPResult }) {
+function ToolCard({ tu, result, children }: { tu: CPTool; result?: CPResult; children?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const ok = result && !result.is_error;
   return (
@@ -148,6 +151,7 @@ function ToolCard({ tu, result }: { tu: CPTool; result?: CPResult }) {
           </>}
         </div>
       )}
+      {children && <div style={{ padding:'0 8px 8px', fontFamily:'system-ui, sans-serif' }}>{children}</div>}
     </div>
   );
 }
@@ -233,6 +237,23 @@ interface ToolDef {
   name: string;
   description: string;
   inputSchema?: Record<string, unknown>;
+  _meta?: { ui?: { resourceUri?: string; visibility?: string[] }; [key: string]: unknown };
+}
+
+/** Flatten an MCP CallToolResult to text for the model (falls back to JSON for other shapes). */
+function toolResultText(result: unknown): string {
+  if (typeof result === 'string') return result;
+  const r = result as McpCallToolResult | undefined;
+  if (r && Array.isArray(r.content)) {
+    const text = r.content.filter(c => c.type === 'text').map(c => c.text || '').join('\n').trim();
+    if (text) return text;
+    if (r.structuredContent) return JSON.stringify(r.structuredContent, null, 2);
+  }
+  return JSON.stringify(result, null, 2);
+}
+
+function isCallToolResult(v: unknown): v is McpCallToolResult {
+  return !!v && typeof v === 'object' && Array.isArray((v as McpCallToolResult).content);
 }
 
 // ── Smart tool selection (max 128 to stay within provider limits) ────────────
@@ -240,6 +261,8 @@ const MAX_TOOLS = 128;
 
 // Essential tools always included (generic querying, core operations)
 const ESSENTIAL_TOOLS = new Set([
+  // MCP Apps: interactive forms the chat renders inline
+  'open_catalog_form', 'open_record_form', 'open_approvals',
   'query_records', 'get_record', 'get_table_schema', 'get_user', 'get_group',
   'get_incident', 'create_incident', 'update_incident', 'resolve_incident',
   'get_change_request', 'list_change_requests', 'create_change_request', 'update_change_request',
@@ -271,11 +294,17 @@ const SYNONYMS: Record<string, string[]> = {
   ci: ['cmdb', 'ci'],
   cmdb: ['cmdb', 'ci'],
   server: ['cmdb', 'ci_server'],
-  catalog: ['catalog'],
+  catalog: ['catalog', 'open_catalog_form'],
+  form: ['open_catalog_form', 'open_record_form'],
+  request: ['catalog', 'open_catalog_form'],
+  order: ['catalog', 'open_catalog_form'],
+  approvals: ['approval', 'open_approvals'],
+  approve: ['approval', 'open_approvals'],
+  job: ['get_job', 'list_jobs'],
   flow: ['flow'],
   report: ['report', 'aggregate', 'trend'],
   sla: ['sla'],
-  approval: ['approval'],
+  approval: ['approval', 'open_approvals'],
   hr: ['hr_'],
   security: ['security'],
   vulnerability: ['vulnerab'],
@@ -373,7 +402,9 @@ async function callProviderApi(
       // Build message array preserving full content structure for the API
       const apiMessages = currentMessages.map(m => ({
         role: m.role,
-        content: m.content,
+        content: Array.isArray(m.content)
+          ? m.content.map(c => (c.type === 'tool_result' ? { type: c.type, tool_use_id: c.tool_use_id, content: c.content, ...(c.is_error ? { is_error: true } : {}) } : c))
+          : m.content,
       }));
 
       const result = await a.sendChat({
@@ -412,7 +443,7 @@ async function callProviderApi(
         try {
           const execResult = await a.executeTool(tu.name, tu.input);
           const resultText = execResult.success
-            ? (typeof execResult.result === 'string' ? execResult.result : JSON.stringify(execResult.result, null, 2))
+            ? toolResultText(execResult.result)
             : `Error: ${execResult.error ?? 'Tool execution failed'}`;
 
           toolResults.push({
@@ -420,6 +451,7 @@ async function callProviderApi(
             tool_use_id: tu.id,
             content: resultText,
             is_error: !execResult.success,
+            ...(execResult.success && isCallToolResult(execResult.result) ? { raw: execResult.result } : {}),
           });
         } catch (err) {
           toolResults.push({
@@ -489,6 +521,7 @@ export default function Chat({ settings, serverUrl, instances }: Props): React.R
   const [slashFilter, setSlashFilter] = useState('');
   const [slashIndex,  setSlashIndex]  = useState(0);
 
+  const { mode: themeMode } = useTheme();
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
   const slashRef  = useRef<HTMLDivElement>(null);
@@ -533,6 +566,10 @@ export default function Chat({ settings, serverUrl, instances }: Props): React.R
     return () => document.removeEventListener('mousedown', handler);
   }, [slashOpen]);
 
+  // Tool definitions by name (MCP Apps views), and the subset the model may call (no app-only tools).
+  const toolDefsByName = React.useMemo(() => new Map(allTools.map(t => [t.name, t])), [allTools]);
+  const modelTools = React.useMemo(() => allTools.filter(t => !isAppOnlyTool(t as ToolDef)), [allTools]);
+
   const activeProvider = settings.providers[provider];
   const isLocal  = LOCAL_PROVIDERS.has(provider);
   const hasKey   = isLocal || Boolean(activeProvider?.apiKey) || activeProvider?.authMethod === 'login';
@@ -541,8 +578,8 @@ export default function Chat({ settings, serverUrl, instances }: Props): React.R
 
   // Slash-command filtered tool list
   const filteredTools = slashFilter
-    ? allTools.filter(t => t.name.toLowerCase().includes(slashFilter.toLowerCase()) || t.description?.toLowerCase().includes(slashFilter.toLowerCase()))
-    : allTools;
+    ? modelTools.filter(t => t.name.toLowerCase().includes(slashFilter.toLowerCase()) || t.description?.toLowerCase().includes(slashFilter.toLowerCase()))
+    : modelTools;
   const slashTools = filteredTools.slice(0, 10);
 
   function handleInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -589,7 +626,7 @@ export default function Chat({ settings, serverUrl, instances }: Props): React.R
 
     try {
       // Select most relevant tools (max 128) based on user's query
-      const relevantTools = selectRelevantTools(allTools, userText);
+      const relevantTools = selectRelevantTools(modelTools, userText);
 
       const result = await callProviderApi(
         provider, activeProvider?.apiKey ?? '', model, newMessages, relevantTools,
@@ -606,6 +643,52 @@ export default function Chat({ settings, serverUrl, instances }: Props): React.R
       setError(err instanceof Error ? err.message : 'Chat request failed');
     }
   }
+
+  // ── MCP Apps host hooks ──
+  // A view's tools/call goes through the same execution path as the chat's own tool calls.
+  const callToolForView = useCallback(async (name: string, args: Record<string, unknown>): Promise<McpCallToolResult> => {
+    if (!toolDefsByName.has(name)) {
+      return { isError: true, content: [{ type: 'text', text: `Unknown tool "${name}".` }] };
+    }
+    const r = await unifiedApi.executeTool(name, args);
+    if (isCallToolResult(r.result)) return r.result;
+    if (!r.success) return { isError: true, content: [{ type: 'text', text: r.error ?? 'Tool execution failed' }] };
+    return { content: [{ type: 'text', text: toolResultText(r.result) }] };
+  }, [toolDefsByName]);
+
+  // ui/message from a view: post it as the user's next message (asks the AI when a provider is set up).
+  const sendRef = useRef<(t: string) => void>(() => {});
+  const onViewMessage = useCallback((text: string) => sendRef.current(text), []);
+
+  // Test hook: run one tool directly (no AI provider needed) and render its result, MCP Apps view included.
+  // Used by the headless browser check; harmless for users (same tool path as the chat).
+  useEffect(() => {
+    const w = window as unknown as { __nowaikitRunTool?: (name: string, args?: Record<string, unknown>, prompt?: string) => Promise<boolean> };
+    w.__nowaikitRunTool = async (name, args = {}, prompt) => {
+      const id = `toolu_direct_${Date.now()}`;
+      const tu: CPTool = { type: 'tool_use', id, name, input: args };
+      const base: ChatMessage[] = [
+        ...(prompt ? [{ role: 'user' as const, content: prompt }] : []),
+        { role: 'assistant', content: [tu] },
+      ];
+      setMessages(m => [...m, ...base]);
+      const r = await unifiedApi.executeTool(name, args);
+      const res: CPResult = {
+        type: 'tool_result', tool_use_id: id,
+        content: r.success ? toolResultText(r.result) : `Error: ${r.error ?? 'Tool execution failed'}`,
+        is_error: !r.success,
+        ...(r.success && isCallToolResult(r.result) ? { raw: r.result } : {}),
+      };
+      setMessages(m => [...m, { role: 'user', content: [res] }]);
+      return r.success;
+    };
+    return () => { delete w.__nowaikitRunTool; };
+  }, []);
+
+  sendRef.current = (t: string) => {
+    if (hasKey) void send(t);
+    else setMessages(m => [...m, { role: 'user', content: t }]);
+  };
 
   function handleKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (slashOpen && slashTools.length > 0) {
@@ -716,11 +799,27 @@ export default function Chat({ settings, serverUrl, instances }: Props): React.R
               </div>
             );
           }
-          if (item.kind === 'tool') return (
-            <div key={i} style={{ maxWidth:'95%', marginBottom:4 }}>
-              <ToolCard tu={item.tu} result={item.result} />
-            </div>
-          );
+          if (item.kind === 'tool') {
+            const viewUri = viewUriOf(toolDefsByName.get(item.tu.name) as ToolDef | undefined);
+            const raw = item.result && !item.result.is_error ? item.result.raw : undefined;
+            return (
+              <div key={i} style={{ maxWidth:'95%', marginBottom:4 }}>
+                <ToolCard tu={item.tu} result={item.result}>
+                  {viewUri && raw && (
+                    <McpAppFrame
+                      uri={viewUri}
+                      toolName={item.tu.name}
+                      toolInput={item.tu.input}
+                      toolResult={raw}
+                      theme={themeMode === 'light' ? 'light' : 'dark'}
+                      callTool={callToolForView}
+                      onMessage={onViewMessage}
+                    />
+                  )}
+                </ToolCard>
+              </div>
+            );
+          }
           return null;
         })}
 

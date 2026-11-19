@@ -91,7 +91,7 @@ async function versionCheck(offline?: boolean): Promise<CheckResult> {
 }
 
 /** Find a nowaikit entry in an MCP client config and check that what it launches exists. */
-export function inspectClientConfig(raw: string, configKey: string): { found: boolean; problem?: string; launch?: string } {
+export function inspectClientConfig(raw: string, configKey: string): { found: boolean; problem?: string; launch?: string; fullToolList?: boolean } {
   let json: any;
   try {
     json = JSON.parse(raw);
@@ -101,12 +101,16 @@ export function inspectClientConfig(raw: string, configKey: string): { found: bo
   const servers = json?.[configKey] || json?.mcpServers || json?.servers || {};
   const entry = Object.entries(servers).find(([k, v]) => /nowaikit|servicenow/i.test(k) || /nowaikit/i.test(JSON.stringify(v)));
   if (!entry) return { found: false };
-  const v = entry[1] as { command?: string; args?: string[]; url?: string };
+  const v = entry[1] as { command?: string; args?: string[]; url?: string; env?: Record<string, string> };
   if (v.url) return { found: true, launch: v.url };
   const launch = [v.command, ...(v.args || [])].filter(Boolean).join(' ');
   const script = (v.args || []).find((a) => /\.(m?js|cjs)$/.test(a));
   if (script && !existsSync(script)) return { found: true, launch, problem: `It points at ${script}, which does not exist.` };
-  return { found: true, launch };
+  // No discovery mode and no role package means the whole catalog is listed to the model every session.
+  const env = v.env || {};
+  const args = (v.args || []).join(' ');
+  const fullToolList = !env.MCP_TOOL_DISCOVERY && !env.MCP_TOOL_PACKAGE && !env.SN_PERSONA && !/--lean|--package|--persona|--discovery/.test(args);
+  return { found: true, launch, fullToolList };
 }
 
 function clientChecks(): CheckResult[] {
@@ -117,12 +121,18 @@ function clientChecks(): CheckResult[] {
     try { raw = readFileSync(c.configPath, 'utf8'); } catch { continue; }
     const r = inspectClientConfig(raw, c.configKey);
     if (!r.found && !r.problem) continue;
+    // Claude Code loads MCP tools on demand, so a full list costs it little.
+    const heavy = !r.problem && r.fullToolList && c.id !== 'claude-code';
     out.push({
       id: `client:${c.id}`,
       title: c.name,
-      status: r.problem ? 'fail' : 'ok',
-      detail: r.problem ? r.problem : `configured (${r.launch})`,
-      fix: r.problem ? 'Run `nowaikit setup` to rewrite this client\'s config.' : undefined,
+      status: r.problem ? 'fail' : heavy ? 'warn' : 'ok',
+      detail: r.problem ? r.problem : `configured (${r.launch})${heavy ? '; lists all ~550 tools (about 80K tokens each conversation)' : ''}`,
+      fix: r.problem
+        ? 'Run `nowaikit setup` to rewrite this client\'s config.'
+        : heavy
+        ? 'Add "MCP_TOOL_DISCOVERY": "lean" to its env (or re-run `nowaikit setup`). Every tool stays reachable through search_tools.'
+        : undefined,
     });
   }
   if (!out.length) {

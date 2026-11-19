@@ -10,6 +10,7 @@
  * delegated-auth context. Behaviour (result shape, permission gating) matches the
  * HTTP server's CallTool handler.
  */
+import { modelText } from './utils/model-output.js';
 import { getTools, executeTool } from './tools/index.js';
 import { ServiceNowClient } from './servicenow/client.js';
 import { runWithDelegatedAuth, getDelegatedAuth, type DelegatedAuth } from './utils/request-context.js';
@@ -38,7 +39,10 @@ const SERVER_INFO_META_KEY = 'io.modelcontextprotocol/serverInfo';
 /** JSON-RPC error for a protocol revision this server does not serve (2026-07-28). */
 const UNSUPPORTED_PROTOCOL_VERSION = -32022;
 
-/** Format a tool result exactly like the HTTP server's CallTool handler. */
+/**
+ * Format a tool result like the server's CallTool handler (compact text for the model). Embedders read
+ * the structured object programmatically, so it is always attached here.
+ */
 function formatToolResult(result: unknown): Record<string, unknown> {
   const structured =
     typeof result === 'object' && result !== null && !Array.isArray(result)
@@ -46,7 +50,7 @@ function formatToolResult(result: unknown): Record<string, unknown> {
       : {};
   return {
     content: [
-      { type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) },
+      { type: 'text', text: modelText(result) },
     ],
     ...structured,
   };

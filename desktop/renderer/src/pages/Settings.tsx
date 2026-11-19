@@ -852,6 +852,9 @@ export default function Settings({ settings, onSave, activeInstance, onNavigate 
         </div>
       </div>
 
+      {/* ── Health check (nowaikit doctor) ───────────────────────────────────── */}
+      {section('Health check', <DoctorPanel />)}
+
       {/* ── Appearance ──────────────────────────────────────────────────────── */}
       {section('Appearance', <>
         {row('Theme', 'Switch between dark and light mode', (
@@ -939,6 +942,67 @@ export default function Settings({ settings, onSave, activeInstance, onNavigate 
       <div style={{ marginTop:28, padding:'14px 18px', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8, fontSize:'0.78rem', color:'var(--text2)', lineHeight:1.6 }}>
         <strong style={{ color:'var(--text)' }}>Security note:</strong> Passwords and API keys are encrypted at rest using AES-256-GCM (keys stored in your OS keychain). You can edit <code style={{ background:'var(--surface2)', padding:'1px 5px', borderRadius:3 }}>config.json</code> directly with plaintext values — they will be automatically encrypted the next time the app saves settings.
       </div>
+    </div>
+  );
+}
+
+// ── nowaikit doctor ─────────────────────────────────────────────────────────────
+const DOCTOR_STYLE: Record<DoctorCheck['status'], { mark: string; color: string }> = {
+  ok:   { mark: '✓', color: 'var(--green)' },
+  warn: { mark: '!', color: 'var(--yellow)' },
+  fail: { mark: '✗', color: 'var(--red)' },
+  info: { mark: '·', color: 'var(--dim)' },
+};
+
+function DoctorPanel(): React.ReactElement {
+  const [busy, setBusy] = useState(false);
+  const [checks, setChecks] = useState<DoctorCheck[] | null>(null);
+  const [error, setError] = useState('');
+
+  async function run() {
+    setBusy(true);
+    setError('');
+    try {
+      const r = await unifiedApi.runDoctor();
+      if (r.error) { setError(r.error); setChecks(null); }
+      else setChecks(r.checks ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const fails = checks?.filter(c => c.status === 'fail').length ?? 0;
+  const warns = checks?.filter(c => c.status === 'warn').length ?? 0;
+
+  return (
+    <div className="doctor-panel">
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16 }}>
+        <div style={{ fontSize:'0.8rem', color:'var(--text2)' }}>
+          Runs the same checks as <code style={{ fontSize:'0.78rem' }}>nowaikit doctor</code>: Node, version, instance reachability, login, roles, permissions and AI client configs.
+        </div>
+        <button className="btn-primary" onClick={run} disabled={busy} style={{ flexShrink:0, opacity: busy ? 0.6 : 1 }}>
+          {busy ? 'Checking…' : checks ? 'Run again' : 'Run checks'}
+        </button>
+      </div>
+      {error && <div style={{ marginTop:12, fontSize:'0.82rem', color:'var(--red)' }}>{error}</div>}
+      {checks && (
+        <div style={{ marginTop:14 }}>
+          {checks.map(c => (
+            <div key={c.id} className="doctor-check" data-status={c.status} style={{ display:'flex', gap:10, padding:'7px 0', borderTop:'1px solid var(--border)' }}>
+              <span style={{ width:14, textAlign:'center', fontWeight:700, color: DOCTOR_STYLE[c.status].color }}>{DOCTOR_STYLE[c.status].mark}</span>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontSize:'0.84rem' }}><strong>{c.title}</strong> <span style={{ color:'var(--text2)' }}>{c.detail}</span></div>
+                {c.fix && c.status !== 'ok' && <div style={{ fontSize:'0.78rem', color:'var(--dim)', marginTop:2 }}>{c.fix}</div>}
+              </div>
+            </div>
+          ))}
+          <div style={{ marginTop:10, fontSize:'0.8rem', fontWeight:600, color: fails ? 'var(--red)' : warns ? 'var(--yellow)' : 'var(--green)' }}>
+            {fails ? `${fails} problem(s) to fix.` : warns ? `Working, with ${warns} suggestion(s).` : 'Everything looks good.'}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

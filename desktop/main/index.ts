@@ -214,6 +214,28 @@ function registerIpcHandlers() {
     return result;
   });
 
+  // ── MCP Apps views ──
+  ipcMain.handle('resources:read', async (_event, uri: string) => {
+    if (typeof uri !== 'string' || !uri.startsWith('ui://')) return null;
+    return serverManager.readResource(uri);
+  });
+
+  // ── nowaikit doctor ──
+  ipcMain.handle('doctor:run', async (_event, instance?: string) => {
+    try {
+      const doctorPath = join(serverManager.getServerPath(), '..', 'cli', 'doctor.js');
+      if (!existsSync(doctorPath)) return { error: `Doctor not found at ${doctorPath}. Build the nowaikit root first.` };
+      // The server build is ESM; load it with a real dynamic import (tsc would turn import() into require()).
+      const esmImport = new Function('p', 'return import(p)') as (p: string) => Promise<{ runDoctorChecks: (o: { instance?: string }) => Promise<unknown[]> }>;
+      const { pathToFileURL } = await import('url');
+      const doctor = await esmImport(pathToFileURL(doctorPath).href);
+      const checks = await doctor.runDoctorChecks({ instance: instance || undefined });
+      return { checks, instance: instance || null };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // ── Audit Log ──
   ipcMain.handle('audit:getLogs', async (_event, limit?: number) => {
     return configStore.getAuditLogs(limit || 100);
@@ -239,9 +261,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('system:getServerPath', () => {
     // In packaged app, server is in resources/server/
-    const packagedPath = join(process.resourcesPath, 'server', 'server.js');
-    const devPath = join(__dirname, '..', '..', 'dist', 'server.js');
-    return existsSync(packagedPath) ? packagedPath : devPath;
+    return serverManager.getServerPath();
   });
 
   // ── AI Chat (proxy through main process to avoid CORS) ──

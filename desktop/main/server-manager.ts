@@ -11,10 +11,21 @@ interface ServerStatus {
   toolCount?: number;
 }
 
+type ToolDef = { name: string; description: string; inputSchema?: Record<string, unknown>; _meta?: Record<string, unknown> };
+type Pending = { resolve: (msg: { result?: unknown; error?: { message: string } }) => void; timer: NodeJS.Timeout };
+
+/** MCP Apps UI extension: advertised at initialize so the server lists the open_* view tools and app_* tools. */
+const UI_EXTENSION = 'io.modelcontextprotocol/ui';
+
 export class ServerManager {
   private process: ChildProcess | null = null;
   private status: ServerStatus = { running: false };
-  private tools: Array<{ name: string; description: string; inputSchema?: Record<string, unknown> }> = [];
+  private tools: ToolDef[] = [];
+  private liveTools: ToolDef[] | null = null;
+  private nextId = 1;
+  private pending = new Map<number, Pending>();
+  private stdoutBuffer = '';
+  private initialized: Promise<boolean> | null = null;
 
   /**
    * Try to find a system-installed Node.js binary.
@@ -45,10 +56,12 @@ export class ServerManager {
    * In development: ../dist/server.js (parent nowaikit project)
    * In packaged app: resources/server/server.js
    */
-  private getServerPath(): string {
+  getServerPath(): string {
     const resourcePath = join(process.resourcesPath || '', 'server', 'server.js');
     if (existsSync(resourcePath)) return resourcePath;
-    return join(__dirname, '..', '..', 'dist', 'server.js');
+    // tsx dev runs from desktop/main, the compiled build from desktop/dist/main.
+    const candidates = [join(__dirname, '..', '..', 'dist', 'server.js'), join(__dirname, '..', '..', '..', 'dist', 'server.js')];
+    return candidates.find(p => existsSync(p)) ?? candidates[0];
   }
 
   /**
@@ -61,6 +74,8 @@ export class ServerManager {
       MCP_TOOL_PACKAGE: instance.toolPackage || 'full',
       WRITE_ENABLED: instance.writeEnabled ? 'true' : 'false',
       NOW_ASSIST_ENABLED: instance.nowAssistEnabled ? 'true' : 'false',
+      // The chat renders MCP Apps views, so always list the open_* and app_* tools.
+      NOWAIKIT_MCP_APPS: 'true',
     };
 
     if (instance.authMethod === 'basic') {
@@ -154,6 +169,7 @@ export class ServerManager {
             console.log(`MCP server exited with code ${code}`);
             this.status = { running: false };
             this.process = null;
+            this.stopAll();
           });
 
           this.status = {
@@ -163,6 +179,8 @@ export class ServerManager {
             startedAt: new Date().toISOString(),
           };
 
+          this.process!.stdout?.on('data', (d: Buffer) => this.onStdout(d));
+          this.initialized = this.initialize();
           resolve({ success: true });
         }, 3000);
       });
@@ -177,6 +195,11 @@ export class ServerManager {
    * Stop all running server processes.
    */
   stopAll(): void {
+    for (const [, p] of this.pending) { clearTimeout(p.timer); p.resolve({ error: { message: 'Server stopped' } }); }
+    this.pending.clear();
+    this.stdoutBuffer = '';
+    this.initialized = null;
+    this.liveTools = null;
     if (this.process) {
       this.process.kill('SIGTERM');
       this.process = null;
@@ -232,10 +255,82 @@ export class ServerManager {
     }
   }
 
+  /** Parse newline-delimited JSON-RPC from the server and settle pending requests. */
+  private onStdout(data: Buffer): void {
+    this.stdoutBuffer += data.toString();
+    const lines = this.stdoutBuffer.split('\n');
+    this.stdoutBuffer = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let msg: { id?: number; result?: unknown; error?: { message: string } };
+      try { msg = JSON.parse(line); } catch { continue; }
+      if (typeof msg.id !== 'number') continue;
+      const p = this.pending.get(msg.id);
+      if (!p) continue;
+      this.pending.delete(msg.id);
+      clearTimeout(p.timer);
+      p.resolve(msg);
+    }
+  }
+
+  private send(message: Record<string, unknown>): void {
+    this.process?.stdin?.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\n');
+  }
+
+  /** Send a JSON-RPC request to the MCP server over stdio. */
+  private rawRequest(method: string, params: Record<string, unknown>, timeoutMs = 90000): Promise<{ result?: unknown; error?: { message: string } }> {
+    if (!this.process || !this.status.running) {
+      return Promise.resolve({ error: { message: 'Server is not running. Start the server first.' } });
+    }
+    const id = this.nextId++;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        resolve({ error: { message: `Request timed out (${Math.round(timeoutMs / 1000)}s): ${method}` } });
+      }, timeoutMs);
+      this.pending.set(id, { resolve, timer });
+      this.send({ id, method, params });
+    });
+  }
+
+  /** MCP initialize handshake, advertising the MCP Apps extension. */
+  private async initialize(): Promise<boolean> {
+    const r = await this.rawRequest('initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: { extensions: { [UI_EXTENSION]: { mimeTypes: ['text/html;profile=mcp-app'] } } },
+      clientInfo: { name: 'nowaikit-desktop', version: '1' },
+    }, 30000);
+    if (r.error) return false;
+    this.send({ method: 'notifications/initialized' });
+    return true;
+  }
+
+  async request(method: string, params: Record<string, unknown>, timeoutMs?: number): Promise<{ result?: unknown; error?: { message: string } }> {
+    if (this.initialized) await this.initialized;
+    return this.rawRequest(method, params, timeoutMs);
+  }
+
   /**
-   * List available tools from the pre-built manifest.
+   * List tools: live from the running server (includes MCP Apps `_meta`), else the pre-built manifest.
    */
-  async listTools(): Promise<Array<{ name: string; description: string; inputSchema?: Record<string, unknown> }>> {
+  async listTools(): Promise<ToolDef[]> {
+    if (this.status.running) {
+      if (this.liveTools) return this.liveTools;
+      const all: ToolDef[] = [];
+      let cursor: string | undefined;
+      do {
+        const r = await this.request('tools/list', cursor ? { cursor } : {}, 30000);
+        if (r.error || !r.result) break;
+        const page = r.result as { tools?: ToolDef[]; nextCursor?: string };
+        all.push(...(page.tools || []));
+        cursor = page.nextCursor;
+      } while (cursor);
+      if (all.length) {
+        this.liveTools = all;
+        return all;
+      }
+    }
+
     if (this.tools.length > 0) return this.tools;
 
     try {
@@ -256,61 +351,22 @@ export class ServerManager {
   }
 
   /**
-   * Execute a tool via the running server.
+   * Execute a tool via the running server. `result` is the MCP CallToolResult.
    */
   async executeTool(name: string, args: Record<string, unknown>): Promise<{ success: boolean; result?: unknown; error?: string }> {
-    if (!this.process || !this.status.running) {
-      return { success: false, error: 'Server is not running. Start the server first.' };
+    const r = await this.request('tools/call', { name, arguments: args }, 120000);
+    if (r.error) return { success: false, error: r.error.message };
+    const result = r.result as { isError?: boolean; content?: Array<{ text?: string }> } | undefined;
+    if (result?.isError) {
+      const text = (result.content || []).map(c => c.text || '').join('\n').trim();
+      return { success: false, result, error: text || `Tool ${name} failed` };
     }
+    return { success: true, result };
+  }
 
-    // Send JSON-RPC request to the MCP server via stdin
-    const id = Date.now();
-    const request = JSON.stringify({
-      jsonrpc: '2.0',
-      id,
-      method: 'tools/call',
-      params: { name, arguments: args },
-    });
-
-    return new Promise((resolve) => {
-      let buffer = '';
-
-      const cleanup = () => {
-        clearTimeout(timer);
-        this.process?.stdout?.off('data', onData);
-      };
-
-      const timer = setTimeout(() => {
-        cleanup();
-        resolve({ success: false, error: `Tool execution timed out (90s). Tool: ${name}` });
-      }, 90000);
-
-      const onData = (data: Buffer) => {
-        buffer += data.toString();
-        // Try to parse each complete line from the buffer
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep incomplete last line in buffer
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const response = JSON.parse(line);
-            if (response.id === id) {
-              cleanup();
-              if (response.error) {
-                resolve({ success: false, error: response.error.message });
-              } else {
-                resolve({ success: true, result: response.result });
-              }
-              return;
-            }
-          } catch {
-            // Not valid JSON, skip this line
-          }
-        }
-      };
-
-      this.process?.stdout?.on('data', onData);
-      this.process?.stdin?.write(request + '\n');
-    });
+  /** Read an MCP resource (MCP Apps ui:// views). */
+  async readResource(uri: string): Promise<unknown | null> {
+    const r = await this.request('resources/read', { uri }, 30000);
+    return r.error ? null : r.result ?? null;
   }
 }

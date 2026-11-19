@@ -618,6 +618,165 @@ function handleClaudeCli(req, res) {
   });
 }
 
+// ─── NowAIKit MCP bridge (real tool execution + MCP Apps views + doctor) ─────
+
+/**
+ * The web UI talks to a real NowAIKit MCP server (../dist/server.js over stdio) through these routes,
+ * so the chat runs the same tools as Claude Desktop or the CLI, including the MCP Apps views and the
+ * app-only tools the views call. The client advertises the MCP Apps UI extension so the server lists
+ * open_* view tools with `_meta.ui.resourceUri` and the app_* tools (visibility ["app"]).
+ *
+ * Instance selection: the stored NowAIKit config (~/.config/nowaikit/instances.json) supplies the
+ * credentials. The instance is the entry whose URL matches the one the UI has active (preferring the
+ * SN_DEFAULT_INSTANCE name when several entries share a URL), else SN_DEFAULT_INSTANCE, else the
+ * config default. Credentials never pass through the browser.
+ *
+ *   GET  /api/mcp/status                     -> { available, instance }
+ *   POST /api/mcp/tools     { instanceUrl? } -> { tools }
+ *   POST /api/mcp/call      { name, arguments, instanceUrl? } -> { result: CallToolResult }
+ *   POST /api/mcp/resource  { uri, instanceUrl? } -> ReadResourceResult
+ *   POST /api/mcp/doctor    { instanceUrl? } -> { checks }
+ */
+const NOWAIKIT_ROOT = path.resolve(__dirname, '..');
+const MCP_SERVER_JS = path.join(NOWAIKIT_ROOT, 'dist', 'server.js');
+const MCP_SDK_DIR = path.join(NOWAIKIT_ROOT, 'node_modules', '@modelcontextprotocol', 'sdk', 'dist', 'esm', 'client');
+const UI_EXTENSION = 'io.modelcontextprotocol/ui';
+
+let mcpBridge = null; // { client, instance, tools }
+let mcpBridgePending = null;
+
+function bridgeAvailable() {
+  return fs.existsSync(MCP_SERVER_JS) && fs.existsSync(path.join(MCP_SDK_DIR, 'index.js'));
+}
+
+/** Resolve a NowAIKit instance name from the URL the UI has active. Returns '' to use the default. */
+function resolveInstanceName(instanceUrl) {
+  const pref = process.env.SN_DEFAULT_INSTANCE || '';
+  const cfg = readNowaikitJson('instances.json');
+  if (!cfg || !cfg.instances) return pref;
+  const norm = (u) => String(u || '').trim().replace(/\/+$/, '').toLowerCase();
+  const target = norm(instanceUrl);
+  if (target) {
+    const entries = Object.entries(cfg.instances).filter(([, v]) => norm(v && v.instanceUrl) === target);
+    if (entries.length) {
+      const preferred = entries.find(([k]) => k === pref);
+      return (preferred || entries[0])[0];
+    }
+  }
+  return pref;
+}
+
+async function getMcpBridge(instanceUrl) {
+  const instance = resolveInstanceName(instanceUrl);
+  if (mcpBridge && mcpBridge.instance === instance) return mcpBridge;
+  if (mcpBridgePending) {
+    await mcpBridgePending.catch(() => {});
+    if (mcpBridge && mcpBridge.instance === instance) return mcpBridge;
+  }
+  mcpBridgePending = (async () => {
+    if (mcpBridge) {
+      try { await mcpBridge.client.close(); } catch { /* ignore */ }
+      mcpBridge = null;
+    }
+    const { pathToFileURL } = require('url');
+    const { Client } = await import(pathToFileURL(path.join(MCP_SDK_DIR, 'index.js')).href);
+    const { StdioClientTransport } = await import(pathToFileURL(path.join(MCP_SDK_DIR, 'stdio.js')).href);
+    const env = { ...process.env };
+    if (instance) env.SN_DEFAULT_INSTANCE = instance;
+    // Instance credentials come from the stored config, so drop any stray env-level instance settings.
+    for (const k of Object.keys(env)) if (k.startsWith('SERVICENOW_')) delete env[k];
+    if (!env.SN_INSTANCES_CONFIG) env.SN_INSTANCES_CONFIG = path.join(os.homedir(), '.config', 'nowaikit', 'instances.json');
+    const transport = new StdioClientTransport({ command: process.execPath, args: [MCP_SERVER_JS], env, cwd: NOWAIKIT_ROOT, stderr: 'ignore' });
+    const client = new Client(
+      { name: 'nowaikit-web', version: '1' },
+      { capabilities: { extensions: { [UI_EXTENSION]: { mimeTypes: ['text/html;profile=mcp-app'] } } } },
+    );
+    await client.connect(transport);
+    client.onclose = () => { if (mcpBridge && mcpBridge.client === client) mcpBridge = null; };
+    const tools = [];
+    let cursor;
+    do {
+      const page = await client.listTools(cursor ? { cursor } : undefined);
+      tools.push(...page.tools);
+      cursor = page.nextCursor;
+    } while (cursor);
+    mcpBridge = { client, instance, tools };
+    return mcpBridge;
+  })();
+  try {
+    return await mcpBridgePending;
+  } finally {
+    mcpBridgePending = null;
+  }
+}
+
+function readJsonBody(req, max = 2 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    req.on('data', (c) => {
+      total += c.length;
+      if (total > max) { reject(new Error('Request body too large')); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      if (!total) return resolve({});
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch { reject(new Error('Invalid JSON')); }
+    });
+    req.on('error', reject);
+  });
+}
+
+function sendJson(req, res, status, obj) {
+  const headers = { 'Content-Type': 'application/json' };
+  const origin = req.headers.origin;
+  if (origin && isAllowedOrigin(origin)) headers['Access-Control-Allow-Origin'] = origin;
+  res.writeHead(status, headers);
+  res.end(JSON.stringify(obj));
+}
+
+async function handleMcpBridge(req, res) {
+  const route = req.url.split('?')[0].slice('/api/mcp/'.length);
+  if (route === 'status' && req.method === 'GET') {
+    return sendJson(req, res, 200, { available: bridgeAvailable(), instance: mcpBridge ? mcpBridge.instance : null });
+  }
+  if (req.method !== 'POST') return sendJson(req, res, 405, { error: 'Method not allowed' });
+  if (!bridgeAvailable()) {
+    return sendJson(req, res, 503, { error: 'NowAIKit server build not found. Run `npm run build` in the nowaikit root.' });
+  }
+  let body;
+  try { body = await readJsonBody(req); } catch (e) { return sendJson(req, res, 400, { error: e.message }); }
+  const instanceUrl = typeof body.instanceUrl === 'string' ? body.instanceUrl : '';
+  try {
+    if (route === 'doctor') {
+      const { pathToFileURL } = require('url');
+      const doctor = await import(pathToFileURL(path.join(NOWAIKIT_ROOT, 'dist', 'cli', 'doctor.js')).href);
+      const instance = resolveInstanceName(instanceUrl) || undefined;
+      const checks = await doctor.runDoctorChecks({ instance });
+      return sendJson(req, res, 200, { checks, instance: instance || null });
+    }
+    const bridge = await getMcpBridge(instanceUrl);
+    if (route === 'tools') return sendJson(req, res, 200, { tools: bridge.tools, instance: bridge.instance });
+    if (route === 'call') {
+      const name = typeof body.name === 'string' ? body.name : '';
+      if (!name) return sendJson(req, res, 400, { error: 'name is required' });
+      const args = body.arguments && typeof body.arguments === 'object' ? body.arguments : {};
+      const result = await bridge.client.callTool({ name, arguments: args }, undefined, { timeout: 120000 });
+      return sendJson(req, res, 200, { result });
+    }
+    if (route === 'resource') {
+      const uri = typeof body.uri === 'string' ? body.uri : '';
+      if (!uri.startsWith('ui://')) return sendJson(req, res, 400, { error: 'Only ui:// resources can be read here' });
+      return sendJson(req, res, 200, await bridge.client.readResource({ uri }));
+    }
+    return sendJson(req, res, 404, { error: 'Unknown MCP bridge route' });
+  } catch (e) {
+    // A dead server process: drop it so the next call starts a fresh one.
+    if (mcpBridge && /closed|EPIPE|not connected/i.test(String(e && e.message))) mcpBridge = null;
+    return sendJson(req, res, 500, { error: sanitizeForLog(String((e && e.message) || e)) });
+  }
+}
+
 const server = http.createServer((req, res) => {
   const origin = req.headers.origin;
   const allowed = isAllowedOrigin(origin);
@@ -680,6 +839,13 @@ const server = http.createServer((req, res) => {
   if (req.url.startsWith('/api/snow/')) {
     if (!proxySecurityCheck()) return;
     proxySnowRequest(req, res);
+    return;
+  }
+
+  // NowAIKit MCP bridge (tools, MCP Apps views, doctor)
+  if (req.url.startsWith('/api/mcp/')) {
+    if (req.method !== 'GET' && !proxySecurityCheck()) return;
+    void handleMcpBridge(req, res);
     return;
   }
 

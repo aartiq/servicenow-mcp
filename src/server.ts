@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { compatNotes } from './bootstrap-env.js';
+import { modelText } from './utils/model-output.js';
 import {
   Server,
   ProtocolError,
@@ -297,7 +298,14 @@ export function createServer(options: CreateServerOptions = {}): Server {
 
       // Structured output: include the raw object so capable clients get typed
       // content, while keeping the text block for backward compatibility.
-      return toolResult(result) as { content: Array<{ type: 'text'; text: string }> };
+      // Views (open_*) and their app-only tools always need the raw object. When the client renders the
+      // view itself, the model only needs the summary, not the whole form definition.
+      const isView = /^open_(catalog_form|record_form|approvals)$/.test(name);
+      const summary = isView && appsEnabled(ctx) && result && typeof result === 'object' ? (result as { summary?: unknown }).summary : undefined;
+      return toolResult(result, {
+        structured: isView || /^app_/.test(name) || undefined,
+        text: typeof summary === 'string' ? `${summary} The form is shown to the user; wait for them to submit it.` : undefined,
+      }) as { content: Array<{ type: 'text'; text: string }> };
     } catch (error) {
       // Protocol-level errors (a task request for a tool without task support) stay JSON-RPC errors.
       if (error instanceof ProtocolError) throw error;
@@ -359,7 +367,7 @@ export function createServer(options: CreateServerOptions = {}): Server {
         : baseClient;
       const result = await readResource(client, uri);
       const mimeType = uri === 'servicenow://query-syntax' ? 'text/markdown' : 'application/json';
-      const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+      const text = modelText(result);
 
       return {
         contents: [{ uri, mimeType, text }],

@@ -26,6 +26,10 @@ contextBridge.exposeInMainWorld('api', {
   executeTool: (name: string, args: Record<string, unknown>) =>
     ipcRenderer.invoke('tools:execute', name, args),
 
+  // ── MCP Apps views + doctor ──
+  readResource: (uri: string) => ipcRenderer.invoke('resources:read', uri),
+  runDoctor: (instance?: string) => ipcRenderer.invoke('doctor:run', instance),
+
   // ── Audit ──
   getAuditLogs: (limit?: number) => ipcRenderer.invoke('audit:getLogs', limit),
 
