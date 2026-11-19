@@ -92,3 +92,25 @@ describe('annotations for tools that change data', () => {
     expect(byName.list_business_rules.annotations.readOnlyHint).toBe(true);
   });
 });
+
+describe('every listed tool has a handler', () => {
+  it('never answers UNKNOWN_TOOL for a tool it lists', async () => {
+    const { getTools, executeTool } = await import('../../src/tools/index.js');
+    // A client whose every method resolves to an empty result, so handlers run without a network.
+    const client: any = new Proxy({}, {
+      get: (_t, prop) => (prop === 'instanceUrl' ? 'https://example.service-now.com' : prop === 'then' ? undefined : async () => ({ count: 0, records: [], result: [] })),
+    });
+    const saved = process.env.WRITE_ENABLED;
+    process.env.WRITE_ENABLED = 'false';
+    const missing: string[] = [];
+    try {
+      for (const t of getTools()) {
+        if (/^fluent_/.test(t.name)) continue; // these shell out to the SDK CLI
+        try { await executeTool(client, t.name, {}); } catch (e: any) { if (e?.code === 'UNKNOWN_TOOL') missing.push(t.name); }
+      }
+    } finally {
+      if (saved === undefined) delete process.env.WRITE_ENABLED; else process.env.WRITE_ENABLED = saved;
+    }
+    expect(missing).toEqual([]);
+  }, 60000);
+});

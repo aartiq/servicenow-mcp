@@ -341,6 +341,31 @@ export async function executeIntegrationToolCall(
       if (resp.count === 0) throw new ServiceNowError(`Transform Map not found: ${args.sys_id_or_name}`, 'NOT_FOUND');
       return resp.records[0];
     }
+    case 'list_transform_field_maps': {
+      if (!args.transform_map_sys_id) throw new ServiceNowError('transform_map_sys_id is required', 'INVALID_REQUEST');
+      return await client.queryRecords({
+        table: 'sys_transform_entry',
+        query: `map=${args.transform_map_sys_id}`,
+        limit: args.limit ?? 50,
+        fields: 'sys_id,map,source_field,target_field,coalesce,use_source_script,sys_updated_on',
+      });
+    }
+    // ── Import Sets ─────────────────────────────────────────────────────────
+    case 'list_import_sets': {
+      const parts: string[] = [];
+      if (args.state) parts.push(`state=${args.state}`);
+      if (args.query) parts.push(args.query);
+      return await client.queryRecords({
+        table: 'sys_import_set',
+        query: parts.join('^') || undefined,
+        limit: args.limit ?? 25,
+        fields: 'sys_id,label,state,table_name,import_count,error_count,sys_created_on',
+      });
+    }
+    case 'get_import_set': {
+      if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
+      return await client.getRecord('sys_import_set', args.sys_id);
+    }
     case 'run_transform_map': {
       requireWrite();
       if (!args.transform_map_sys_id || !args.import_set_sys_id) {
