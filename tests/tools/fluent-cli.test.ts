@@ -5,7 +5,9 @@ const calls: Array<{ args: string[]; cwd?: string }> = [];
 vi.mock('child_process', () => ({
   execFile: (_cmd: string, args: string[], opts: any, cb: (e: any, r: any) => void) => {
     calls.push({ args: args.slice(1), cwd: opts?.cwd });
-    const out = args.includes('--version') ? '4.14.2' : args[1] === 'query' || args[1] === 'exec' ? '{"ok":true}' : 'done';
+    const out = args.includes('--version') ? '4.14.2'
+      : args[1] === 'auth' ? '[now-sdk] Listing all credentials:\n[other]\n      host = https://other.service-now.com\n      default = Yes\n[mydemo]\n      host = https://demo.service-now.com\n      default = No\n'
+      : args[1] === 'query' || args[1] === 'exec' ? '{"ok":true}' : 'done';
     cb(null, { stdout: out, stderr: '' });
   },
 }));
@@ -59,6 +61,21 @@ describe('Fluent SDK CLI arguments (now-sdk 4.14.2)', () => {
   it('a missing project folder is reported as a missing folder', async () => {
     await expect(executeFluentToolCall(client, 'fluent_exec', { directory: '/definitely/not/here', script: 'gs.info(1)', reason: 'test' }))
       .rejects.toMatchObject({ message: expect.stringMatching(/Directory not found/) });
+  });
+
+  it('uses the SDK login that matches the instance NowAIKit is connected to', async () => {
+    await executeFluentToolCall({ instanceUrl: 'https://demo.service-now.com/' } as any, 'fluent_sdk_query', { table: 'incident' });
+    expect(last().args).toEqual(['query', 'incident', '--query', 'sys_idISNOTEMPTY', '--auth', 'mydemo', '-o', 'json']);
+  });
+
+  it('refuses to fall back to an SDK login for a different instance', async () => {
+    await expect(executeFluentToolCall({ instanceUrl: 'https://elsewhere.service-now.com' } as any, 'fluent_sdk_query', { table: 'incident' }))
+      .rejects.toMatchObject({ code: 'SDK_AUTH_MISMATCH' });
+  });
+
+  it('an explicit auth alias always wins', async () => {
+    await executeFluentToolCall({ instanceUrl: 'https://elsewhere.service-now.com' } as any, 'fluent_sdk_query', { table: 'incident', auth: 'dev' });
+    expect(last().args).toContain('dev');
   });
 
   it('build takes the project directory as a positional argument', async () => {

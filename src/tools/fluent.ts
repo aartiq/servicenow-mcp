@@ -11,6 +11,7 @@
  */
 import { execFile as execFileCb } from 'child_process';
 import { existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
 import { promisify } from 'util';
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
@@ -296,6 +297,7 @@ export function getFluentToolDefinitions() {
           },
           from: { type: 'string', description: 'Convert a legacy app: its sys_app sys_id on the instance, or a local folder path' },
           directory: { type: 'string', description: 'Directory to create the project in (defaults to the server working directory)' },
+          install: { type: 'boolean', description: 'Run npm install in the new project so it builds straight away (default true)' },
           auth: { type: 'string', description: 'now-sdk credential alias (optional)' },
         },
         required: [],
@@ -663,7 +665,7 @@ export async function executeFluentToolCall(
       if (args.limit !== undefined) queryArgs.push('--limit', String(args.limit));
       if (args.offset !== undefined) queryArgs.push('--offset', String(args.offset));
       if (args.display_value) queryArgs.push('--display-value', String(args.display_value));
-      pushAuth(queryArgs, args);
+      await pushAuth(queryArgs, args, client);
       queryArgs.push('-o', 'json');
       const result = await runNowSdk(queryArgs, 60000);
       let records: unknown = undefined;
@@ -694,11 +696,22 @@ export async function executeFluentToolCall(
       if (args.scope) initArgs.push('--scopeName', String(args.scope));
       if (args.template) initArgs.push('--template', String(args.template));
       if (args.from) initArgs.push('--from', String(args.from));
-      pushAuth(initArgs, args);
+      await pushAuth(initArgs, args, client, false);
       // A new project usually goes in a folder that doesn't exist yet.
       if (args.directory) mkdirSync(String(args.directory), { recursive: true });
       const result = await runNowSdk(initArgs, 600000, args.directory);
-      return { action: 'project_initialized', name: args.name || null, directory: args.directory || process.cwd(), output: result.stdout, stderr: result.stderr || undefined };
+      // Install the project's packages so it can build straight away (the SDK leaves that to you).
+      const dir = String(args.directory || process.cwd());
+      let installed: string | undefined;
+      if (args.install !== false && existsSync(join(dir, 'package.json')) && !existsSync(join(dir, 'node_modules'))) {
+        try {
+          await execFileAsync('npm', ['install', '--no-audit', '--no-fund'], { cwd: dir, timeout: 600000, maxBuffer: 10 * 1024 * 1024 });
+          installed = 'npm install done';
+        } catch (e: any) {
+          installed = `npm install failed, run it yourself in ${dir}: ${String(e?.stderr || e?.message || '').slice(0, 300)}`;
+        }
+      }
+      return { action: 'project_initialized', ...(installed ? { install: installed } : {}), name: args.name || null, directory: args.directory || process.cwd(), output: result.stdout, stderr: result.stderr || undefined };
     }
 
     case 'fluent_build': {
@@ -733,7 +746,7 @@ export async function executeFluentToolCall(
       if (args.reinstall) installArgs.push('--reinstall');
       if (args.skip_flow_activation) installArgs.push('--skip-flow-activation');
       if (args.demo_data === false) installArgs.push('--demoData=false');
-      pushAuth(installArgs, args);
+      await pushAuth(installArgs, args, client);
       const result = await runNowSdk(installArgs, 900000);
       return { action: args.info ? 'install_info' : 'install_completed', output: result.stdout, stderr: result.stderr || undefined };
     }
@@ -759,7 +772,7 @@ export async function executeFluentToolCall(
       if (args.from) tArgs.push('--from', String(args.from));
       if (args.force) tArgs.push('--force');
       if (args.directory) tArgs.push('--directory', String(args.directory));
-      pushAuth(tArgs, args);
+      await pushAuth(tArgs, args, client);
       const result = await runNowSdk(tArgs, 900000);
       return { action: 'transform_completed', output: result.stdout, stderr: result.stderr || undefined };
     }
@@ -774,7 +787,7 @@ export async function executeFluentToolCall(
       if (args.add) dArgs.push('--add', String(args.add), '--scope', String(args.scope));
       if (args.type_defs_only) dArgs.push('--type-defs-only');
       if (args.fluent_only) dArgs.push('--fluent-only');
-      pushAuth(dArgs, args);
+      await pushAuth(dArgs, args, client);
       const result = await runNowSdk(dArgs, 600000);
       return { action: 'dependencies_downloaded', output: result.stdout, stderr: result.stderr || undefined };
     }
@@ -797,7 +810,7 @@ export async function executeFluentToolCall(
       if (args.scope) eArgs.push('--scope', String(args.scope));
       if (args.record_for_rollback === false) eArgs.push('--record-for-rollback=false');
       if (args.server_logs) eArgs.push('--server-logs');
-      pushAuth(eArgs, args);
+      await pushAuth(eArgs, args, client);
       eArgs.push('-o', 'json');
       const result = await runNowSdk(eArgs, 330000, args.directory);
       let parsed: unknown = undefined;
@@ -840,7 +853,7 @@ export async function executeFluentToolCall(
       } else {
         throw new ServiceNowError('action must be one of: install, publish, rollback, testsuite, test', 'INVALID_REQUEST');
       }
-      pushAuth(cicdArgs, args);
+      await pushAuth(cicdArgs, args, client);
       const result = await runNowSdk(cicdArgs, 960000, args.directory);
       return { action: `cicd_${action}`, output: result.stdout, stderr: result.stderr || undefined };
     }
@@ -851,6 +864,39 @@ export async function executeFluentToolCall(
 }
 
 /** Pass a now-sdk credential alias through when one is given. */
-function pushAuth(cliArgs: string[], args: Record<string, any>): void {
-  if (args.auth) cliArgs.push('--auth', String(args.auth));
+const hostOf = (url: string): string => String(url || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+
+/** Saved now-sdk logins, parsed from `now-sdk auth --list`. */
+async function listSdkAuth(): Promise<Array<{ alias: string; host: string; isDefault: boolean }>> {
+  let out = '';
+  try { out = (await runNowSdk(['auth', '--list'], 30000)).stdout; } catch { return []; }
+  const entries: Array<{ alias: string; host: string; isDefault: boolean }> = [];
+  for (const block of out.split(/\n(?=\[)/)) {
+    const alias = block.match(/^\[([^\]]+)\]/m)?.[1];
+    const host = block.match(/host\s*=\s*(\S+)/)?.[1];
+    if (alias && host) entries.push({ alias, host: hostOf(host), isDefault: /default\s*=\s*yes/i.test(block) });
+  }
+  return entries;
+}
+
+/**
+ * Point the SDK at the same instance NowAIKit is connected to. Without --auth the CLI uses its own
+ * default login, which can be a different instance from the one the user is working with. When no
+ * saved login matches and `required` is set, stop rather than act on another instance.
+ */
+async function pushAuth(cliArgs: string[], args: Record<string, any>, client?: ServiceNowClient, required = true): Promise<void> {
+  if (args.auth) { cliArgs.push('--auth', String(args.auth)); return; }
+  const target = hostOf((client as any)?.instanceUrl || '');
+  if (!target) return;
+  const logins = await listSdkAuth();
+  const match = logins.find((l) => l.host === target);
+  if (match) { cliArgs.push('--auth', match.alias); return; }
+  if (required && logins.length > 0) {
+    const fallback = logins.find((l) => l.isDefault)?.host || logins[0].host;
+    throw new ServiceNowError(
+      `The ServiceNow SDK has no saved login for ${target}, and its default points at ${fallback}, a different instance. ` +
+        `Add one with: now-sdk auth --add https://${target} --type basic --alias <name>, or pass auth=<alias>.`,
+      'SDK_AUTH_MISMATCH',
+    );
+  }
 }
