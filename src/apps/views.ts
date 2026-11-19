@@ -9,19 +9,29 @@ const FIELDS_JS = String.raw`
 (function () {
   var NK = window.NK, el = NK.el;
 
-  /** Form state: values, nodes and the effective visible/mandatory/readOnly flags per field. */
-  NK.createForm = function (fields, policies) {
-    var st = { fields: {}, order: [], values: {}, display: {}, nodes: {}, inputs: {}, eff: {}, base: {}, policies: policies || [], listeners: [] };
-    function walk(list) { list.forEach(function (f) { st.fields[f.name] = f; st.order.push(f.name); if (f.children) walk(f.children); }); }
+  /**
+   * Form state: values, nodes and the effective visible/mandatory/readOnly flags per field.
+   * opts.prefix keeps element ids unique (multi-row set rows); opts.context seeds values of fields the
+   * form doesn't show but policies test.
+   */
+  NK.createForm = function (fields, policies, opts) {
+    opts = opts || {};
+    var st = { fields: {}, order: [], values: {}, display: {}, nodes: {}, inputs: {}, sync: {}, rows: {}, eff: {}, base: {},
+      policies: policies || [], last: [], dirty: false, locked: false, prefix: opts.prefix || '', listeners: [] };
+    function walk(list) {
+      list.forEach(function (f) { st.fields[f.name] = f; st.order.push(f.name); if (f.children && f.kind !== 'multirow') walk(f.children); });
+    }
     walk(fields);
+    var ctx = opts.context || {};
+    for (var k in ctx) if (!st.fields[k] && ctx[k] != null) st.values[k] = String(ctx[k]);
     st.order.forEach(function (n) {
       var f = st.fields[n];
-      st.base[n] = { visible: true, mandatory: !!f.mandatory, readOnly: !!f.readOnly };
+      st.base[n] = { visible: !f.hidden, mandatory: !!f.mandatory, readOnly: !!f.readOnly };
       if (f.value != null) st.values[n] = String(f.value);
       if (f.displayValue != null) st.display[n] = String(f.displayValue);
     });
     st.onChange = function (fn) { st.listeners.push(fn); };
-    st.changed = function (name) { NK.applyPolicies(st); refreshDependents(st, name); st.listeners.forEach(function (fn) { fn(name); }); };
+    st.changed = function (name) { st.dirty = true; NK.applyPolicies(st); refreshDependents(st, name); st.listeners.forEach(function (fn) { fn(name); }); };
     return st;
   };
 
@@ -58,11 +68,17 @@ const FIELDS_JS = String.raw`
     });
   }
 
+  /** The field's own error line (not one inside a multi-row set row). */
+  function ownError(w) {
+    for (var i = 0; i < w.children.length; i++) if (w.children[i].classList.contains('err')) return w.children[i];
+    return null;
+  }
+
   function setVal(st, name, value, display) {
     st.values[name] = value;
     if (display !== undefined) st.display[name] = display;
     var w = st.nodes[name];
-    if (w) { w.classList.remove('invalid'); var e = w.querySelector('.err'); if (e) e.remove(); }
+    if (w) { w.classList.remove('invalid'); var e = ownError(w); if (e) e.remove(); }
     st.changed(name);
   }
 
@@ -102,6 +118,82 @@ const FIELDS_JS = String.raw`
     return { box: box, input: input };
   }
 
+  function parseRows(v) {
+    if (!v) return [];
+    try { var a = JSON.parse(v); return Array.isArray(a) ? a.filter(function (r) { return r && typeof r === 'object'; }) : []; } catch (_) { return []; }
+  }
+
+  /** Multi-row variable set: a table of rows, each row a small form of the set's columns. */
+  function renderMultiRow(f, st) {
+    var wrap = el('div', { className: 'field mrvs' });
+    st.nodes[f.name] = wrap;
+    wrap.appendChild(el('div', { className: 'lbl lbltext', text: f.label }));
+    if (f.help) wrap.appendChild(el('div', { className: 'help', text: f.help }));
+    var cols = f.children || [];
+    var head = el('tr');
+    cols.forEach(function (c) { head.appendChild(el('th', { className: c.mandatory ? 'req' : null, text: c.label })); });
+    head.appendChild(el('th'));
+    var tbody = el('tbody');
+    var table = el('table', null, el('thead', null, head), tbody);
+    var empty = el('div', { className: 'muted', text: 'No rows yet.' });
+    var add = el('button', { type: 'button', className: 'add-row' }, 'Add row');
+    var rows = st.rows[f.name] = [];
+    var seq = 0;
+    function data() {
+      return rows.map(function (r) {
+        var o = {};
+        cols.forEach(function (c) { if (c.kind !== 'unsupported') o[c.name] = r.st.values[c.name] == null ? '' : String(r.st.values[c.name]); });
+        return o;
+      });
+    }
+    function refresh() {
+      empty.style.display = rows.length ? 'none' : '';
+      table.style.display = rows.length ? '' : 'none';
+      var e = st.eff[f.name];
+      add.disabled = rows.length >= (f.maxRows || 50) || !!(e && e.readOnly);
+    }
+    function update() {
+      refresh();
+      setVal(st, f.name, rows.length ? JSON.stringify(data()) : '');
+    }
+    function addRow(values) {
+      var n = ++seq;
+      var childFields = cols.map(function (c) {
+        var copy = {};
+        for (var k in c) copy[k] = c[k];
+        if (values[c.name] !== undefined) { copy.value = String(values[c.name]); delete copy.displayValue; }
+        return copy;
+      });
+      var rs = NK.createForm(childFields, [], { prefix: f.name + '_' + n + '_' });
+      rs.locked = !!(st.eff[f.name] && st.eff[f.name].readOnly);
+      var tr = el('tr');
+      childFields.forEach(function (c) { tr.appendChild(el('td', null, renderField(c, rs))); });
+      var rm = el('button', { type: 'button', className: 'danger', title: 'Remove this row' }, 'Remove');
+      tr.appendChild(el('td', null, rm));
+      var row = { st: rs, tr: tr };
+      rm.addEventListener('click', function () { rows.splice(rows.indexOf(row), 1); tr.remove(); update(); });
+      rs.onChange(function () { update(); });
+      rows.push(row);
+      tbody.appendChild(tr);
+      NK.applyPolicies(rs);
+      rs.order.forEach(function (x) { refreshDependents(rs, x); });
+    }
+    add.addEventListener('click', function () { addRow({}); update(); });
+    st.sync[f.name] = function () {
+      rows.forEach(function (r) { r.tr.remove(); });
+      rows.length = 0;
+      parseRows(st.values[f.name]).forEach(addRow);
+      refresh();
+    };
+    parseRows(st.values[f.name]).forEach(addRow);
+    st.inputs[f.name] = add;
+    wrap.appendChild(el('div', { className: 'mrvs-scroll' }, table));
+    wrap.appendChild(empty);
+    wrap.appendChild(el('div', { className: 'row' }, add));
+    refresh();
+    return wrap;
+  }
+
   function renderField(f, st) {
     var wrap;
     if (f.kind === 'container') {
@@ -110,12 +202,13 @@ const FIELDS_JS = String.raw`
       st.nodes[f.name] = wrap;
       return wrap;
     }
+    if (f.kind === 'multirow') return renderMultiRow(f, st);
     if (f.kind === 'label') {
       wrap = el('div', { className: 'field' }, el('div', { className: 'lbl', text: f.label }));
       st.nodes[f.name] = wrap;
       return wrap;
     }
-    var id = 'f_' + f.name.replace(/[^a-zA-Z0-9_]/g, '_');
+    var id = 'f_' + (st.prefix + f.name).replace(/[^a-zA-Z0-9_]/g, '_');
     wrap = el('div', { className: 'field' });
     st.nodes[f.name] = wrap;
     var labelEl = el('label', { 'for': id, text: f.label });
@@ -132,6 +225,7 @@ const FIELDS_JS = String.raw`
       control.addEventListener('change', function () { setVal(st, f.name, control.checked ? 'true' : 'false'); });
       wrap.appendChild(el('div', { className: 'opts' }, el('label', null, control, el('span', { className: 'lbltext', text: f.label }))));
       st.inputs[f.name] = control;
+      st.sync[f.name] = function () { control.checked = st.values[f.name] === 'true'; };
       if (f.help) wrap.appendChild(el('div', { className: 'help', text: f.help }));
       return wrap;
     }
@@ -140,23 +234,31 @@ const FIELDS_JS = String.raw`
       control = el('select', { id: id });
       choiceOptions(f, st, control);
       control.addEventListener('change', function () { setVal(st, f.name, control.value, control.options[control.selectedIndex].text); });
+      st.sync[f.name] = function () { choiceOptions(f, st, control); };
     } else if (f.kind === 'radio') {
       control = el('div', { className: 'opts', role: 'radiogroup', id: id });
+      var radios = [];
       (f.choices || []).forEach(function (c) {
         var r = el('input', { type: 'radio', name: id, value: c.value });
         r.checked = st.values[f.name] === c.value;
         r.addEventListener('change', function () { if (r.checked) setVal(st, f.name, c.value, c.label); });
+        radios.push(r);
         control.appendChild(el('label', null, r, c.label));
       });
+      st.sync[f.name] = function () { radios.forEach(function (r) { r.checked = st.values[f.name] === r.value; }); };
     } else if (f.kind === 'reference') {
       var ta = typeahead(f, st, id, function (r, input) { input.value = r.display; setVal(st, f.name, r.sys_id, r.display); });
       ta.input.value = st.display[f.name] || '';
       control = ta.box;
       st.inputs[f.name] = ta.input;
+      st.sync[f.name] = function () { ta.input.value = st.display[f.name] || st.values[f.name] || ''; };
     } else if (f.kind === 'list') {
       var chips = el('div', { className: 'chips' });
-      var ids = (st.values[f.name] || '').split(',').filter(Boolean);
-      var names = st.display[f.name] ? st.display[f.name].split(',').map(function (s) { return s.trim(); }) : ids.slice();
+      var ids = [], names = [];
+      var load = function () {
+        ids = (st.values[f.name] || '').split(',').filter(Boolean);
+        names = st.display[f.name] ? st.display[f.name].split(',').map(function (s) { return s.trim(); }) : ids.slice();
+      };
       var draw = function () {
         chips.innerHTML = '';
         ids.forEach(function (sid, i) {
@@ -169,16 +271,21 @@ const FIELDS_JS = String.raw`
         input.value = '';
         if (ids.indexOf(r.sys_id) === -1) { ids.push(r.sys_id); names.push(r.display); draw(); setVal(st, f.name, ids.join(','), names.join(', ')); }
       });
-      draw();
+      load(); draw();
       control = el('div', null, tl.box, chips);
       st.inputs[f.name] = tl.input;
+      st.sync[f.name] = function () { load(); draw(); };
     } else {
       var types = { textarea: null, email: 'email', url: 'url', number: 'number', date: 'date', datetime: 'datetime-local', password: 'password' };
       control = f.kind === 'textarea' ? el('textarea', { id: id }) : el('input', { type: types[f.kind] || 'text', id: id });
       if (f.maxLength) control.setAttribute('maxlength', String(f.maxLength));
-      var v = st.values[f.name] || '';
-      if (f.kind === 'datetime' && v) v = v.replace(' ', 'T').slice(0, 16);
-      control.value = v;
+      var show = function () {
+        var v = st.values[f.name] || '';
+        if (f.kind === 'datetime' && v) v = v.replace(' ', 'T').slice(0, 16);
+        control.value = v;
+      };
+      show();
+      st.sync[f.name] = show;
       control.addEventListener('input', function () {
         var val = control.value;
         if (f.kind === 'datetime' && val) val = val.replace('T', ' ') + (val.length === 16 ? ':00' : '');
@@ -229,20 +336,37 @@ const FIELDS_JS = String.raw`
       return q.every(function (group) { return group.some(function (c) { return test(c, st); }); });
     });
   }
-  NK.applyPolicies = function (st) {
-    var eff = {};
+  NK.evaluateConditions = evaluate;
+
+  /**
+   * Apply every policy in order (later ones win). Visibility, mandatory and read-only follow the conditions
+   * continuously; "clear" and "set value" actions fire once, when a policy starts to apply, like an onChange
+   * script. Policies with onLoad === false wait for the first change.
+   */
+  NK.applyPolicies = function (st, depth) {
+    depth = depth || 0;
+    var eff = {}, touched = [];
     st.order.forEach(function (n) { var b = st.base[n]; eff[n] = { visible: b.visible, mandatory: b.mandatory, readOnly: b.readOnly }; });
-    st.policies.forEach(function (p) {
+    st.policies.forEach(function (p, i) {
       var ok = evaluate(p.conditions || [], st);
+      if (p.onLoad === false && !st.dirty) { st.last[i] = ok; return; }
+      var starts = ok && !st.last[i];
+      st.last[i] = ok;
       if (!ok && !p.reverse) return;
-      p.actions.forEach(function (a) {
+      (p.actions || []).forEach(function (a) {
         var e = eff[a.field];
         if (!e) return;
         if (a.visible !== undefined) e.visible = ok ? a.visible : !a.visible;
         // "Reverse if false" flips each action, as ServiceNow does.
         if (a.mandatory !== undefined) e.mandatory = ok ? a.mandatory : !a.mandatory;
         if (a.readOnly !== undefined) e.readOnly = ok ? a.readOnly : !a.readOnly;
-        if (ok && a.cleared && st.values[a.field]) st.values[a.field] = '';
+        if (!starts) return;
+        if (a.cleared && st.values[a.field]) { st.values[a.field] = ''; st.display[a.field] = ''; touched.push(a.field); }
+        if (a.value !== undefined && a.value !== null && st.values[a.field] !== String(a.value)) {
+          st.values[a.field] = String(a.value);
+          st.display[a.field] = a.displayValue != null ? String(a.displayValue) : String(a.value);
+          touched.push(a.field);
+        }
       });
     });
     st.eff = eff;
@@ -253,22 +377,41 @@ const FIELDS_JS = String.raw`
       var lab = w.querySelector('label[for], .lbltext');
       if (lab) lab.classList.toggle('req', !!e.mandatory);
       if (st.inputs[n]) {
+        var ro = !!e.readOnly || st.locked;
         var all = w.querySelectorAll('input, select, textarea, button');
-        for (var i = 0; i < all.length; i++) all[i].disabled = !!e.readOnly;
+        for (var i = 0; i < all.length; i++) all[i].disabled = ro;
       }
+      // Multi-row rows follow the set's read-only state but keep their own column rules.
+      (st.rows[n] || []).forEach(function (r) { r.st.locked = !!e.readOnly || st.locked; NK.applyPolicies(r.st); });
+      if (st.rows[n] && st.inputs[n]) st.inputs[n].disabled = !!e.readOnly || st.locked || st.rows[n].length >= (st.fields[n].maxRows || 50);
     });
+    touched.forEach(function (n) { if (st.sync[n]) st.sync[n](); refreshDependents(st, n); });
+    if (touched.length && depth < 4) NK.applyPolicies(st, depth + 1);
   };
 
-  /** Mandatory check over visible fields. Marks invalid fields and returns their labels. */
+  /** Mandatory check over visible fields (and every multi-row set row). Marks invalid fields and returns their labels. */
   NK.validate = function (st) {
     var missing = [];
     st.order.forEach(function (n) {
       var f = st.fields[n], e = st.eff[n], w = st.nodes[n];
       if (!e || !w || f.kind === 'container' || f.kind === 'label' || f.kind === 'unsupported') return;
       var hidden = !e.visible || (w.offsetParent === null && w.style.display === 'none');
-      var empty = !st.values[n] || (f.kind === 'checkbox' && st.values[n] !== 'true');
-      var old = w.querySelector('.err'); if (old) old.remove();
+      var old = ownError(w); if (old) old.remove();
       w.classList.remove('invalid');
+      if (f.kind === 'multirow') {
+        if (hidden) return;
+        var rows = st.rows[n] || [];
+        if (e.mandatory && !rows.length) {
+          missing.push(f.label);
+          w.classList.add('invalid');
+          w.appendChild(el('div', { className: 'err', text: 'Add at least one row' }));
+        }
+        rows.forEach(function (r, i) {
+          NK.validate(r.st).forEach(function (lab) { missing.push(f.label + ' row ' + (i + 1) + ': ' + lab); });
+        });
+        return;
+      }
+      var empty = !st.values[n] || (f.kind === 'checkbox' && st.values[n] !== 'true');
       if (e.mandatory && !hidden && empty) {
         missing.push(f.label);
         w.classList.add('invalid');
@@ -359,7 +502,7 @@ const RECORD_JS = String.raw`
     root.appendChild(el('h1', { text: (isNew ? 'New ' : '') + (d.table_label || d.table) + (d.number ? ' ' + d.number : '') }));
     if (d.subtitle) root.appendChild(el('p', { className: 'sub', text: d.subtitle }));
     (d.notes || []).forEach(function (n) { root.appendChild(el('div', { className: 'banner', text: n })); });
-    var st = NK.createForm(d.fields || [], d.policies || []);
+    var st = NK.createForm(d.fields || [], d.policies || [], { context: d.context || {} });
     var form = el('form', { novalidate: true });
     NK.renderFields(form, d.fields || [], st);
     var status = el('div');

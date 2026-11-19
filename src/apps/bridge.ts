@@ -205,9 +205,18 @@ button:disabled { opacity: .55; cursor: default; }
 .row input { flex: 1; min-width: 180px; }
 .muted { color: var(--nk-muted); }
 .html-block { padding: 8px 10px; background: var(--nk-bg2); border-radius: var(--nk-radius); }
+/* Multi-row variable sets: one table row per entry; column labels live in the header. */
+.mrvs-scroll { overflow-x: auto; }
+.mrvs table { border-collapse: collapse; width: 100%; margin-top: 4px; }
+.mrvs th { text-align: left; font-weight: 500; font-size: 12px; color: var(--nk-muted); padding: 4px 6px; border-bottom: 1px solid var(--nk-border); white-space: nowrap; }
+.mrvs td { padding: 6px; vertical-align: top; border-bottom: 1px solid var(--nk-border); min-width: 140px; }
+.mrvs td:last-child { min-width: 0; width: 1%; }
+.mrvs td .field { margin: 0; }
+.mrvs td .field > label, .mrvs td .lbltext { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.mrvs .row { margin-top: 6px; }
 /* Two columns on wide views, like ServiceNow forms; long text, groups and actions span both. */
 @media (min-width: 640px) {
   form { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; align-items: start; }
-  form > .field:has(textarea), form > fieldset, form > div:not(.field), form > .actions, form > .banner { grid-column: 1 / -1; }
+  form > .field:has(textarea), form > fieldset, form > div:not(.field), form > .actions, form > .banner, form > .mrvs { grid-column: 1 / -1; }
 }
 `;

@@ -17,8 +17,10 @@ import {
   APPROVALS_URI, APP_ONLY_TOOL_META, CATALOG_FORM_URI, RECORD_FORM_URI, viewToolMeta,
 } from '../apps/index.js';
 import {
-  catalogVariableIdMap, flattenFields, groupChoices, normalizeCatalogPolicies, normalizeCatalogVariables,
-  recordFieldFromDictionary, type DictionaryEntry, type FormField,
+  attachMultiRowChildren, catalogScriptList, catalogVariableFromRow, catalogVariableIdMap, flattenFields, groupChoices,
+  groupQuestionChoices, multiRowSetIds, multiRowSubmitValue, normalizeCatalogPolicies, normalizeCatalogVariables,
+  normalizeRecordPolicies, recordFieldFromDictionary, translateCatalogScripts,
+  type DictionaryEntry, type FormField, type FormPolicy,
 } from '../apps/form-model.js';
 
 const SYS_ID = /^[0-9a-f]{32}$/i;
@@ -231,6 +233,72 @@ async function formLayoutFields(client: ServiceNowClient, tables: string[]): Pro
   return [];
 }
 
+/**
+ * The sn_sc item plus multi-row set columns. The sn_sc item API returns multi-row sets with no children,
+ * so their variables (and choices) are read from item_option_new / question_choice.
+ */
+async function loadCatalogItem(client: ServiceNowClient, sysId: string): Promise<{ item: any; vars: any[] }> {
+  const item = await client.getServiceCatalogItem(sysId);
+  const vars: any[] = item.variables || [];
+  const setIds = multiRowSetIds(vars).filter((id) => SYS_ID.test(id));
+  if (setIds.length) {
+    const rows = (await client.queryRecords({
+      table: 'item_option_new',
+      query: `variable_setIN${setIds.join(',')}^active=true^ORDERBYorder`,
+      fields: 'sys_id,name,question_text,type,mandatory,read_only,active,reference,reference_qual,default_value,list_table,max_length,order,help_text,variable_set',
+      limit: 500,
+    })).records as any[];
+    const choiceQs = rows.filter((r) => ['1', '3', '4', '5'].includes(val(r, 'type'))).map((r) => val(r, 'sys_id'));
+    let choices: Record<string, any[]> = {};
+    if (choiceQs.length) {
+      const ch = await client.queryRecords({
+        table: 'question_choice', query: `questionIN${choiceQs.join(',')}^ORDERBYorder`, fields: 'question,value,text,order,inactive', limit: 2000,
+      });
+      choices = groupQuestionChoices(ch.records as any[]);
+    }
+    const bySet: Record<string, any[]> = {};
+    for (const r of rows) (bySet[val(r, 'variable_set')] ||= []).push(catalogVariableFromRow(r, choices[val(r, 'sys_id')] || []));
+    attachMultiRowChildren(vars, bySet);
+  }
+  return { item, vars };
+}
+
+/** UI policies and client-enforced data policies for a table and the parents it inherits from. */
+async function recordPolicies(client: ServiceNowClient, tables: string[]): Promise<ReturnType<typeof normalizeRecordPolicies>> {
+  const tableList = tables.join(',');
+  const [ui, dp] = await Promise.all([
+    client.queryRecords({
+      table: 'sys_ui_policy',
+      query: `tableIN${tableList}^active=true^ORDERBYorder`,
+      fields: 'sys_id,table,short_description,conditions,reverse_if_false,on_load,active,global,view,inherit,run_scripts,ui_type,order',
+      limit: 300,
+    }),
+    client.queryRecords({
+      table: 'sys_data_policy2',
+      query: `model_tableIN${tableList}^active=true^enforce_ui=true`,
+      fields: 'sys_id,model_table,short_description,conditions,reverse_if_false,active,enforce_ui,inherit',
+      limit: 100,
+    }),
+  ]);
+  const uiIds = (ui.records as any[]).map((r) => val(r, 'sys_id')).filter((id) => SYS_ID.test(id));
+  const dpIds = (dp.records as any[]).map((r) => val(r, 'sys_id')).filter((id) => SYS_ID.test(id));
+  const [actions, rules] = await Promise.all([
+    uiIds.length
+      ? client.queryRecords({ table: 'sys_ui_policy_action', query: `ui_policyIN${uiIds.join(',')}`, fields: 'ui_policy,field,visible,mandatory,disabled,cleared', limit: 2000 })
+      : Promise.resolve({ records: [] as any[] }),
+    dpIds.length
+      ? client.queryRecords({ table: 'sys_data_policy_rule', query: `sys_data_policyIN${dpIds.join(',')}`, fields: 'sys_data_policy,field,mandatory,disabled', limit: 1000 })
+      : Promise.resolve({ records: [] as any[] }),
+  ]);
+  return normalizeRecordPolicies({
+    tables,
+    uiPolicies: ui.records as any[],
+    uiActions: actions.records as any[],
+    dataPolicies: dp.records as any[],
+    dataRules: rules.records as any[],
+  });
+}
+
 function recordUrl(client: ServiceNowClient, table: string, sysId: string): string {
   return `${client.instanceUrl}/nav_to.do?uri=${encodeURIComponent(`${table}.do?sys_id=${sysId}`)}`;
 }
@@ -252,16 +320,39 @@ export async function executeAppsToolCall(client: ServiceNowClient, name: string
         if (!pick) throw new ServiceNowError(`No active catalog item matches "${ref}". Use search_catalog to find it.`, 'NOT_FOUND');
         sysId = val(pick, 'sys_id');
       }
-      const item = await client.getServiceCatalogItem(sysId);
+      const { item, vars } = await loadCatalogItem(client, sysId);
       let me: { user_sys_id?: string; user_display_name?: string } = {};
       try { me = await client.getCurrentUser(); } catch { /* defaults that need the user are dropped */ }
-      const vars: any[] = item.variables || [];
       const fields = normalizeCatalogVariables(vars, { currentUserSysId: me.user_sys_id, currentUserName: me.user_display_name });
-      const policies = normalizeCatalogPolicies(item.ui_policy || [], catalogVariableIdMap(vars));
+      const idMap = catalogVariableIdMap(vars);
+      const uiPolicies = normalizeCatalogPolicies(item.ui_policy || [], idMap);
       const notes: string[] = [];
-      const scripts = item.client_script || {};
-      const scriptCount = ['onLoad', 'onChange', 'onSubmit'].reduce((n, k) => n + ((scripts[k] || []).length), 0);
-      if (scriptCount) notes.push(`This item has ${scriptCount} catalog client script(s). They run only in ServiceNow, so the form here may behave a little differently.`);
+
+      // Client scripts: simple g_form patterns become rules; nothing is executed.
+      const flatAll = flattenFields(fields);
+      const known = new Set(flatAll.map((f) => f.name));
+      const labels = Object.fromEntries(flatAll.map((f) => [f.name, f.label || f.name]));
+      const scripts = catalogScriptList(item.client_script);
+      const tr = translateCatalogScripts(scripts, known, idMap, labels);
+      for (const f of flatAll) {
+        const d = tr.defaults[f.name];
+        if (!d) continue;
+        if (d.visible !== undefined) f.hidden = !d.visible;
+        if (d.mandatory !== undefined) f.mandatory = d.mandatory;
+        if (d.readOnly !== undefined) f.readOnly = d.readOnly;
+        if (d.value !== undefined) { f.value = d.value; if (d.displayValue !== undefined) f.displayValue = d.displayValue; else delete f.displayValue; }
+      }
+      // Script rules first: ServiceNow applies UI policies after client scripts, so the policies win on conflict.
+      const policies: FormPolicy[] = [...tr.policies, ...uiPolicies];
+      if (scripts.length) {
+        if (tr.skipped.length) {
+          notes.push(`This item has ${scripts.length} catalog client script(s). ${tr.translated.length} were translated into form rules here; ` +
+            `${tr.skipped.length} run only in ServiceNow, so the form here may behave a little differently: ` +
+            tr.skipped.map((x) => `${x.script} (${x.reason})`).join('; ') + '.');
+        } else {
+          notes.push(`All ${scripts.length} catalog client script(s) on this item were translated into form rules (messages they show are left out).`);
+        }
+      }
       if ((item.ui_policy || []).some((p: any) => p.script_true || p.script_false)) notes.push('Some UI policy scripts on this item only run in ServiceNow.');
       if (item.mandatory_attachment) notes.push('This item needs an attachment. Add it in ServiceNow after submitting, or use upload_attachment.');
       const flat = flattenFields(fields);
@@ -279,10 +370,12 @@ export async function executeAppsToolCall(client: ServiceNowClient, name: string
         fields,
         policies,
         notes,
+        client_scripts: { total: scripts.length, translated: tr.translated.length, skipped: tr.skipped },
         item_url: `${client.instanceUrl}/sp?id=sc_cat_item&sys_id=${item.sys_id || sysId}`,
         mandatory_variables: flat.filter((f) => f.mandatory).map((f) => f.name),
         summary: `Catalog form for "${item.name}" with ${flat.filter((f) => f.kind !== 'container').length} field(s). ` +
-          'In hosts without MCP Apps, collect the values and call order_catalog_item with variables {name: value}.',
+          'In hosts without MCP Apps, collect the values and call order_catalog_item with variables {name: value}' +
+          (flat.some((f) => f.kind === 'multirow') ? ' (multi-row sets take a JSON string array of row objects keyed by column name).' : '.'),
       };
     }
 
@@ -296,10 +389,13 @@ export async function executeAppsToolCall(client: ServiceNowClient, name: string
         ? args.fields.map(String).filter((f: string) => /^[a-z0-9_]+$/i.test(f))
         : await formLayoutFields(client, tables);
       const notes: string[] = [];
+      const { policies, notes: policyNotes, conditionFields } = await recordPolicies(client, tables);
+      const extra = conditionFields.filter((c) => !names.includes(c));
       const dict = await client.queryRecords({
         table: 'sys_dictionary',
-        query: `nameIN${tables.join(',')}^elementISNOTEMPTY^active=true` + (names.length ? `^elementIN${names.join(',')}` : '^mandatory=true'),
-        fields: 'name,element,column_label,internal_type,mandatory,read_only,reference,reference_qual,choice,max_length,dependent_on_field',
+        query: `nameIN${tables.join(',')}^elementISNOTEMPTY^active=true` +
+          (names.length ? `^elementIN${[...names, ...extra].join(',')}` : '^mandatory=true'),
+        fields: 'name,element,column_label,internal_type,mandatory,read_only,reference,reference_qual,choice,max_length,dependent_on_field,default_value',
         limit: 500,
       });
       // Most specific table wins (dictionary overrides on child tables).
@@ -313,7 +409,7 @@ export async function executeAppsToolCall(client: ServiceNowClient, name: string
             element: el, column_label: val(r, 'column_label'), internal_type: val(r, 'internal_type'),
             mandatory: val(r, 'mandatory'), read_only: val(r, 'read_only'), reference: val(r, 'reference'),
             reference_qual: val(r, 'reference_qual'), choice: val(r, 'choice'), max_length: val(r, 'max_length'),
-            dependent_on_field: val(r, 'dependent_on_field'),
+            dependent_on_field: val(r, 'dependent_on_field'), default_value: val(r, 'default_value'),
           };
           (byElement[el] as any).__table = val(r, 'name');
         }
@@ -341,9 +437,13 @@ export async function executeAppsToolCall(client: ServiceNowClient, name: string
         const f = recordFieldFromDictionary(d, choices[n] || []);
         if (f) fields.push(f);
       }
+      const onForm = new Set(fields.map((f) => f.name));
+      // Fields the policies test but the form doesn't show: their values still drive the policies.
+      const contextFields = conditionFields.filter((c) => !onForm.has(c) && /^[a-z0-9_]+$/i.test(c));
+      const context: Record<string, string> = {};
       let number = '';
       if (sysId) {
-        const rec = await client.getRecord(table, sysId, fields.map((f) => f.name).concat('number').join(','), 'all') as any;
+        const rec = await client.getRecord(table, sysId, fields.map((f) => f.name).concat('number', ...contextFields).join(','), 'all') as any;
         number = disp(rec, 'number');
         for (const f of fields) {
           const v = val(rec, f.name);
@@ -352,26 +452,46 @@ export async function executeAppsToolCall(client: ServiceNowClient, name: string
           if (v) f.value = v;
           if (dv && dv !== v) f.displayValue = dv;
         }
+        for (const c of contextFields) context[c] = val(rec, c);
+      } else {
+        // New record: literal dictionary defaults (script defaults are left to ServiceNow).
+        const literal = (n: string) => {
+          const dv = String(byElement[n]?.default_value ?? '');
+          return dv && !/^javascript:/i.test(dv) ? dv : '';
+        };
+        for (const f of fields) {
+          const dv = literal(f.name);
+          if (dv && f.kind !== 'reference' && f.kind !== 'list' && f.kind !== 'unsupported' &&
+            (f.kind !== 'select' || (f.choices || []).some((c) => c.value === dv))) f.value = dv;
+        }
+        for (const c of contextFields) context[c] = literal(c);
       }
       if (args.values && typeof args.values === 'object') {
         for (const f of fields) {
           const pre = (args.values as Record<string, unknown>)[f.name];
           if (pre !== undefined && pre !== null) f.value = String(pre);
         }
+        for (const c of contextFields) {
+          const pre = (args.values as Record<string, unknown>)[c];
+          if (pre !== undefined && pre !== null) context[c] = String(pre);
+        }
       }
       if (fields.some((f) => f.kind === 'reference' && f.value && !f.displayValue)) {
         notes.push('Prefilled reference fields show their sys_id until you pick a value.');
       }
+      notes.push(...policyNotes);
       return {
         table,
         table_label: label,
         sys_id: sysId || null,
         number: number || null,
         fields,
-        policies: [],
+        policies,
+        context,
         notes,
         record_url: sysId ? recordUrl(client, table, sysId) : null,
-        summary: `${sysId ? 'Edit' : 'New'} ${label}${number ? ' ' + number : ''} form with ${fields.length} field(s). ` +
+        summary: `${sysId ? 'Edit' : 'New'} ${label}${number ? ' ' + number : ''} form with ${fields.length} field(s)` +
+          (policies.length ? ` and ${policies.length} UI/data polic${policies.length === 1 ? 'y' : 'ies'}. ` : '. ') +
           'In hosts without MCP Apps, use create_record or update_record with these field names.',
       };
     }
@@ -439,18 +559,33 @@ export async function executeAppsToolCall(client: ServiceNowClient, name: string
       if (!SYS_ID.test(itemId)) throw new ServiceNowError('item_sys_id is required', 'INVALID_REQUEST');
       const variables: Record<string, string> = {};
       for (const [k, v] of Object.entries((args.variables as Record<string, unknown>) || {})) {
-        if (/^[a-z0-9_]+$/i.test(k) && v !== undefined && v !== null) variables[k] = String(v);
+        if (!/^[a-z0-9_]+$/i.test(k) || v === undefined || v === null) continue;
+        variables[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
       }
       // Re-check the item's own mandatory variables server side (UI policy visibility is the view's job).
-      const item = await client.getServiceCatalogItem(itemId);
-      const vars: any[] = item.variables || [];
-      // Fields a UI policy can hide or make optional are the view's call, not ours.
+      const { item, vars } = await loadCatalogItem(client, itemId);
+      const idMap = catalogVariableIdMap(vars);
+      const allFields = flattenFields(normalizeCatalogVariables(vars));
+      // Fields a UI policy or a translated client script can hide or make optional are the view's call, not ours.
+      const known = new Set(allFields.map((f) => f.name));
+      const tr = translateCatalogScripts(catalogScriptList(item.client_script), known, idMap);
       const policyControlled = new Set(
-        normalizeCatalogPolicies(item.ui_policy || [], catalogVariableIdMap(vars)).flatMap((p) => p.actions.map((a) => a.field)),
+        [...normalizeCatalogPolicies(item.ui_policy || [], idMap), ...tr.policies].flatMap((p) => p.actions.map((a) => a.field)),
       );
-      const missing = flattenFields(normalizeCatalogVariables(vars))
-        .filter((f) => f.mandatory && !policyControlled.has(f.name) && f.kind !== 'unsupported' && f.kind !== 'container' && !variables[f.name] && !f.value)
+      for (const [name, d] of Object.entries(tr.defaults)) if (d.visible === false || d.mandatory === false) policyControlled.add(name);
+      const missing = allFields
+        .filter((f) => f.mandatory && !policyControlled.has(f.name) && f.kind !== 'unsupported' && f.kind !== 'container' && f.kind !== 'multirow' && !variables[f.name] && !f.value)
         .map((f) => f.label);
+      // Multi-row sets: one JSON string per set, each row checked for its mandatory columns.
+      for (const f of allFields.filter((x) => x.kind === 'multirow')) {
+        if (variables[f.name] === undefined) {
+          if (f.mandatory && !policyControlled.has(f.name)) missing.push(`${f.label}: add at least one row`);
+          continue;
+        }
+        const r = multiRowSubmitValue(policyControlled.has(f.name) ? { ...f, mandatory: false } : f, variables[f.name]);
+        missing.push(...r.errors);
+        if (r.value) variables[f.name] = r.value; else delete variables[f.name];
+      }
       if (missing.length) throw new ServiceNowError(`Missing required fields: ${missing.join(', ')}`, 'INVALID_REQUEST');
       const quantity = Math.min(Math.max(Number(args.quantity) || 1, 1), 100);
       const result = await client.callNowAssist(`/api/sn_sc/servicecatalog/items/${itemId}/order_now`, {
