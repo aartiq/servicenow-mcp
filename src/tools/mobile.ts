@@ -3,7 +3,8 @@
  * push notifications, offline sync, and mobile analytics.
  *
  * ServiceNow tables: sys_sg_native_client (app configs), sys_sg_screen (applets),
- *   sys_sg_view_config (cards/layouts), sys_sg_push_notification, sys_sg_offline_sync
+ *   sys_sg_view_config (cards/layouts), sys_sg_offline_sync; push goes through sysevent_email_action +
+ *   sys_push_notif_msg for a sys_push_application, fired by the nowaikit.push event
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
@@ -53,8 +54,29 @@ export function getMobileToolDefinitions() {
     },
     {
       name: 'send_push_notification',
-      description: 'Send a push notification to mobile app users. **[Write]**',
-      inputSchema: { type: 'object', properties: { user: { type: 'string', description: 'Target user sys_id' }, group: { type: 'string', description: 'Target group sys_id (alternative to user)' }, title: { type: 'string', description: 'Notification title' }, body: { type: 'string', description: 'Notification body text' }, action_url: { type: 'string', description: 'Deep link URL on tap' } }, required: ['title', 'body'] },
+      description:
+        'Send a push notification to ServiceNow mobile app users (Now Mobile / Mobile Agent) the way ServiceNow does it: an event fires a ' +
+        'push-only notification whose push message carries the text. The first call per table sets up, and later calls reuse, ' +
+        'an event "nowaikit.push", a push message "NowAIKit push (<push app>)" and a notification "NowAIKit push (<table>)". ' +
+        'Only users signed in to the mobile app with push enabled receive it; the result says how many recipients have a ' +
+        'registered device. **[Write]**',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          user: { type: 'string', description: 'Target user sys_id or user_name' },
+          group: { type: 'string', description: 'Target group sys_id or name (its active members receive it)' },
+          users: { type: 'array', items: { type: 'string' }, description: 'More target users (sys_id or user_name)' },
+          groups: { type: 'array', items: { type: 'string' }, description: 'More target groups (sys_id or name)' },
+          title: { type: 'string', description: 'Notification title (first line of the message)' },
+          body: { type: 'string', description: 'Notification body text' },
+          action_url: { type: 'string', description: 'Link appended to the message' },
+          table: { type: 'string', description: 'Table of the record the notification is about (tapping opens it in the app). Default: sys_user, the first recipient' },
+          record_sys_id: { type: 'string', description: 'sys_id of that record (required with table)' },
+          push_app: { type: 'string', description: 'Push application (sys_push_application) name or sys_id. Default SkyNowPushApp (Now Mobile / Mobile Agent); SkyNowRequestPushApp for Now Mobile request app' },
+          setup_only: { type: 'boolean', description: 'Create or check the event, push message and notification without sending anything' },
+        },
+        required: ['title', 'body'],
+      },
     },
     {
       name: 'get_mobile_analytics',
@@ -62,6 +84,172 @@ export function getMobileToolDefinitions() {
       inputSchema: { type: 'object', properties: { days: { type: 'number', description: 'Analysis period in days (default 30)' } }, required: [] },
     },
   ];
+}
+
+const SYS_ID = /^[0-9a-f]{32}$/i;
+export const PUSH_EVENT = 'nowaikit.push';
+const MAX_PUSH_RECIPIENTS = 120; // event parm1 holds 4000 characters of comma-separated sys_ids
+
+function fv(r: any, f: string): string {
+  const v = r?.[f];
+  if (v && typeof v === 'object') return String(v.value ?? '');
+  return v === undefined || v === null ? '' : String(v);
+}
+
+function clean(v: unknown): string {
+  return String(v ?? '').replace(/[\^\n\r,]/g, ' ').trim();
+}
+
+/** The text ServiceNow pushes: the push message is "${event.parm2}", so the title, body and link travel in parm2. */
+export function pushMessageText(title: string, body: string, link?: string): string {
+  return [title.trim(), body.trim(), (link || '').trim()].filter(Boolean).join('\n').slice(0, 4000);
+}
+
+async function resolveUsers(client: ServiceNowClient, refs: string[]): Promise<string[]> {
+  const out: string[] = [];
+  for (const ref of refs.map(clean).filter(Boolean)) {
+    const query = SYS_ID.test(ref) ? `sys_id=${ref}` : `user_name=${ref}`;
+    const r = (await client.queryRecords({ table: 'sys_user', query, fields: 'sys_id,user_name,active', limit: 1 })).records[0] as any;
+    if (!r || (fv(r, 'sys_id') !== ref && fv(r, 'user_name') !== ref)) throw new ServiceNowError(`User not found: ${ref}`, 'NOT_FOUND');
+    out.push(fv(r, 'sys_id'));
+  }
+  return out;
+}
+
+async function resolveGroupMembers(client: ServiceNowClient, refs: string[]): Promise<{ groups: string[]; members: string[] }> {
+  const groups: string[] = [];
+  const members: string[] = [];
+  for (const ref of refs.map(clean).filter(Boolean)) {
+    const query = SYS_ID.test(ref) ? `sys_id=${ref}` : `name=${ref}`;
+    const g = (await client.queryRecords({ table: 'sys_user_group', query, fields: 'sys_id,name', limit: 1 })).records[0] as any;
+    if (!g || (fv(g, 'sys_id') !== ref && fv(g, 'name') !== ref)) throw new ServiceNowError(`Group not found: ${ref}`, 'NOT_FOUND');
+    const gid = fv(g, 'sys_id');
+    groups.push(gid);
+    const m = await client.queryRecords({ table: 'sys_user_grmember', query: `group=${gid}^user.active=true`, fields: 'user,group', limit: 1000 });
+    for (const r of m.records as any[]) if (fv(r, 'group') === gid && fv(r, 'user')) members.push(fv(r, 'user'));
+  }
+  return { groups, members };
+}
+
+/** Find a record by exact name (re-checked client-side), or create it. */
+async function ensureRecord(client: ServiceNowClient, table: string, match: Record<string, string>, data: Record<string, string>, created: Array<{ table: string; sys_id: string; name: string }>): Promise<any> {
+  const query = Object.entries(match).map(([k, v]) => `${k}=${v}`).join('^');
+  const existing = ((await client.queryRecords({ table, query, fields: ['sys_id', ...Object.keys(match), ...Object.keys(data)].join(','), limit: 5 })).records as any[])
+    .find((r) => Object.entries(match).every(([k, v]) => fv(r, k) === v));
+  if (existing) return existing;
+  const rec = await client.createRecord(table, { ...match, ...data });
+  created.push({ table, sys_id: String(rec.sys_id), name: Object.values(match)[0]! });
+  return rec;
+}
+
+/**
+ * Push in ServiceNow = notification (sysevent_email_action, push_message_only) + push message (sys_push_notif_msg) for a
+ * push application, fired by an event. sys_push_notification is only the outbound log, so writing there sends nothing.
+ */
+export async function sendPushNotification(client: ServiceNowClient, args: Record<string, any>): Promise<any> {
+  const title = String(args.title || '').trim();
+  const body = String(args.body || '').trim();
+  if (!title || !body) throw new ServiceNowError('title and body are required', 'INVALID_REQUEST');
+  if (args.action_url && !/^(https?:\/\/|\/)/i.test(String(args.action_url))) throw new ServiceNowError('action_url must be an http(s) URL or an instance path', 'INVALID_REQUEST');
+  const userRefs = [args.user, ...(Array.isArray(args.users) ? args.users : [])].filter(Boolean).map(String);
+  const groupRefs = [args.group, ...(Array.isArray(args.groups) ? args.groups : [])].filter(Boolean).map(String);
+  if (!args.setup_only && !userRefs.length && !groupRefs.length) throw new ServiceNowError('Give at least one recipient: user, users, group or groups', 'INVALID_REQUEST');
+  if (args.table && !/^[a-z0-9_]{1,80}$/.test(String(args.table))) throw new ServiceNowError('table must be a table name', 'INVALID_REQUEST');
+  if (args.table && !SYS_ID.test(String(args.record_sys_id || ''))) throw new ServiceNowError('record_sys_id (32-character sys_id) is required with table', 'INVALID_REQUEST');
+
+  // 1. Is push usable on this instance at all?
+  const prop = (await client.queryRecords({ table: 'sys_properties', query: 'name=glide.push.enabled', fields: 'name,value', limit: 1 })).records[0] as any;
+  if (prop && fv(prop, 'value') === 'false') {
+    throw new ServiceNowError('Push is switched off on this instance (glide.push.enabled=false). Set it to true in System Properties, then retry.', 'NOT_CONFIGURED');
+  }
+  const appRef = clean(args.push_app || 'SkyNowPushApp');
+  const app = ((await client.queryRecords({
+    table: 'sys_push_application', query: SYS_ID.test(appRef) ? `sys_id=${appRef}` : `name=${appRef}`, fields: 'sys_id,name,display_name,push', limit: 1,
+  })).records as any[]).find((r) => fv(r, 'sys_id') === appRef || fv(r, 'name') === appRef);
+  if (!app) {
+    const any = await client.queryRecords({ table: 'sys_push_application', fields: 'name', limit: 20 });
+    throw new ServiceNowError(
+      `No push application "${appRef}" on this instance. ${any.records.length ? `Available: ${(any.records as any[]).map((r) => fv(r, 'name')).join(', ')}. ` : ''}` +
+        'Mobile push needs the ServiceNow mobile apps with a push application (System Mobile > Push > Push Applications) and ' +
+        'users signed in to the app with notifications allowed. Configure that first, then retry.',
+      'NOT_CONFIGURED',
+    );
+  }
+  const appId = fv(app, 'sys_id');
+
+  // 2. Recipients (groups expanded to active members, so delivery does not depend on parm1 group handling).
+  const users = await resolveUsers(client, userRefs);
+  const { groups, members } = await resolveGroupMembers(client, groupRefs);
+  const recipients = [...new Set([...users, ...members])];
+  if (!args.setup_only && !recipients.length) throw new ServiceNowError('The groups have no active members, so nobody would receive the push.', 'INVALID_REQUEST');
+  if (recipients.length > MAX_PUSH_RECIPIENTS) {
+    throw new ServiceNowError(`${recipients.length} recipients is more than one push event can carry (${MAX_PUSH_RECIPIENTS}). Split the send.`, 'INVALID_REQUEST');
+  }
+
+  // 3. The record the push is about. Default: the first recipient's user record.
+  const table = args.table ? String(args.table) : 'sys_user';
+  const recordId = args.table ? String(args.record_sys_id) : (recipients[0] || '');
+  if (recordId) {
+    try { await client.getRecord(table, recordId, 'sys_id'); } catch { throw new ServiceNowError(`Record ${recordId} not found in ${table}`, 'NOT_FOUND'); }
+  }
+
+  // 4. One-time setup, reused on later calls.
+  const created: Array<{ table: string; sys_id: string; name: string }> = [];
+  const evt = await ensureRecord(client, 'sysevent_register', { event_name: PUSH_EVENT }, { description: 'NowAIKit: send a mobile push message (parm1 = recipients, parm2 = text)', fired_by: 'NowAIKit send_push_notification' }, created);
+  const msgName = `NowAIKit push (${fv(app, 'name')})`;
+  const msg = await ensureRecord(client, 'sys_push_notif_msg', { name: msgName, push_app: appId }, { message_string: '${event.parm2}', type: 'push' }, created);
+  const msgId = fv(msg, 'sys_id');
+  const notifName = `NowAIKit push (${table})`;
+  const notif = await ensureRecord(client, 'sysevent_email_action', { name: notifName, collection: table }, {
+    event_name: PUSH_EVENT, generation_type: 'event', event_parm_1: 'true', push_message_only: 'true', send_self: 'true',
+    active: 'true', subscribable: 'false', message_list: msgId, description: 'Created by NowAIKit send_push_notification. Push only, recipients come from event parm1.',
+  }, created);
+  const list = fv(notif, 'message_list').split(',').filter(Boolean);
+  const fixes: Record<string, string> = {};
+  if (!list.includes(msgId)) fixes.message_list = [...list, msgId].join(',');
+  if (fv(notif, 'active') === 'false') fixes.active = 'true';
+  if (fv(notif, 'event_name') && fv(notif, 'event_name') !== PUSH_EVENT) fixes.event_name = PUSH_EVENT;
+  if (Object.keys(fixes).length) await client.updateRecord('sysevent_email_action', fv(notif, 'sys_id'), fixes);
+  const setup = {
+    event: { sys_id: fv(evt, 'sys_id'), name: PUSH_EVENT },
+    push_message: { sys_id: msgId, name: msgName, push_app: fv(app, 'name') },
+    notification: { sys_id: fv(notif, 'sys_id'), name: notifName, table },
+    created,
+  };
+
+  // 5. Who can actually get it: users with an active push device for this app (or one of its variants, e.g. Intune builds).
+  let withDevice = 0;
+  if (recipients.length) {
+    const variants = ((await client.queryRecords({ table: 'sys_push_application', query: `parent_app=${appId}`, fields: 'sys_id,parent_app', limit: 50 })).records as any[])
+      .filter((r) => fv(r, 'parent_app') === appId).map((r) => fv(r, 'sys_id'));
+    const apps = [appId, ...variants];
+    const devices = await client.queryRecords({
+      table: 'cmn_notif_device', query: `type=Push^active=true^push_appIN${apps.join(',')}^userIN${recipients.join(',')}`, fields: 'user,push_app', limit: 1000,
+    });
+    withDevice = new Set((devices.records as any[]).filter((d) => recipients.includes(fv(d, 'user')) && apps.includes(fv(d, 'push_app'))).map((d) => fv(d, 'user'))).size;
+  }
+  if (args.setup_only) {
+    return { action: 'setup', setup, push_app: fv(app, 'name'), recipients: recipients.length, recipients_with_device: withDevice };
+  }
+
+  // 6. Fire the event (the REST equivalent of gs.eventQueue: a ready row in the event queue).
+  const event = await client.createRecord('sysevent', {
+    name: PUSH_EVENT, table, instance: recordId, parm1: recipients.join(','), parm2: pushMessageText(title, body, args.action_url), state: 'ready',
+  });
+  return {
+    action: 'queued',
+    event_sys_id: event.sys_id,
+    push_app: fv(app, 'name'),
+    recipients: recipients.length,
+    groups_expanded: groups.length,
+    recipients_with_device: withDevice,
+    target: { table, sys_id: recordId },
+    setup,
+    note: withDevice
+      ? `Queued. ${withDevice} of ${recipients.length} recipient(s) have the app registered for push. Check delivery with list_event_log (event ${PUSH_EVENT}).`
+      : `Queued, but none of the ${recipients.length} recipient(s) has a registered push device for ${fv(app, 'name')}, so ServiceNow will process the event and deliver nothing. ` +
+        'Recipients need to sign in to the ServiceNow mobile app and allow notifications.',
+  };
 }
 
 /** Resolve a sys_id-or-name reference; when no value is given, pick the first record matching fallbackQuery. */
@@ -170,15 +358,7 @@ export async function executeMobileToolCall(
     }
     case 'send_push_notification': {
       requireWrite();
-      if (!args.title || !args.body) throw new ServiceNowError('title and body are required', 'INVALID_REQUEST');
-      // ServiceNow sends push messages from a notification (sysevent_email_action with push enabled and a
-      // sys_push_notif_msg message) when its event fires. sys_push_notification is a runtime log, so writing
-      // to it sends nothing. Refuse clearly instead of pretending it was sent.
-      throw new ServiceNowError(
-        'Direct push sends are not available over the REST API. Create a notification with push enabled ' +
-          '(create_notification) and trigger it with fire_event, or use the Push Notification Message records in ServiceNow.',
-        'NOT_SUPPORTED',
-      );
+      return sendPushNotification(client, args);
     }
     case 'get_mobile_analytics': {
       const days = args.days || 30;

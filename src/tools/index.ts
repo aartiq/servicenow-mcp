@@ -273,6 +273,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     // ServiceNow Action Fabric: instance MCP servers + A2A agents
     'sn_mcp_status', 'sn_mcp_list_servers', 'sn_mcp_list_tools', 'sn_mcp_call_tool', 'sn_mcp_activate_server',
     'sn_a2a_list_agents', 'sn_a2a_get_agent_card', 'sn_a2a_send_message', 'sn_a2a_get_task', 'sn_a2a_expose_agent',
+    'sn_mcp_create_server', 'sn_mcp_delete_server', 'sn_mcp_add_tool', 'sn_mcp_remove_tool',
+    'sn_mcp_list_registry', 'sn_mcp_register_external_server', 'sn_mcp_unregister_external_server',
     'query_records', 'get_record', 'natural_language_search', 'create_record', 'update_record', 'delete_record',
     'nlq_query', 'ai_search', 'categorize_incident',
     'get_virtual_agent_topics', 'get_ms_copilot_topics', 'get_pi_models',

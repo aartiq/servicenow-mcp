@@ -496,6 +496,7 @@ export class ServiceNowClient {
   ): Promise<T> {
     let lastError: Error | undefined;
     let reauthed = false;   // one-shot OAuth token refresh on a 401
+    let lastHttpStatus = 0; // status of the last HTTP error response (0 = no response)
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
@@ -524,6 +525,7 @@ export class ServiceNowClient {
 
         // Handle HTTP errors
         if (!response.ok) {
+          lastHttpStatus = response.status;
           const errorText = await response.text();
           let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
 
@@ -612,7 +614,10 @@ export class ServiceNowClient {
         // the effect. A ServiceNowError means the server DID respond; a bare Error means no response.
         const method = (options.method || 'GET').toUpperCase();
         const safeToRetry = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
-        if (!safeToRetry && !(error instanceof ServiceNowError)) {
+        // A write is only replayed when ServiceNow says it did not process it (429 rate limit, 503
+        // unavailable). After a 500 the record may already exist, so retrying could create a duplicate.
+        const notProcessed = error instanceof ServiceNowError && (lastHttpStatus === 429 || lastHttpStatus === 503);
+        if (!safeToRetry && !notProcessed) {
           throw lastError;
         }
 

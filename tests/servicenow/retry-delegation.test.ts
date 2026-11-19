@@ -32,6 +32,22 @@ describe('retry policy', () => {
     expect(fetchMock).toHaveBeenCalledTimes(4); // 1 initial + 3 retries
   });
 
+  it('never replays a write after a 500 (the record may already exist)', async () => {
+    process.env.NOWAIKIT_SKIP_MANDATORY_CHECK = 'true'; // count only the write itself
+    fetchMock.mockResolvedValue(res(500, { error: { message: 'Internal error' } }));
+    await expect(mk(3).createRecord('incident', { short_description: 'x' })).rejects.toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    delete process.env.NOWAIKIT_SKIP_MANDATORY_CHECK;
+  });
+
+  it('retries a write only when ServiceNow says it was not processed (429 / 503)', async () => {
+    process.env.NOWAIKIT_SKIP_MANDATORY_CHECK = 'true';
+    fetchMock.mockResolvedValueOnce(res(503, { error: { message: 'unavailable' } })).mockResolvedValue(res(201, { result: { sys_id: 'a'.repeat(32) } }));
+    await mk(3).createRecord('incident', { short_description: 'x' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    delete process.env.NOWAIKIT_SKIP_MANDATORY_CHECK;
+  });
+
   it('a read recovers after a transient network blip', async () => {
     fetchMock.mockRejectedValueOnce(new Error('ECONNRESET')).mockResolvedValue(res(200, { result: [{ number: 'INC1' }] }));
     await mk(3).queryRecords({ table: 'incident' });
