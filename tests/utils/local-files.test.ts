@@ -203,7 +203,7 @@ describe('upload_attachment with file_path (end to end, mocked ServiceNow)', () 
   });
 
   const client = () => new ServiceNowClient({
-    instanceUrl: 'https://inteliblissltddemo2.service-now.com',
+    instanceUrl: 'https://example.service-now.com',
     authMethod: 'basic', basic: { username: 'a', password: 'b' },
   });
 

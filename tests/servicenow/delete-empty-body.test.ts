@@ -8,7 +8,7 @@ import { ServiceNowClient } from '../../src/servicenow/client.js';
  * genuine 404 still errors.
  */
 const mk = () => new ServiceNowClient({
-  instanceUrl: 'https://inteliblissltddemo2.service-now.com',
+  instanceUrl: 'https://example.service-now.com',
   authMethod: 'basic', basic: { username: 'a', password: 'b' },
   maxRetries: 0,
 });

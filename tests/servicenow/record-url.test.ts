@@ -6,7 +6,7 @@ import { ServiceNowClient } from '../../src/servicenow/client.js';
  * attach `record_url` centrally so every tool that returns the record (mostly `{ ...result }`) gets it.
  */
 const mk = () => new ServiceNowClient({
-  instanceUrl: 'https://inteliblissltddemo2.service-now.com',
+  instanceUrl: 'https://example.service-now.com',
   authMethod: 'basic', basic: { username: 'a', password: 'b' },
 });
 
@@ -15,17 +15,17 @@ describe('record deep-link (record_url)', () => {
 
   it('builds the human form URL, not the REST link', () => {
     expect(c.recordUrl('sys_script_include', 'abc123'))
-      .toBe('https://inteliblissltddemo2.service-now.com/sys_script_include.do?sys_id=abc123');
+      .toBe('https://example.service-now.com/sys_script_include.do?sys_id=abc123');
   });
 
   it('attaches record_url from a plain sys_id', () => {
     const r = c.attachRecordUrl('incident', { sys_id: 'sid1', number: 'INC001' }) as any;
-    expect(r.record_url).toBe('https://inteliblissltddemo2.service-now.com/incident.do?sys_id=sid1');
+    expect(r.record_url).toBe('https://example.service-now.com/incident.do?sys_id=sid1');
   });
 
   it('handles sys_id returned as an object {value}', () => {
     const r = c.attachRecordUrl('sys_script', { sys_id: { value: 'sid2', display_value: 'sid2' } }) as any;
-    expect(r.record_url).toBe('https://inteliblissltddemo2.service-now.com/sys_script.do?sys_id=sid2');
+    expect(r.record_url).toBe('https://example.service-now.com/sys_script.do?sys_id=sid2');
   });
 
   it('never clobbers an existing record_url', () => {
