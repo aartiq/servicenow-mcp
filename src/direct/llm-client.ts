@@ -364,13 +364,19 @@ function runCli(bin: string, args: string[], input: string, timeoutMs: number): 
 }
 
 /** Claude Code CLI — uses the user's Claude subscription. `claude -p` reads the prompt from stdin. */
+/** How long a CLI model run may take: NOWAIKIT_LLM_TIMEOUT_MS, default 10 minutes (assessment prompts are large). */
+function cliTimeoutMs(): number {
+  const n = Number(process.env.NOWAIKIT_LLM_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : 600000;
+}
+
 async function callClaudeCli(config: LlmConfig, messages: LlmMessage[]): Promise<LlmResponse> {
   const { system, prompt } = flattenMessages(messages);
   const bin = process.env.NOWAIKIT_CLAUDE_BIN || 'claude';
   const args = ['-p'];
   if (config.model) args.push('--model', config.model);
   if (system) args.push('--append-system-prompt', system);
-  const text = await runCli(bin, args, prompt, config.timeoutMs ?? 300000);
+  const text = await runCli(bin, args, prompt, config.timeoutMs ?? cliTimeoutMs());
   return { content: text, model: config.model || 'claude-code' };
 }
 
@@ -382,7 +388,7 @@ async function callCodexCli(config: LlmConfig, messages: LlmMessage[]): Promise<
   const args = ['exec'];
   if (config.model) args.push('--model', config.model);
   args.push('-'); // read the prompt from stdin
-  const text = await runCli(bin, args, full, config.timeoutMs ?? 300000);
+  const text = await runCli(bin, args, full, config.timeoutMs ?? cliTimeoutMs());
   return { content: text, model: config.model || 'codex' };
 }
 
