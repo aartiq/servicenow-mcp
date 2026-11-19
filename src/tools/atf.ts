@@ -125,8 +125,12 @@ export async function executeAtfToolCall(
     case 'list_atf_suites': {
       let query = args.active !== false ? 'active=true' : '';
       if (args.query) query = query ? `${query}^${args.query}` : args.query;
-      const resp = await client.queryRecords({ table: 'sys_atf_test_suite', query: query || undefined, limit: args.limit || 20, fields: 'sys_id,name,active,description,sys_updated_on' });
-      return { count: resp.count, suites: resp.records };
+      const limit = Math.max(1, Number(args.limit) || 20);
+      // Ask for one extra row so a full page can say there's more instead of looking complete.
+      const resp = await client.queryRecords({ table: 'sys_atf_test_suite', query: query || undefined, limit: limit + 1, fields: 'sys_id,name,active,description,sys_updated_on' });
+      const suites = resp.records.slice(0, limit);
+      const more = resp.records.length > limit;
+      return { count: suites.length, suites, ...(more ? { more: true, note: `Showing the first ${limit}. Raise limit or narrow with query to see the rest.` } : {}) };
     }
     case 'get_atf_suite': {
       if (!args.sys_id_or_name) throw new ServiceNowError('sys_id_or_name is required', 'INVALID_REQUEST');
@@ -158,7 +162,14 @@ export async function executeAtfToolCall(
     }
     case 'list_atf_tests': {
       let query = args.active !== false ? 'active=true' : '';
-      if (args.suite_sys_id) query = query ? `${query}^test_suite=${args.suite_sys_id}` : `test_suite=${args.suite_sys_id}`;
+      if (args.suite_sys_id) {
+        // Suite membership lives in sys_atf_test_suite_test; sys_atf_test has no suite field, and ServiceNow
+        // ignores a filter on a missing field, which used to return every test.
+        const links = await client.queryRecords({ table: 'sys_atf_test_suite_test', query: `test_suite=${args.suite_sys_id}^ORDERBYorder`, fields: 'test', limit: 1000 });
+        const ids = (links.records as any[]).map((r) => (r.test && typeof r.test === 'object' ? r.test.value : r.test)).filter(Boolean);
+        if (!ids.length) return { count: 0, tests: [], note: 'This suite has no tests.' };
+        query = query ? `${query}^sys_idIN${ids.join(',')}` : `sys_idIN${ids.join(',')}`;
+      }
       const resp = await client.queryRecords({ table: 'sys_atf_test', query: query || undefined, limit: args.limit || 20 });
       return { count: resp.count, tests: resp.records };
     }

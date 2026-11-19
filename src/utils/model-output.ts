@@ -48,3 +48,20 @@ export function modelText(result: unknown): string {
   if (!compactOutputEnabled()) return JSON.stringify(result, null, 2);
   return JSON.stringify(compactValue(result));
 }
+
+/** AI chat and coding clients pass tool results to a model; some (Claude Code among them) read structuredContent. */
+const AI_CLIENT = /claude|chatgpt|openai|cursor|copilot|vscode|visual studio|gemini|codex|windsurf|cline|continue|zed|goose|antigravity|jetbrains|kiro|amazon q/i;
+
+/**
+ * Whether structuredContent should be compacted like the text. AI clients get the compact form (lossless,
+ * and it is what reaches the model in clients that prefer structured output). Any other client keeps the
+ * raw 4.x shape, so integrations that read structuredContent are unaffected.
+ * NOWAIKIT_STRUCTURED_CONTENT=raw or =compact forces one or the other.
+ */
+export function compactStructuredFor(clientName: string | undefined): boolean {
+  const mode = (process.env.NOWAIKIT_STRUCTURED_CONTENT || '').toLowerCase();
+  if (mode === 'raw') return false;
+  if (mode === 'compact') return true;
+  if (!compactOutputEnabled()) return false;
+  return AI_CLIENT.test(clientName || '');
+}

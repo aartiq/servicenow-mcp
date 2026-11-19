@@ -153,14 +153,24 @@ export async function executeIncidentToolCall(
     case 'add_work_note': {
       requireWrite();
       if (!args.table || !args.sys_id || !args.note) throw new ServiceNowError('table, sys_id, and note are required', 'INVALID_REQUEST');
-      const result = await client.updateRecord(args.table, args.sys_id, { work_notes: args.note });
-      return { ...result, summary: `Added work note to ${args.table} ${args.sys_id}` };
+      const result: any = await client.updateRecord(args.table, args.sys_id, { work_notes: args.note });
+      // A short confirmation: the full record would cost the model a few thousand tokens for nothing new.
+      return {
+        sys_id: result.sys_id, number: result.number, table: args.table, sys_updated_on: result.sys_updated_on,
+        record_url: result.record_url, ...(result._write_warning ? { _write_warning: result._write_warning } : {}),
+        summary: `Added work note to ${result.number || args.table + ' ' + args.sys_id}`,
+      };
     }
     case 'add_comment': {
       requireWrite();
       if (!args.table || !args.sys_id || !args.comment) throw new ServiceNowError('table, sys_id, and comment are required', 'INVALID_REQUEST');
-      const result = await client.updateRecord(args.table, args.sys_id, { comments: args.comment });
-      return { ...result, summary: `Added comment to ${args.table} ${args.sys_id}` };
+      const result: any = await client.updateRecord(args.table, args.sys_id, { comments: args.comment });
+      // A short confirmation: the full record would cost the model a few thousand tokens for nothing new.
+      return {
+        sys_id: result.sys_id, number: result.number, table: args.table, sys_updated_on: result.sys_updated_on,
+        record_url: result.record_url, ...(result._write_warning ? { _write_warning: result._write_warning } : {}),
+        summary: `Added comment to ${result.number || args.table + ' ' + args.sys_id}`,
+      };
     }
     default:
       return null;

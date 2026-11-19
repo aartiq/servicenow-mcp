@@ -59,14 +59,19 @@ async function runNowSdk(args: string[], timeoutMs = 30000, cwd?: string): Promi
     throw new ServiceNowError(`Directory not found: ${cwd}. Create it first, or pass an existing project directory.`, 'INVALID_REQUEST');
   }
   try {
-    const result = await execFileAsync('npx', ['@servicenow/sdk', ...args], {
+    const pending = execFileAsync('npx', ['@servicenow/sdk', ...args], {
       timeout: timeoutMs,
       maxBuffer: 10 * 1024 * 1024,
       cwd: cwd || undefined,
       // NO_COLOR keeps ANSI codes out of the output the model reads.
       env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' },
     });
-    return { stdout: result.stdout, stderr: result.stderr };
+    // Nobody can answer an interactive prompt here: close stdin so one fails at once instead of hanging.
+    (pending as any).child?.stdin?.end();
+    const result = await pending;
+    // Node deprecation notices (e.g. punycode) land on stderr; they're noise to the model.
+    const stderr = String(result.stderr || '').split('\n').filter((l: string) => l && !/DeprecationWarning|--trace-deprecation/.test(l)).join('\n');
+    return { stdout: result.stdout, stderr };
   } catch (error: any) {
     if (error.code === 'ENOENT') {
       throw new ServiceNowError('now-sdk not found. Install with: npm i -g @servicenow/sdk', 'FLUENT_NOT_INSTALLED');
@@ -694,7 +699,8 @@ export async function executeFluentToolCall(
       const pkg = args.package_name || (args.name ? String(args.name).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') : '');
       if (pkg) initArgs.push('--packageName', pkg);
       if (args.scope) initArgs.push('--scopeName', String(args.scope));
-      if (args.template) initArgs.push('--template', String(args.template));
+      // Without --template the CLI stops to ask which one to use. Converting a legacy app needs no template.
+      if (args.template || !args.from) initArgs.push('--template', String(args.template || 'typescript.basic'));
       if (args.from) initArgs.push('--from', String(args.from));
       await pushAuth(initArgs, args, client, false);
       // A new project usually goes in a folder that doesn't exist yet.
@@ -733,7 +739,18 @@ export async function executeFluentToolCall(
       const validateArgs = ['build'];
       if (args.directory) validateArgs.push(String(args.directory));
       validateArgs.push('--frozenKeys', '--errorOnConflict');
-      const result = await runNowSdk(validateArgs, 300000);
+      let result;
+      try {
+        result = await runNowSdk(validateArgs, 300000);
+      } catch (e) {
+        // A project that has never been built has no keys file yet, so the frozen-keys check fails on it.
+        // Build once to generate the keys, then run the strict check again.
+        if (!/keys file is out-of-date/i.test((e as Error).message)) throw e;
+        const buildArgs = ['build'];
+        if (args.directory) buildArgs.push(String(args.directory));
+        await runNowSdk(buildArgs, 300000);
+        result = await runNowSdk(validateArgs, 300000);
+      }
       return { action: 'validation_completed', valid: true, output: result.stdout, stderr: result.stderr || undefined };
     }
 

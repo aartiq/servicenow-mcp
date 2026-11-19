@@ -17,7 +17,7 @@
  * TaskAwareServer subclass lets a handler hand a task result past that check through a per-request
  * slot, while every other tools/call result is validated as before.
  */
-import { modelText } from './model-output.js';
+import { compactValue, modelText } from './model-output.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import * as z from 'zod';
 import {
@@ -140,10 +140,10 @@ export function callToolResultFor(job: Job): Record<string, unknown> {
  * stays attached as structuredContent, as in 4.x, for clients and integrations that read it.
  * NOWAIKIT_STRUCTURED_CONTENT=false drops that copy for clients that would pass both to the model.
  */
-export function toolResult(result: unknown, opts: { structured?: boolean; text?: string } = {}): Record<string, unknown> {
+export function toolResult(result: unknown, opts: { structured?: boolean; text?: string; compactStructured?: boolean } = {}): Record<string, unknown> {
   const wantStructured = opts.structured ?? !/^(false|0|off|no)$/i.test(process.env.NOWAIKIT_STRUCTURED_CONTENT || '');
   const structured = wantStructured && typeof result === 'object' && result !== null && !Array.isArray(result)
-    ? { structuredContent: result as Record<string, unknown> }
+    ? { structuredContent: (opts.compactStructured ? compactValue(result) : result) as Record<string, unknown> }
     : {};
   return {
     content: [{ type: 'text', text: opts.text ?? modelText(result) }],

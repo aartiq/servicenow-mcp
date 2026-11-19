@@ -6,14 +6,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
-## Unreleased
-
-- The ServiceNow SDK tools now use the SDK login that matches the instance NowAIKit is connected to. If none matches, they stop and say so, instead of quietly running against the SDK's default instance.
-- `fluent_init` installs the new project's packages, so `fluent_build` and `fluent_validate` work straight after it (`install: false` to skip).
-- `fluent_init` creates the project folder when it doesn't exist yet. Before, a new folder made the SDK look uninstalled. A missing project folder on other SDK commands now says so.
-- Adding a work note or comment no longer comes back with a false "value not reflected" warning. Journal fields always read back empty, so they're skipped in the post-write check.
-- The server now starts from the `nowaikit setup` config alone, so a bare `npx nowaikit` works after setup without any environment variables.
-
 ## [5.0.0] - 2026-11-19
 
 NowAIKit 5.0 adds interactive forms inside the chat, works alongside ServiceNow's own MCP servers and

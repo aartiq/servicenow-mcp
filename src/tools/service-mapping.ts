@@ -97,7 +97,33 @@ export async function executeServiceMappingToolCall(
         fields: 'cmdb_ci_service,cmdb_ci_service.name,ci_id,ci_id.name',
         limit: args.limit ?? 50,
       });
-      return { ci: ciId, services: (assoc as any).records, count: (assoc as any).count, note: 'Services this CI is a member of, via svc_ci_assoc.' };
+      const services: any[] = (assoc as any).records.map((r: any) => ({ ...r, via: 'service map (svc_ci_assoc)' }));
+      // Many CMDBs model services with plain relationships rather than service maps: walk up from the CI
+      // (parents depend on children) and keep the service CIs found within three hops.
+      const ref = (v: any) => (v && typeof v === 'object' ? v.value : v) as string;
+      const known = new Set(services.map((r) => ref(r.cmdb_ci_service)));
+      let frontier = [String(ciId)];
+      const visited = new Set(frontier);
+      for (let hop = 1; hop <= 3 && frontier.length; hop++) {
+        const rels = await client.queryRecords({
+          table: 'cmdb_rel_ci',
+          query: `childIN${frontier.join(',')}`,
+          fields: 'parent,parent.name,parent.sys_class_name',
+          limit: 200,
+        }).catch(() => ({ records: [] as any[] }));
+        frontier = [];
+        for (const r of (rels as any).records) {
+          const id = ref(r.parent);
+          if (!id || visited.has(id)) continue;
+          visited.add(id); frontier.push(id);
+          const cls = String(ref(r['parent.sys_class_name']) || '');
+          if ((/^cmdb_ci_service/.test(cls) || cls === 'service_offering') && !known.has(id)) {
+            known.add(id);
+            services.push({ cmdb_ci_service: id, 'cmdb_ci_service.name': ref(r['parent.name']), class: cls, via: `CI relationships (${hop} hop${hop > 1 ? 's' : ''})` });
+          }
+        }
+      }
+      return { ci: ciId, services, count: services.length, note: 'Services this CI belongs to (service map) or that depend on it through CI relationships.' };
     }
     case 'cmdb_find_unmapped_cis': {
       const limit = args.limit ?? 100;

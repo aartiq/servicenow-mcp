@@ -3,7 +3,7 @@
   "name": "io.github.aartiq/nowaikit",
   "title": "ServiceNow MCP Server (NowAIKit)",
   "description": "ServiceNow MCP: 500+ tools and in-chat forms for Claude, ChatGPT and Copilot. Read-only by default.",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "websiteUrl": "https://servicenow-mcp.com",
   "repository": {
     "url": "https://github.com/aartiq/servicenow-mcp",
@@ -13,7 +13,7 @@
     {
       "registryType": "npm",
       "identifier": "nowaikit",
-      "version": "5.0.0",
+      "version": "5.0.1",
       "transport": {
         "type": "stdio"
       },

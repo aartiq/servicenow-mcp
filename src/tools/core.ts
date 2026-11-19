@@ -306,12 +306,13 @@ export function getCoreToolDefinitions() {
     },
     {
       name: 'cmdb_impact_analysis',
-      description: 'Analyze the downstream impact of a Configuration Item change or outage',
+      description: 'Analyze the impact of a Configuration Item change or outage: what depends on it (affected if it fails) and what it depends on',
       inputSchema: {
         type: 'object',
         properties: {
           ci_sys_id: { type: 'string', description: 'CI sys_id to analyze' },
           depth: { type: 'number', description: 'Relationship depth to traverse (default: 2)' },
+          direction: { type: 'string', enum: ['both', 'impacted', 'dependencies'], description: 'impacted = CIs that depend on this one, dependencies = CIs it depends on, both (default)' },
         },
         required: ['ci_sys_id'],
       },
@@ -567,10 +568,13 @@ export async function executeCoreToolCall(
       };
 
     case 'get_current_instance':
+      // Only the current instance: other instance names (often other clients) stay out of the conversation
+      // unless someone asks for them with list_instances.
       return {
         name: instanceManager.getCurrentName(),
         url: instanceManager.getCurrentUrl(),
-        all_instances: instanceManager.listNames(),
+        other_instances: Math.max(instanceManager.listNames().length - 1, 0),
+        note: 'Use list_instances to see the other configured instances, and switch_instance to change.',
       };
 
     case 'create_ci_relationship': {
@@ -588,30 +592,43 @@ export async function executeCoreToolCall(
     case 'cmdb_impact_analysis': {
       if (!args.ci_sys_id) throw new ServiceNowError('ci_sys_id is required', 'INVALID_REQUEST');
       const maxDepth = args.depth || 2;
-      const visited = new Set<string>();
-      const impactTree: any[] = [];
+      // In cmdb_rel_ci the parent depends on the child ("Depends on::Used by"). Walking to children gives
+      // what this CI relies on; walking to parents gives what breaks when it fails. Default: both.
+      const direction = ['impacted', 'dependencies', 'both'].includes(args.direction) ? args.direction : 'both';
+      const ref = (v: any) => (v && typeof v === 'object' ? v.value : v) as string;
+      const seen = new Set<string>([String(args.ci_sys_id)]);
 
-      async function traverse(ciSysId: string, currentDepth: number): Promise<any[]> {
-        if (currentDepth > maxDepth || visited.has(ciSysId)) return [];
-        visited.add(ciSysId);
+      async function traverse(ciSysId: string, currentDepth: number, from: 'parent' | 'child', visited: Set<string>): Promise<any[]> {
+        if (currentDepth > maxDepth) return [];
+        const other = from === 'parent' ? 'child' : 'parent';
         const resp = await client.queryRecords({
           table: 'cmdb_rel_ci',
-          query: `parent=${ciSysId}`,
+          query: `${from}=${ciSysId}`,
           fields: 'sys_id,child,type,parent',
           limit: 100,
         });
-        const children: any[] = [];
+        const out: any[] = [];
         for (const rel of resp.records) {
-          const childId = typeof rel.child === 'object' ? (rel.child as any).value : rel.child;
-          const downstream = await traverse(childId, currentDepth + 1);
-          children.push({ relationship: rel, downstream });
+          const nextId = ref((rel as any)[other]);
+          if (!nextId || visited.has(nextId)) continue;
+          visited.add(nextId); seen.add(nextId);
+          const deeper = await traverse(nextId, currentDepth + 1, from, visited);
+          out.push(from === 'parent' ? { relationship: rel, downstream: deeper } : { relationship: rel, impacted: deeper });
         }
-        return children;
+        return out;
       }
 
-      const downstream = await traverse(args.ci_sys_id, 1);
-      impactTree.push({ ci_sys_id: args.ci_sys_id, depth: maxDepth, downstream });
-      return { impact_analysis: impactTree, total_impacted: visited.size - 1 };
+      const root = String(args.ci_sys_id);
+      const downstream = direction === 'impacted' ? [] : await traverse(root, 1, 'parent', new Set([root]));
+      const impacted = direction === 'dependencies' ? [] : await traverse(root, 1, 'child', new Set([root]));
+      const count = (tree: any[], key: string): number => tree.reduce((n, t) => n + 1 + count(t[key] || [], key), 0);
+      return {
+        impact_analysis: [{ ci_sys_id: root, depth: maxDepth, direction, downstream, impacted }],
+        impacted_count: count(impacted, 'impacted'),
+        dependency_count: count(downstream, 'downstream'),
+        total_impacted: seen.size - 1,
+        summary: `${count(impacted, 'impacted')} CI(s) depend on this CI (affected if it fails); it depends on ${count(downstream, 'downstream')} CI(s).`,
+      };
     }
 
     case 'run_discovery_scan': {

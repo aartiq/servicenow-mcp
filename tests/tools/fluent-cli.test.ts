@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Capture every now-sdk invocation instead of running npx.
 const calls: Array<{ args: string[]; cwd?: string }> = [];
+let failNextFrozen = false;
 vi.mock('child_process', () => ({
   execFile: (_cmd: string, args: string[], opts: any, cb: (e: any, r: any) => void) => {
     calls.push({ args: args.slice(1), cwd: opts?.cwd });
+    if (failNextFrozen && args.includes('--frozenKeys')) { failNextFrozen = false; cb(Object.assign(new Error('build failed'), { stderr: 'Keys file is out-of-date' }), null); return; }
     const out = args.includes('--version') ? '4.14.2'
       : args[1] === 'auth' ? '[now-sdk] Listing all credentials:\n[other]\n      host = https://other.service-now.com\n      default = Yes\n[mydemo]\n      host = https://demo.service-now.com\n      default = No\n'
       : args[1] === 'query' || args[1] === 'exec' ? '{"ok":true}' : 'done';
@@ -76,6 +78,20 @@ describe('Fluent SDK CLI arguments (now-sdk 4.14.2)', () => {
   it('an explicit auth alias always wins', async () => {
     await executeFluentToolCall({ instanceUrl: 'https://elsewhere.service-now.com' } as any, 'fluent_sdk_query', { table: 'incident', auth: 'dev' });
     expect(last().args).toContain('dev');
+  });
+
+  it('validate builds once first on a project that has never been built', async () => {
+    failNextFrozen = true;
+    const r: any = await executeFluentToolCall(client, 'fluent_validate', { directory: '/tmp/proj' });
+    expect(r.valid).toBe(true);
+    expect(calls.map((c) => c.args.join(' '))).toEqual(['build /tmp/proj --frozenKeys --errorOnConflict', 'build /tmp/proj', 'build /tmp/proj --frozenKeys --errorOnConflict']);
+  });
+
+  it('init always names a template so the CLI never stops to ask', async () => {
+    await executeFluentToolCall(client, 'fluent_init', { name: 'App', scope: 'x_acme_app', directory: '/tmp/proj2' });
+    expect(last().args).toContain('typescript.basic');
+    await executeFluentToolCall(client, 'fluent_init', { from: 'abc', directory: '/tmp/proj3' });
+    expect(last().args).not.toContain('--template');
   });
 
   it('build takes the project directory as a positional argument', async () => {

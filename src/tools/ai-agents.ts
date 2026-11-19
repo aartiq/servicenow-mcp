@@ -220,7 +220,8 @@ export async function executeAiAgentsToolCall(
 
     case 'list_ai_agents': {
       // sn_aia_agent has no active field: the flag lives on sn_aia_agent_config (agent -> sn_aia_agent).
-      const agentFields = 'sys_id,name,description,role,agent_type,channel,record_type,internal_name,sys_updated_on';
+      // role holds the agent's full instructions (often thousands of characters): get_ai_agent returns it.
+      const agentFields = 'sys_id,name,description,agent_type,channel,record_type,internal_name,sys_updated_on';
       let agents: any[];
       if (args.active !== undefined) {
         const cfgs = await withAiaPlugin(() => client.queryRecords({
@@ -246,8 +247,9 @@ export async function executeAiAgentsToolCall(
         });
         for (const c of cfgs.records as any[]) activeById.set(refValue(c.agent), String(c.active));
       }
-      const records = agents.map((a: any) => ({ ...a, active: activeById.get(String(a.sys_id)) ?? null }));
-      return { count: records.length, agents: records };
+      const short = (v: unknown) => { const t = String(v ?? ''); return t.length > 240 ? t.slice(0, 240) + '...' : t; };
+      const records = agents.map((a: any) => ({ ...a, ...(a.description !== undefined ? { description: short(a.description) } : {}), active: activeById.get(String(a.sys_id)) ?? null }));
+      return { count: records.length, agents: records, note: 'Descriptions are shortened. get_ai_agent returns the full agent, its instructions, tools and versions.' };
     }
 
     case 'get_ai_agent': {

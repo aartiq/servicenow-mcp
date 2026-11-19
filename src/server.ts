@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { compatNotes } from './bootstrap-env.js';
-import { modelText } from './utils/model-output.js';
+import { compactStructuredFor, modelText } from './utils/model-output.js';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -307,8 +307,11 @@ export function createServer(options: CreateServerOptions = {}): Server {
       // view itself, the model only needs the summary, not the whole form definition.
       const isView = /^open_(catalog_form|record_form|approvals)$/.test(name);
       const summary = isView && appsEnabled(ctx) && result && typeof result === 'object' ? (result as { summary?: unknown }).summary : undefined;
+      const appTool = isView || /^app_/.test(name);
       return toolResult(result, {
-        structured: isView || /^app_/.test(name) || undefined,
+        structured: appTool || undefined,
+        // Views read the raw object; everything else is compacted for AI clients that pass structuredContent to the model.
+        compactStructured: !appTool && compactStructuredFor(clientIdentity(server, ctx).info?.name),
         text: typeof summary === 'string' ? `${summary} The form is shown to the user; wait for them to submit it.` : undefined,
       }) as { content: Array<{ type: 'text'; text: string }> };
     } catch (error) {

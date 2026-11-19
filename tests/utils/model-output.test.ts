@@ -44,3 +44,33 @@ describe('model output compaction (lossless)', () => {
     expect(modelText({ a: { display_value: 'b', value: 'b' } })).toBe(JSON.stringify({ a: { display_value: 'b', value: 'b' } }, null, 2));
   });
 });
+
+describe('structuredContent compaction by client', () => {
+  const ENV = process.env.NOWAIKIT_STRUCTURED_CONTENT;
+  afterEach(() => { if (ENV === undefined) delete process.env.NOWAIKIT_STRUCTURED_CONTENT; else process.env.NOWAIKIT_STRUCTURED_CONTENT = ENV; });
+
+  it('compacts for AI clients and keeps the raw shape for anything else', async () => {
+    const { compactStructuredFor } = await import('../../src/utils/model-output.js');
+    delete process.env.NOWAIKIT_STRUCTURED_CONTENT;
+    expect(compactStructuredFor('claude-code')).toBe(true);
+    expect(compactStructuredFor('claude-ai')).toBe(true);
+    expect(compactStructuredFor('openai-mcp')).toBe(true);
+    expect(compactStructuredFor('my-integration')).toBe(false);
+    expect(compactStructuredFor(undefined)).toBe(false);
+  });
+
+  it('can be forced either way', async () => {
+    const { compactStructuredFor } = await import('../../src/utils/model-output.js');
+    process.env.NOWAIKIT_STRUCTURED_CONTENT = 'raw';
+    expect(compactStructuredFor('claude-code')).toBe(false);
+    process.env.NOWAIKIT_STRUCTURED_CONTENT = 'compact';
+    expect(compactStructuredFor('my-integration')).toBe(true);
+  });
+
+  it('toolResult compacts structuredContent only when asked', async () => {
+    const { toolResult } = await import('../../src/utils/tasks.js');
+    const rec = { records: [{ number: { display_value: 'INC1', value: 'INC1' }, assignment_group: { display_value: 'Software', value: 'g1', link: 'https://x/api' } }] };
+    expect((toolResult(rec, { compactStructured: true }) as any).structuredContent).toEqual({ records: [{ number: 'INC1', assignment_group: { value: 'g1', display: 'Software' } }] });
+    expect((toolResult(rec) as any).structuredContent).toEqual(rec);
+  });
+});
