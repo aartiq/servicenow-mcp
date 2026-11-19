@@ -10,6 +10,7 @@
  * that mirrors the GlideQuery API developers use in the platform.
  */
 import { execFile as execFileCb } from 'child_process';
+import { existsSync, mkdirSync } from 'fs';
 import { promisify } from 'util';
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
@@ -52,6 +53,10 @@ const KNOWN_EXPLAIN_TOPICS = [
 ];
 
 async function runNowSdk(args: string[], timeoutMs = 30000, cwd?: string): Promise<{ stdout: string; stderr: string }> {
+  // A missing working directory also surfaces as ENOENT from spawn, which would read as "SDK not installed".
+  if (cwd && !existsSync(cwd)) {
+    throw new ServiceNowError(`Directory not found: ${cwd}. Create it first, or pass an existing project directory.`, 'INVALID_REQUEST');
+  }
   try {
     const result = await execFileAsync('npx', ['@servicenow/sdk', ...args], {
       timeout: timeoutMs,
@@ -690,6 +695,8 @@ export async function executeFluentToolCall(
       if (args.template) initArgs.push('--template', String(args.template));
       if (args.from) initArgs.push('--from', String(args.from));
       pushAuth(initArgs, args);
+      // A new project usually goes in a folder that doesn't exist yet.
+      if (args.directory) mkdirSync(String(args.directory), { recursive: true });
       const result = await runNowSdk(initArgs, 600000, args.directory);
       return { action: 'project_initialized', name: args.name || null, directory: args.directory || process.cwd(), output: result.stdout, stderr: result.stderr || undefined };
     }

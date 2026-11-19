@@ -46,6 +46,21 @@ describe('Fluent SDK CLI arguments (now-sdk 4.14.2)', () => {
     expect(last().cwd).toBe('/tmp/proj');
   });
 
+  it('init creates a new project folder rather than reporting the SDK as missing', async () => {
+    const { mkdtempSync, existsSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const dir = join(mkdtempSync(join(tmpdir(), 'nk-fluent-')), 'acme', 'linker');
+    await executeFluentToolCall(client, 'fluent_init', { name: 'Linker', scope: 'x_acme_linker', directory: dir });
+    expect(existsSync(dir)).toBe(true);
+    expect(last().cwd).toBe(dir);
+  });
+
+  it('a missing project folder is reported as a missing folder', async () => {
+    await expect(executeFluentToolCall(client, 'fluent_exec', { directory: '/definitely/not/here', script: 'gs.info(1)', reason: 'test' }))
+      .rejects.toMatchObject({ message: expect.stringMatching(/Directory not found/) });
+  });
+
   it('build takes the project directory as a positional argument', async () => {
     await executeFluentToolCall(client, 'fluent_build', { directory: '/tmp/proj', frozen_keys: true });
     expect(calls[0].args).toEqual(['build', '/tmp/proj', '--frozenKeys']);
