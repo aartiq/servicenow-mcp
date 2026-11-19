@@ -13,6 +13,31 @@ import { callLlm } from './llm-client.js';
 import { resolvePromptAsync, getCapabilities } from '../prompts/index.js';
 import type { CapabilityDefinition } from '../prompts/types.js';
 import { getInstanceScanSummary, isScanCategory, parseScanSpec, startInstanceScan, waitForInstanceScan } from '../servicenow/instance-scan.js';
+import { executeTool, getCatalogTool } from '../tools/index.js';
+import { DATA_PLANS, gatherPlan, type CoverageEntry } from './data-plans.js';
+
+const SYS_ID_RE = /^[0-9a-f]{32}$/i;
+
+/** Add record_url to each record that has a sys_id, so reports can link to the real record. */
+function withUrls<T extends { records?: any[] }>(client: ServiceNowClient, table: string, resp: T): T {
+  if (!resp || !Array.isArray(resp.records)) return resp;
+  for (const r of resp.records) {
+    const id = r && typeof r.sys_id === 'object' ? r.sys_id?.value : r?.sys_id;
+    if (id && SYS_ID_RE.test(String(id)) && !r.record_url && typeof (client as any).recordUrl === 'function') r.record_url = client.recordUrl(r.sys_class_name && typeof r.sys_class_name === 'string' && /^[a-z0-9_]+$/.test(r.sys_class_name) ? r.sys_class_name : table, String(id));
+  }
+  return resp;
+}
+
+/** A clickable list view for a table and encoded query. */
+function listLink(client: ServiceNowClient, table: string, query: string): string {
+  return `${String((client as any).instanceUrl ?? '').replace(/\/$/, '')}/${table}_list.do?sysparm_query=${encodeURIComponent(query)}`;
+}
+
+/** A record link, or undefined when the client cannot build one. */
+function recLink(client: ServiceNowClient, table: string, id: string): string | undefined {
+  return typeof (client as any).recordUrl === 'function' ? client.recordUrl(table, id) : undefined;
+}
+
 
 export interface DirectExecutionOptions {
   capability: string;
@@ -54,7 +79,23 @@ export async function gatherInstanceScanData(
     maxResults: compact ? 4 : 6,
   });
   out['instance_scan_runs'] = { scope: s.scope, runs: s.runs.slice(0, compact ? 8 : 15) };
-  out['instance_scan_analysed_results'] = s.analysed_results;
+  const latest = s.analysed_results[0]?.result_sys_id as string | undefined;
+  out['instance_scan_analysed_results'] = s.analysed_results.map((r) => ({
+    ...r,
+    record_url: r.result_sys_id ? recLink(client, 'scan_result', String(r.result_sys_id)) : undefined,
+    findings_list_url: r.result_sys_id ? listLink(client, 'scan_finding', `result=${r.result_sys_id}^muted=false`) : undefined,
+  }));
+  s.top_checks = s.top_checks.map((c) => ({
+    ...c,
+    check_url: c.check_sys_id ? recLink(client, 'scan_check', String(c.check_sys_id)) : undefined,
+    findings_list_url: c.check_sys_id ? listLink(client, 'scan_finding', `check=${c.check_sys_id}${latest ? `^result=${latest}` : ''}^muted=false`) : undefined,
+  }));
+  if (s.sample_findings) {
+    s.sample_findings = s.sample_findings.map((f) => ({
+      ...f,
+      record_url: typeof f.table === 'string' && /^[a-z0-9_]+$/.test(f.table) && typeof f.record === 'string' && SYS_ID_RE.test(f.record) ? recLink(client, f.table, f.record) : undefined,
+    }));
+  }
   out['instance_scan_findings_by_category_and_priority'] = { by_category: s.by_category, by_priority: s.by_priority, notes: s.notes };
   if (compact) {
     out['instance_scan_top_checks'] = s.top_checks.map(({ check_sys_id: _id, documentation_url: _u, description: _d, ...rest }) => rest);
@@ -71,8 +112,56 @@ export async function gatherInstanceScanData(
 }
 
 /** Instance Scan sections (sent as compact JSON) may run longer than other data before they are cut. */
-function sectionLimit(key: string): number {
-  return key.startsWith('instance_scan') ? 9000 : 3000;
+function sectionLimit(key: string, planLimits: Record<string, number> = {}): number {
+  if (key.startsWith('instance_scan')) return 9000;
+  if (key === 'data_coverage') return 6000;
+  return planLimits[key] ?? 5000;
+}
+
+/** True when a catalog tool only reads (its MCP annotation says so). */
+export function isReadOnlyTool(name: string): boolean {
+  const t = getCatalogTool(name) as { annotations?: { readOnlyHint?: boolean } } | undefined;
+  return !!t?.annotations?.readOnlyHint;
+}
+
+/** Tools the hand-written gatherer above still serves (Instance Scan, with its fresh-run option). */
+const SCAN_TOOLS = new Set(['run_instance_scan', 'get_instance_scan_summary', 'get_instance_scan_findings']);
+
+/**
+ * Gather everything a capability needs: its data plan (read-only tool calls, queries and counts),
+ * plus Instance Scan data when it uses scan findings. Capabilities without a plan fall back to the
+ * older gatherer. The result starts with a data_coverage section listing what could not be gathered.
+ */
+export async function gatherCapabilityData(
+  client: ServiceNowClient,
+  capability: string,
+  recommendedTools: string[],
+  args: Record<string, string>,
+  cap?: CapabilityDefinition,
+  onProgress?: (message: string) => void,
+  runTool: (name: string, a: Record<string, unknown>) => Promise<unknown> = (name, a) => executeTool(client, name, a as Record<string, any>),
+): Promise<{ data: Record<string, unknown>; limits: Record<string, number> }> {
+  const plan = DATA_PLANS[capability];
+  if (!plan) return { data: await gatherData(client, recommendedTools, args, cap, onProgress), limits: {} };
+  const scopeIsTable = !!args.scope && args.scope !== 'instance' && !isScanCategory(args.scope) && /^[a-z0-9_]+$/i.test(args.scope);
+  const table = args.table || (scopeIsTable ? args.scope! : '');
+  onProgress?.(`Gathering ${plan.length} data sections`);
+  const scanData = await gatherData(client, recommendedTools.filter((t) => SCAN_TOOLS.has(t)), args, cap, onProgress);
+  const { results, coverage, limits } = await gatherPlan(client, capability, { args, table }, { runTool, isReadOnlyTool });
+  for (const k of Object.keys(scanData)) {
+    coverage.push({ key: k, status: k.endsWith('_error') ? 'failed' : 'gathered', detail: k.endsWith('_error') ? String(scanData[k]) : 'Instance Scan' });
+  }
+  const missing = coverage.filter((c) => c.status !== 'gathered');
+  const data: Record<string, unknown> = {
+    data_coverage: {
+      gathered: coverage.filter((c) => c.status === 'gathered').map((c) => c.key),
+      not_gathered: missing.map((c: CoverageEntry) => ({ section: c.key, status: c.status, reason: c.detail })),
+      rule: 'Report every section listed in not_gathered as "not available" (with the reason) in a short "Data coverage" note. Never fill a missing section with assumptions.',
+    },
+    ...scanData,
+    ...results,
+  };
+  return { data, limits };
 }
 
 async function gatherData(
@@ -110,7 +199,7 @@ async function gatherData(
       switch (tool) {
         case 'query_records': {
           if (table) {
-            const data = await client.queryRecords({ table, limit: 50 });
+            const data = withUrls(client, table, await client.queryRecords({ table, limit: 50 }));
             results[`${table}_records`] = { count: data.count, sample: data.records.slice(0, 10) };
           }
           break;
@@ -128,7 +217,7 @@ async function gatherData(
             fields: 'sys_id,name,collection,when,order,active',
             limit: 50,
           });
-          results['business_rules'] = brs;
+          results['business_rules'] = withUrls(client, 'sys_script', brs);
           break;
         }
         case 'list_flows': {
@@ -138,7 +227,7 @@ async function gatherData(
             fields: 'sys_id,name,trigger_type,active,description',
             limit: 50,
           });
-          results['flows'] = flows;
+          results['flows'] = withUrls(client, 'sys_hub_flow', flows);
           break;
         }
         case 'list_client_scripts': {
@@ -148,7 +237,7 @@ async function gatherData(
             fields: 'sys_id,name,table,type,active',
             limit: 50,
           });
-          results['client_scripts'] = cs;
+          results['client_scripts'] = withUrls(client, 'sys_script_client', cs);
           break;
         }
         case 'list_scheduled_jobs': {
@@ -157,7 +246,7 @@ async function gatherData(
             fields: 'sys_id,name,active,run_as,next_action',
             limit: 50,
           });
-          results['scheduled_jobs'] = jobs;
+          results['scheduled_jobs'] = withUrls(client, 'sysauto_script', jobs);
           break;
         }
         case 'get_sys_log': {
@@ -167,7 +256,7 @@ async function gatherData(
             fields: 'sys_id,level,message,source',
             limit: 20,
           });
-          results['sys_logs'] = logs;
+          results['sys_logs'] = withUrls(client, 'syslog', logs);
           break;
         }
         case 'list_system_properties': {
@@ -182,7 +271,7 @@ async function gatherData(
         }
         case 'search_cmdb_ci': {
           const cis = await client.searchCmdbCi(undefined, 20);
-          results['cmdb_cis'] = cis;
+          results['cmdb_cis'] = withUrls(client, 'cmdb_ci', cis);
           break;
         }
         case 'cmdb_health_dashboard': {
@@ -203,7 +292,7 @@ async function gatherData(
             fields: 'sys_id,name,id,template',
             limit: 30,
           });
-          results['portal_widgets'] = widgets;
+          results['portal_widgets'] = withUrls(client, 'sp_widget', widgets);
           break;
         }
         case 'list_catalog_items': {
@@ -213,7 +302,7 @@ async function gatherData(
             fields: 'sys_id,name,category,short_description,active',
             limit: 30,
           });
-          results['catalog_items'] = items;
+          results['catalog_items'] = withUrls(client, 'sc_cat_item', items);
           break;
         }
         case 'get_instance_scan_summary': {
@@ -297,7 +386,7 @@ export async function executeDirectly(options: DirectExecutionOptions): Promise<
   const { client, name: instanceName } = createClientFromConfig(options.instance);
 
   // 3. Gather data from ServiceNow
-  const data = await gatherData(client, recommendedTools, options.args || {}, cap, options.onProgress);
+  const { data, limits } = await gatherCapabilityData(client, options.capability, recommendedTools, options.args || {}, cap, options.onProgress);
   const dataCount = Object.keys(data).length;
 
   // 4. Build LLM messages
@@ -309,7 +398,7 @@ export async function executeDirectly(options: DirectExecutionOptions): Promise<
     role: 'system',
     content: [
       `You are NowAIKit, an expert ServiceNow platform consultant.`,
-      `You are analyzing the "${instanceName}" instance.`,
+      `You are analyzing the "${instanceName}" instance (${client.instanceUrl}).`,
       ``,
       `CAPABILITY: ${prompt.description}`,
       ``,
@@ -319,7 +408,7 @@ export async function executeDirectly(options: DirectExecutionOptions): Promise<
 
   // User message with gathered data
   const dataContext = Object.entries(data)
-    .map(([key, value]) => `### ${key}\n\`\`\`json\n${JSON.stringify(value, null, key.startsWith('instance_scan') ? undefined : 2).substring(0, sectionLimit(key))}\n\`\`\``)
+    .map(([key, value]) => `### ${key}\n\`\`\`json\n${JSON.stringify(value).substring(0, sectionLimit(key, limits))}\n\`\`\``)
     .join('\n\n');
 
   messages.push({

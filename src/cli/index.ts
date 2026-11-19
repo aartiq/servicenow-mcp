@@ -417,6 +417,13 @@ program
     console.log(dim(`  Total: ${caps.length} capabilities\n`));
   });
 
+/** Collect repeatable --arg key=value options into an object. */
+function collectArg(value: string, prev: Record<string, string>): Record<string, string> {
+  const i = value.indexOf('=');
+  if (i <= 0) throw new Error(`--arg expects key=value, got "${value}"`);
+  return { ...prev, [value.slice(0, i).trim()]: value.slice(i + 1).trim() };
+}
+
 // ─── run (direct mode) ───────────────────────────────────────────────────────
 program
   .command('run <capability>')
@@ -431,13 +438,14 @@ program
   .option('-f, --focus <focus>', 'Review focus: security, performance, all')
   .option('--run-scan <spec>', 'scan-instance: run an Instance Scan first. full, suite:<name|sys_id>, combo:<sys_id>, point:<table>:<sys_id>, apps:<suite>:<scope ids>, update-sets:<suite>:<ids>')
   .option('--scan-result <ref>', 'Instance Scan skills: report on one scan result (sys_id, SR number or progress id)')
+  .option('-a, --arg <key=value>', 'Skill argument, repeatable, e.g. --arg incident=INC0010001 --arg change=CHG0030001 --arg operation=insert', collectArg, {})
   .option('--format <format>', 'Output format: md (default), pdf, pptx')
   .option('--brand-company <name>', 'White-label company name for reports')
   .option('--brand-color <hex>', 'White-label accent colour (hex, e.g. #2563EB)')
   .option('--brand-logo <file>', 'PNG logo file for the report cover')
   .action(async (
     capability: string,
-    options: { instance?: string; provider?: string; model?: string; apiKey?: string; output?: string; table?: string; scope?: string; focus?: string; runScan?: string; scanResult?: string; format?: string; brandCompany?: string; brandColor?: string; brandLogo?: string }
+    options: { instance?: string; provider?: string; model?: string; apiKey?: string; output?: string; table?: string; scope?: string; focus?: string; runScan?: string; scanResult?: string; arg?: Record<string, string>; format?: string; brandCompany?: string; brandColor?: string; brandLogo?: string }
   ) => {
     cliBanner();
 
@@ -481,7 +489,7 @@ program
     try {
       const { executeDirectly } = await import('../direct/executor.js');
 
-      const args: Record<string, string> = {};
+      const args: Record<string, string> = { ...(options.arg || {}) };
       if (options.table) args.table = options.table;
       if (options.scope) args.scope = options.scope;
       if (options.focus) args.focus = options.focus;
@@ -558,14 +566,26 @@ program
             brand,
           });
 
-          // If -o flag specified, use that as output path
+          // If -o flag specified, use that as output path (copy, so it also works across disks).
+          const moveTo = async (from: string, to: string) => {
+            const { renameSync, copyFileSync, unlinkSync } = await import('fs');
+            try { renameSync(from, to); } catch { copyFileSync(from, to); unlinkSync(from); }
+          };
+          let register = reportResult.registerPaths;
           if (options.output) {
-            const { renameSync } = await import('fs');
-            renameSync(reportResult.filePath, options.output);
+            await moveTo(reportResult.filePath, options.output);
+            if (register) {
+              const base = options.output.replace(/\.(pdf|pptx)$/i, '');
+              const moved = { csv: `${base}.findings.csv`, json: `${base}.findings.json` };
+              await moveTo(register.csv, moved.csv);
+              await moveTo(register.json, moved.json);
+              register = moved;
+            }
             reportSpinner.succeed(`Report saved to ${white(options.output)} (${Math.round(reportResult.sizeBytes / 1024)} KB)`);
           } else {
             reportSpinner.succeed(`Report saved to ${white(reportResult.filePath)} (${Math.round(reportResult.sizeBytes / 1024)} KB)`);
           }
+          if (register) console.log(`  ${dim('Findings register:')} ${register.csv}  ${dim('and')} ${register.json}`);
         } catch (reportError) {
           reportSpinner.fail('Report generation failed');
           console.error(err(`\n  ${reportError instanceof Error ? reportError.message : 'Unknown error'}`));
@@ -603,6 +623,7 @@ program
   .option('-s, --scope <scope>', 'Application scope or scan scope')
   .option('--run-scan <spec>', 'scan-instance: run an Instance Scan first (see run --help)')
   .option('--scan-result <ref>', 'Instance Scan skills: report on one scan result')
+  .option('-a, --arg <key=value>', 'Skill argument, repeatable, e.g. --arg incident=INC0010001', collectArg, {})
   .option('--format <format>', 'Output format: pdf (default), pptx', 'pdf')
   .option('--brand-company <name>', 'White-label company name for reports')
   .option('--brand-color <hex>', 'White-label accent colour (hex, e.g. #2563EB)')
@@ -619,6 +640,7 @@ program
     if (options.scope) args.push('-s', options.scope);
     if (options.runScan) args.push('--run-scan', options.runScan);
     if (options.scanResult) args.push('--scan-result', options.scanResult);
+    for (const [k, v] of Object.entries((options.arg || {}) as Record<string, string>)) args.push('--arg', `${k}=${v}`);
     if (options.brandCompany) args.push('--brand-company', options.brandCompany);
     if (options.brandColor) args.push('--brand-color', options.brandColor);
     if (options.brandLogo) args.push('--brand-logo', options.brandLogo);
