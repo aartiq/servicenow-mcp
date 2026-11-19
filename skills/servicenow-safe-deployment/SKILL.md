@@ -1,9 +1,11 @@
 ---
 name: servicenow-safe-deployment
 description: Safely build and deploy ServiceNow artifacts (business rules, scripts, flows, catalog items) across instances using NowAIKit MCP tools, with update sets, dry-run previews, and ATF verification. Use when the user asks to deploy, promote, build, or move changes between dev/test/prod.
+license: MIT
+compatibility: Needs the NowAIKit MCP server (nowaikit 5.0 or later)
 ---
 
-# ServiceNow Safe Deployment
+# ServiceNow safe deployment
 
 Orchestrate build, verify and promote through NowAIKit MCP tools. Use `search_tools` to find exact names (e.g. "update set", "run atf", "create business rule").
 

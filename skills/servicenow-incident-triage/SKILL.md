@@ -1,9 +1,11 @@
 ---
 name: servicenow-incident-triage
 description: Triage a ServiceNow incident or a queue of incidents using NowAIKit MCP tools. Gather context, find similar past incidents, suggest a resolution, set priority, and assign. Use when the user asks to triage, investigate, prioritize, or work an incident (by number or as a batch).
+license: MIT
+compatibility: Needs the NowAIKit MCP server (nowaikit 5.0 or later)
 ---
 
-# ServiceNow Incident Triage
+# ServiceNow incident triage
 
 Drive triage through the NowAIKit MCP tools. Discover tools with `search_tools` if a name is unknown.
 
