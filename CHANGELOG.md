@@ -71,6 +71,27 @@ working, see Compatibility below.
 - `nowaikit auth login --instance <name> --no-browser` and `nowaikit auth test --instance <name>`.
 - OAuth with only a client id and secret now uses the client credentials grant.
 
+- **Forms, more of ServiceNow's own behaviour.** Record forms apply the table's UI policies and
+  client-side data policies. Catalog forms support multi-row variable sets (add and remove rows, per-row
+  mandatory checks) and translate simple catalog client scripts (show, hide, mandatory, read-only, set
+  value) into form rules without running any script. Anything not translated is listed in the form.
+- **Build on ServiceNow's MCP Server Console:** `sn_mcp_create_server`, `sn_mcp_delete_server`,
+  `sn_mcp_add_tool` (from a Now Assist skill or a Scripted REST operation), `sn_mcp_remove_tool`, and the
+  external MCP registry for AI agents: `sn_mcp_list_registry`, `sn_mcp_register_external_server`,
+  `sn_mcp_unregister_external_server` (for example, to give ServiceNow AI agents the NowAIKit gateway).
+- **Otto tools:** `ask_otto` (through an exposed AI agent over A2A, or the Moveworks Conversations API when
+  configured), `ai_kill_switch` (contain and restore an AI agent, workflow or skill, with a reason recorded
+  on the AI Control Tower asset), `test_agent_access` (can this user use this agent or skill, and why) and
+  `list_ai_policies` (sensitive-topic filters, Guardian and guardrail settings).
+- **The desktop app renders the forms in its chat** and shows the `doctor` health check in Settings.
+- **Token-efficient output.** What the model reads is compact JSON with identical value/display pairs
+  merged and reference link URLs removed. Every field and value is still there, empty ones included.
+  Typical results use 40 to 65 percent fewer tokens (10 incidents with all fields: about 32,700 tokens
+  before, about 11,800 now). When a client shows a form itself, the model gets a one-line summary instead
+  of the form definition. `NOWAIKIT_COMPACT_OUTPUT=false` restores the previous output, and
+  `NOWAIKIT_STRUCTURED_CONTENT=false` drops the duplicate structured copy for clients that send both to
+  the model. `nowaikit doctor` points out AI clients that load the full tool list.
+
 ### Changed
 - `nowaikit setup` creates the OAuth app with the JWT token format and, where the instance has them, the
   `useraccount` and `a2aauthscope` scopes. One sign-in now covers the REST API, ServiceNow's MCP servers
@@ -89,6 +110,11 @@ working, see Compatibility below.
   `beginningOfThisWeek`) and the `*Ago` family.
 - Docs: new tool reference, configuration reference with every variable, rewritten Now Assist guide,
   corrected client setup, installation and role package counts.
+
+- Default models follow the current lineup: Claude Sonnet 5.5, GPT-6.2 Sol, Gemini 4 Hydrogen and
+  Qwen 3.8 for local use, in setup, direct mode, the desktop app and the samples.
+- `send_push_notification` now really sends: it sets up a NowAIKit push notification once, then fires its
+  event for the users and groups you pick.
 
 ### Fixed
 - AI agent tools read `sn_aia_agent` and `sn_aia_usecase`, the tables AI Agent Studio actually uses.
@@ -114,6 +140,10 @@ working, see Compatibility below.
 - `nowaikit auth login` no longer keeps the terminal open after signing in.
 - `@modelcontextprotocol/sdk` stays installed alongside the v2 SDK, so code that imported it through
   NowAIKit keeps working.
+
+- A write that got a server error (HTTP 500) is no longer retried, so it can't create a duplicate
+  record or order. Writes are only retried when ServiceNow says it did not process them (429 or 503).
+- The Gemini sample client uses the current Google GenAI SDK with the MCP Python client.
 
 ### Compatibility
 - Every documented v4 configuration keeps working. Canonical `SERVICENOW_*` variables, `MCP_TOOL_PACKAGE`,

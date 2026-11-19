@@ -37,7 +37,7 @@ picks the package for you.
 
 | Package | `SN_PERSONA` | Target role | Tools |
 |---------|--------------|-------------|------:|
-| `full` | `full` | All roles (default) | 547 |
+| `full` | `full` | All roles (default) | 558 |
 | `service_desk` | `itsm` | IT help desk agent | 27 |
 | `change_coordinator` | `change` | Change manager | 21 |
 | `knowledge_author` | `knowledge` | KB content creator | 14 |
@@ -46,7 +46,7 @@ picks the package for you.
 | `platform_developer` | `developer` | Platform developer | 70 |
 | `itom_engineer` | `itom` | ITOM and CMDB engineer | 25 |
 | `agile_manager` | `agile` | Agile team lead | 14 |
-| `ai_developer` | `ai` | Otto (Now Assist) and AI agent developer | 50 |
+| `ai_developer` | `ai` | Otto (Now Assist) and AI agent developer | 61 |
 | `portal_developer` | `portal` | Service Portal and UI Builder developer | 38 |
 | `integration_engineer` | `integration` | Integration specialist | 33 |
 | `devops_engineer` | `devops` | DevOps and pipeline engineer | 28 |
@@ -77,7 +77,7 @@ npx -y nowaikit --persona itsm
 ## Package definitions
 
 ### full
-All 547 tools. Default when `MCP_TOOL_PACKAGE` is not set.
+All 558 tools. Default when `MCP_TOOL_PACKAGE` is not set.
 
 ### service_desk
 Tools for IT help desk agents handling incidents, requests, and approvals.
