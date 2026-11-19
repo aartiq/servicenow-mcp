@@ -98,6 +98,10 @@ import { getActionFabricToolDefinitions, executeActionFabricToolCall } from './a
 import { getAgentStudioToolDefinitions, executeAgentStudioToolCall } from './agent-studio.js';
 import { getAiGovernanceToolDefinitions, executeAiGovernanceToolCall } from './ai-governance.js';
 import { getOttoToolDefinitions, executeOttoToolCall } from './otto.js';
+// AI model providers, runtime metrics, AI/MCP CIs, agent teams and strategies
+import { getAiPlatformToolDefinitions, executeAiPlatformToolCall } from './ai-platform.js';
+// Release info, Process Mining, ATF coverage, table operation trace, integration auth, CSDM health, MCP exposure
+import { getPlatformInsightsToolDefinitions, executePlatformInsightsToolCall } from './platform-insights.js';
 import { getDocsToolDefinitions, executeDocsToolCall } from './docs.js';
 // Now Assist Skills
 import { getNowAssistSkillsToolDefinitions, executeNowAssistSkillsToolCall } from './now-assist-skills.js';
@@ -148,6 +152,7 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
   ],
   integration_engineer: [
     'query_records', 'get_record', 'get_table_schema', 'create_record', 'update_record', 'delete_record',
+    'get_integration_auth_posture', 'get_mcp_exposure',
     'list_rest_messages', 'get_rest_message', 'list_rest_message_functions', 'create_rest_message',
     'list_transform_maps', 'get_transform_map', 'run_transform_map', 'list_transform_field_maps',
     'list_import_sets', 'get_import_set', 'create_import_set_row', 'list_data_sources',
@@ -210,8 +215,10 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'list_attachments', 'get_attachment_metadata', 'read_attachment', 'copy_attachment', 'upload_attachment', 'delete_attachment',
     'check_table_completeness', 'get_table_record_count', 'compare_record_counts',
     'list_pa_indicators', 'get_pa_indicator', 'get_pa_scorecard', 'get_pa_time_series',
-    'list_pa_dashboards', 'get_pa_dashboard', 'create_dashboard', 'update_dashboard',
+    'list_pa_dashboards', 'get_pa_dashboard', 'create_dashboard', 'update_dashboard', 'get_dashboard_migration_status',
     'create_pa_indicator', 'create_pa_breakdown',
+    // Access control posture, release awareness, integration auth
+    'get_acl_posture', 'get_release_info', 'get_integration_auth_posture', 'trace_table_operation',
     'list_oauth_applications', 'list_credential_aliases',
     'get_system_property', 'set_system_property', 'list_system_properties', 'search_system_properties',
     'bulk_get_properties', 'bulk_set_properties', 'list_property_categories',
@@ -234,8 +241,10 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'list_client_scripts', 'get_client_script', 'create_client_script', 'update_client_script',
     'list_ui_policies', 'get_ui_policy', 'create_ui_policy',
     'list_ui_actions', 'get_ui_action', 'create_ui_action', 'update_ui_action',
-    'list_acls', 'get_acl', 'create_acl', 'update_acl',
+    'list_acls', 'get_acl', 'create_acl', 'update_acl', 'get_acl_posture',
     'list_changesets', 'get_changeset', 'commit_changeset', 'publish_changeset',
+    // What runs when, ATF code coverage and release awareness
+    'trace_table_operation', 'get_atf_code_coverage', 'get_release_info',
     'list_atf_suites', 'get_atf_suite', 'run_atf_suite', 'list_atf_tests', 'get_atf_test', 'run_atf_test', 'get_atf_suite_result', 'list_atf_test_results', 'get_atf_failure_insight',
     'fluent_query', 'batch_request', 'execute_script', 'generate_report',
     // v4.0 Fluent SDK + discovery
@@ -261,6 +270,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     // v4.0 CMDB reconciliation
     'cmdb_find_duplicates', 'cmdb_find_orphans', 'cmdb_find_stale', 'cmdb_reconcile',
     'discover_table',
+    // CSDM health and AI / MCP CIs
+    'get_csdm_health', 'list_ai_inventory_cis',
     // Background jobs for long-running tools (discovery scans, reconcile)
     'get_job', 'list_jobs', 'cancel_job',
   ],
@@ -279,6 +290,9 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'sn_a2a_list_agents', 'sn_a2a_get_agent_card', 'sn_a2a_send_message', 'sn_a2a_get_task', 'sn_a2a_expose_agent',
     'sn_mcp_create_server', 'sn_mcp_delete_server', 'sn_mcp_add_tool', 'sn_mcp_remove_tool',
     'sn_mcp_list_registry', 'sn_mcp_register_external_server', 'sn_mcp_unregister_external_server',
+    // Providers, runtime metrics, inventory, Agent Studio teams and strategies, exposure
+    'get_ai_model_providers', 'get_ai_runtime_metrics', 'list_ai_inventory_cis', 'get_mcp_exposure',
+    'list_agent_teams', 'list_agent_strategies', 'list_external_agent_runs',
     'query_records', 'get_record', 'natural_language_search', 'create_record', 'update_record', 'delete_record',
     'nlq_query', 'ai_search', 'categorize_incident',
     'get_virtual_agent_topics', 'get_ms_copilot_topics', 'get_pi_models',
@@ -354,6 +368,8 @@ const ALL_TOOLS = [
   ...getAgentStudioToolDefinitions(),
   ...getAiGovernanceToolDefinitions(),
   ...getOttoToolDefinitions(),
+  ...getAiPlatformToolDefinitions(),
+  ...getPlatformInsightsToolDefinitions(),
   ...getDocsToolDefinitions(),
   ...getNowAssistSkillsToolDefinitions(),
   ...getAiAgentsToolDefinitions(),
@@ -446,6 +462,24 @@ const SEARCH_SYNONYMS: Record<string, string[]> = {
   count: ['count', 'aggregate'],
   chart: ['visualize', 'chart'],
   graph: ['visualize', 'kg'],
+  llm: ['provider', 'model'],
+  model: ['provider', 'model'],
+  providers: ['provider'],
+  dashboard: ['dashboard'],
+  dashboards: ['dashboard'],
+  analytics: ['dashboard', 'pa'],
+  deny: ['acl', 'deny'],
+  lifecycle: ['life', 'cycle', 'cmdb'],
+  csdm: ['csdm', 'cmdb'],
+  upgrade: ['release', 'upgrade'],
+  release: ['release'],
+  mining: ['process', 'mining'],
+  coverage: ['coverage', 'atf'],
+  trace: ['trace', 'operation'],
+  basic: ['auth', 'basic'],
+  oauth: ['auth', 'oauth'],
+  teams: ['team', 'agent'],
+  metrics: ['metrics', 'runtime'],
 };
 
 function searchTerms(query: string): string[] {
@@ -664,6 +698,8 @@ export async function executeTool(
     () => executeAgentStudioToolCall(client, name, args),
     () => executeAiGovernanceToolCall(client, name, args),
     () => executeOttoToolCall(client, name, args),
+    () => executeAiPlatformToolCall(client, name, args),
+    () => executePlatformInsightsToolCall(client, name, args),
     () => executeDocsToolCall(name, args),
     () => executeNowAssistSkillsToolCall(client, name, args),
     () => executeAiAgentsToolCall(client, name, args),
