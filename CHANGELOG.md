@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## Unreleased
 
+- Adding a work note or comment no longer comes back with a false "value not reflected" warning. Journal fields always read back empty, so they're skipped in the post-write check.
+- `open_approvals` gives the model one line per approval, so it can talk about them as well as showing the list.
 - The server now starts from the `nowaikit setup` config alone, so a bare `npx nowaikit` works after setup without any environment variables.
 
 ## [5.0.0] - 2026-11-19

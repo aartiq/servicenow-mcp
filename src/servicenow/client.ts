@@ -158,6 +158,9 @@ export function validateQuery(query: string): string {
   return query;
 }
 
+/** Journal fields always read back empty after a write, so they can't be verified from the response. */
+const JOURNAL_FIELDS = new Set(['work_notes', 'comments', 'comments_and_work_notes']);
+
 export class ServiceNowClient {
   private baseUrl: string;
   private authMethod: 'oauth' | 'basic';
@@ -1274,6 +1277,9 @@ export class ServiceNowClient {
       for (const [field, requested] of Object.entries(data)) {
         const returned = result?.[field];
         if (returned === undefined) continue; // field not in response, can't verify
+        // Journal fields are write-only on the Table API: the note is saved to the activity stream and
+        // the field always reads back empty, so comparing would flag every work note as discarded.
+        if (JOURNAL_FIELDS.has(field)) continue;
         const returnedVal = returned && typeof returned === 'object'
           ? (returned.value ?? returned.display_value ?? '')
           : returned;
