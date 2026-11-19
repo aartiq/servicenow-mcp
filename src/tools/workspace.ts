@@ -205,7 +205,9 @@ export async function executeWorkspaceToolCall(
     case 'update_uib_page': {
       requireWrite();
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
-      const { sys_id, title, path, layout: _layout, ...rest } = args;
+      // layout is not a field on the screen collection; it is dropped here.
+      const { sys_id, title, path, ...rest } = args;
+      delete rest.layout;
       const fields: Record<string, any> = { ...rest };
       if (title) fields.name = title;
       const result = Object.keys(fields).length ? await client.updateRecord('sys_ux_screen_type', sys_id, fields) : await client.getRecord('sys_ux_screen_type', sys_id);
