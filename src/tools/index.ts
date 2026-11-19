@@ -97,6 +97,7 @@ import { getActionFabricToolDefinitions, executeActionFabricToolCall } from './a
 // Otto AI Agent Studio parity + AI Control Tower / Knowledge Graph / Otto status
 import { getAgentStudioToolDefinitions, executeAgentStudioToolCall } from './agent-studio.js';
 import { getAiGovernanceToolDefinitions, executeAiGovernanceToolCall } from './ai-governance.js';
+import { getOttoToolDefinitions, executeOttoToolCall } from './otto.js';
 import { getDocsToolDefinitions, executeDocsToolCall } from './docs.js';
 // Now Assist Skills
 import { getNowAssistSkillsToolDefinitions, executeNowAssistSkillsToolCall } from './now-assist-skills.js';
@@ -267,6 +268,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'list_users',
   ],
   ai_developer: [
+    // Otto front door, AI containment and access checks
+    'ask_otto', 'ai_kill_switch', 'test_agent_access', 'list_ai_policies',
     // ServiceNow Action Fabric: instance MCP servers + A2A agents
     'sn_mcp_status', 'sn_mcp_list_servers', 'sn_mcp_list_tools', 'sn_mcp_call_tool', 'sn_mcp_activate_server',
     'sn_a2a_list_agents', 'sn_a2a_get_agent_card', 'sn_a2a_send_message', 'sn_a2a_get_task', 'sn_a2a_expose_agent',
@@ -344,6 +347,7 @@ const ALL_TOOLS = [
   ...getActionFabricToolDefinitions(),
   ...getAgentStudioToolDefinitions(),
   ...getAiGovernanceToolDefinitions(),
+  ...getOttoToolDefinitions(),
   ...getDocsToolDefinitions(),
   ...getNowAssistSkillsToolDefinitions(),
   ...getAiAgentsToolDefinitions(),
@@ -653,6 +657,7 @@ export async function executeTool(
     () => executeActionFabricToolCall(client, name, args),
     () => executeAgentStudioToolCall(client, name, args),
     () => executeAiGovernanceToolCall(client, name, args),
+    () => executeOttoToolCall(client, name, args),
     () => executeDocsToolCall(name, args),
     () => executeNowAssistSkillsToolCall(client, name, args),
     () => executeAiAgentsToolCall(client, name, args),
