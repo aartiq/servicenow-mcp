@@ -31,6 +31,7 @@ export function getAiAgentsToolDefinitions() {
         type: 'object',
         properties: {
           active: { type: 'boolean', description: 'Filter by active status' },
+          agent_type: { type: 'string', description: 'Filter by agent type, e.g. internal, voice, external' },
           limit: { type: 'number', description: 'Max records to return (default 25)' },
         },
         required: [],
@@ -223,6 +224,9 @@ export async function executeAiAgentsToolCall(
       // role holds the agent's full instructions (often thousands of characters): get_ai_agent returns it.
       const agentFields = 'sys_id,name,description,agent_type,channel,record_type,internal_name,sys_updated_on';
       let agents: any[];
+      const typeFilter = args.agent_type ? String(args.agent_type).trim() : '';
+      if (typeFilter.includes('^')) throw new ServiceNowError('agent_type must not contain "^"', 'INVALID_REQUEST');
+      const typeQ = typeFilter ? `^agent_type=${typeFilter}` : '';
       if (args.active !== undefined) {
         const cfgs = await withAiaPlugin(() => client.queryRecords({
           table: 'sn_aia_agent_config',
@@ -232,10 +236,10 @@ export async function executeAiAgentsToolCall(
         }));
         const ids = cfgs.records.map((c: any) => refValue(c.agent)).filter(Boolean);
         agents = ids.length
-          ? (await client.queryRecords({ table: 'sn_aia_agent', query: `sys_idIN${ids.join(',')}`, limit: ids.length, fields: agentFields })).records
+          ? (await client.queryRecords({ table: 'sn_aia_agent', query: `sys_idIN${ids.join(',')}${typeQ}`, limit: ids.length, fields: agentFields })).records
           : [];
       } else {
-        agents = (await withAiaPlugin(() => client.queryRecords({ table: 'sn_aia_agent', limit: args.limit || 25, fields: agentFields }))).records;
+        agents = (await withAiaPlugin(() => client.queryRecords({ table: 'sn_aia_agent', ...(typeQ ? { query: typeQ.slice(1) } : {}), limit: args.limit || 25, fields: agentFields }))).records;
       }
       const activeById = new Map<string, string>();
       if (agents.length) {
