@@ -69,8 +69,8 @@ async function withMcp<T>(client: ServiceNowClient, server: string, fn: (mcp: Cl
     await mcp.connect(transport);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    if (/401|unauthor|JWT/i.test(msg)) {
-      throw new ServiceNowError(`The instance rejected the token for MCP server "${server}": ${msg}. Run \`nowaikit auth login\` to refresh it.`, 'AUTHENTICATION_FAILED');
+    if (/401|unauthor|JWT|expired|token validation|authentication failed/i.test(msg)) {
+      throw new ServiceNowError(`The instance rejected the sign-in token for MCP server "${server}" (${/expired/i.test(msg) ? 'it has expired' : msg}). Run \`nowaikit auth login\` to sign in again.`, 'AUTHENTICATION_FAILED');
     }
     throw new ServiceNowError(`Could not connect to MCP server "${server}": ${msg}`, 'MCP_CONNECT_FAILED');
   }

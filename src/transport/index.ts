@@ -74,7 +74,7 @@ function withDelegatedAuth<T>(req: NodeReq, fn: () => Promise<T>): Promise<T> {
  * The SSE transport was removed from the v2 SDK; this uses its frozen v1 copy.
  */
 async function setupSseTransport(factory: ServerFactory, httpServer: NowAIKitHttpServer): Promise<void> {
-  const { SSEServerTransport } = await import('@modelcontextprotocol/server-legacy/sse');
+  const { SSEServerTransport } = await import('@modelcontextprotocol/sdk/server/sse.js');
 
   const sessions = new Map<string, InstanceType<typeof SSEServerTransport>>();
 

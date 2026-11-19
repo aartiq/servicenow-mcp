@@ -55,6 +55,13 @@ working, see Compatibility below.
 - `scripts/gen-tool-docs.mjs` generates `docs/TOOLS.md` from the built manifest, so the tool reference
   always matches the code (544 tools).
 
+- **MCP specification 2026-07-28.** NowAIKit now runs on the v2 MCP SDK and serves both protocol
+  generations from one server: clients on the July 2026 spec (stateless requests, `server/discover`)
+  and every client still on the 2025 versions (VS Code, Cursor, Claude Desktop, Copilot Studio). This is
+  negotiated automatically over stdio, Streamable HTTP and SSE, so no client or config change is needed.
+- `nowaikit auth login --instance <name> --no-browser` and `nowaikit auth test --instance <name>`.
+- OAuth with only a client id and secret now uses the client credentials grant.
+
 ### Changed
 - `nowaikit setup` creates the OAuth app with the JWT token format and, where the instance has them, the
   `useraccount` and `a2aauthscope` scopes. One sign-in now covers the REST API, ServiceNow's MCP servers
@@ -85,6 +92,20 @@ working, see Compatibility below.
 - `@my-incidents` returns only the incidents assigned to the signed-in user.
 - Resource reads honour per-user delegated auth.
 
+- A live create, update and delete run of every write tool found and fixed 69 more of them, including
+  UI Builder pages, routes and experiences, workspaces, mobile apps, Flow Designer triggers and
+  publishing, playbooks, scheduled reports, KPIs, Performance Analytics, decision tables, Virtual Agent
+  topics, on-call overrides, asset lifecycle, GRC issues and control tests, and Predictive
+  Intelligence training. State changes on incidents, problems, changes, tasks, knowledge, CSM and HR
+  cases now follow each table's own state model.
+- `create_scoped_app` no longer leaves your current update set switched.
+- `send_push_notification`, `schedule_notification`, `run_security_playbook` and
+  `scan_vulnerabilities` now say clearly that ServiceNow has no REST route for them, instead of writing
+  to tables that do nothing.
+- `nowaikit auth login` no longer keeps the terminal open after signing in.
+- `@modelcontextprotocol/sdk` stays installed alongside the v2 SDK, so code that imported it through
+  NowAIKit keeps working.
+
 ### Compatibility
 - Every documented v4 configuration keeps working. Canonical `SERVICENOW_*` variables, `MCP_TOOL_PACKAGE`,
   `MCP_TOOL_DISCOVERY`, `SN_INSTANCES_CONFIG` and `SN_INSTANCE_<NAME>_*` behave as before.
@@ -96,7 +117,6 @@ working, see Compatibility below.
   tools need JWT; switch the app's Token Format to JWT and run `nowaikit auth login` again.
 - Requires Node.js 20 or newer, as before.
 
-<!-- TODO(5.0): MCP spec 2026-07-28 support. Add a bullet under Added if it lands in this release, otherwise delete this comment. -->
 
 ---
 

@@ -123,7 +123,7 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `cmdb_health_dashboard` |  | Get CMDB data quality metrics (completeness of server and network CI data) |  |
 | `service_mapping_summary` |  | View service dependencies and related CIs for impact analysis | `service_sys_id`* |
 | `natural_language_search` |  | Search ServiceNow using plain English | `query`*, `limit` |
-| `natural_language_update` | Write | Update a record using natural language (requires WRITE_ENABLED=true) | `instruction`*, `table`* |
+| `natural_language_update` | Write | Update a record from a plain-English instruction such as "set priority to 2 on INC0010001" (requires WRITE_ENABLED=true) | `instruction`*, `table`*, `dry_run` |
 | `list_instances` |  | List all configured ServiceNow instances (multi-instance / multi-customer support) |  |
 | `switch_instance` |  | Switch the active ServiceNow instance for this session | `name`* |
 | `get_current_instance` |  | Get the currently active ServiceNow instance name and URL |  |
@@ -172,7 +172,7 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `create_problem` | Write | Create a new problem record (requires WRITE_ENABLED=true) | `short_description`*, `description`, `assignment_group`, `priority` |
 | `get_problem` |  | Get full details of a problem by number (PRB...) or sys_id | `number_or_sysid`* |
 | `update_problem` | Write | Update fields on an existing problem (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
-| `resolve_problem` | Write | Resolve a problem with root cause and resolution notes (requires WRITE_ENABLED=true) | `sys_id`*, `root_cause`*, `resolution_notes`* |
+| `resolve_problem` | Write | Resolve a problem with root cause and resolution notes (requires WRITE_ENABLED=true) | `sys_id`*, `root_cause`*, `resolution_notes`*, `resolution_code`, `assigned_to` |
 
 ## Change management
 
@@ -197,7 +197,7 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `get_task` |  | Get details of any task record by number or sys_id | `number_or_sysid`* |
 | `update_task` | Write | Update fields on a task record (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
 | `list_my_tasks` |  | List tasks assigned to the currently configured user | `limit` |
-| `complete_task` | Write | Mark a task as complete (requires WRITE_ENABLED=true) | `sys_id`*, `close_notes` |
+| `complete_task` | Write | Mark a task as complete (requires WRITE_ENABLED=true) | `sys_id`*, `close_notes`, `state` |
 
 ## Approval routing and quotes
 
@@ -235,7 +235,7 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `list_rotas` |  | List on-call rotations (cmn_rota), optionally filtered by group or name | `group`, `query`, `limit` |
 | `create_rota_schedule` | Write | Create an on-call rotation (cmn_rota) for a group. | `name`*, `group`*, `time_zone`, `fields` |
 | `add_roster_member` | Write | Add a member to an on-call roster (cmn_rota_member). | `roster`*, `member`*, `order`, `fields` |
-| `create_on_call_override` | Write | Create an on-call coverage override for a date range (cmn_rota_override). | `roster`*, `member`*, `start`*, `end`*, `fields` |
+| `create_on_call_override` | Write | Create an on-call coverage override for a date range (a roster schedule entry, roster_schedule_span). | `roster`*, `member`*, `start`*, `end`*, `name`, `fields` |
 
 ## Bundled investigations
 
@@ -371,7 +371,7 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `create_report` | Write | Create a new saved report on any table (requires WRITE_ENABLED=true) | `title`*, `table`*, `type`*, `field`, `query`, `aggregate`, `group_by`, `roles` |
 | `update_report` | Write | Update an existing saved report definition (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
 | `list_job_run_history` |  | List recent run history for scheduled jobs (success/failure log) | `job_sys_id`, `status`, `limit` |
-| `create_scheduled_report` |  | [Write] Schedule a report for recurring email delivery | `report_id`*, `frequency`*, `recipients`*, `day_of_week`, `day_of_month`, `format` |
+| `create_scheduled_report` |  | [Write] Schedule a report for recurring email delivery (sysauto_report) | `report_id`*, `frequency`*, `recipients`*, `day_of_week`, `day_of_month`, `format`, `name`, `run_time`, `active` |
 | `create_kpi` |  | [Write] Create a Key Performance Indicator from ServiceNow data | `name`*, `table`*, `field`, `aggregate`*, `conditions`, `unit` |
 | `generate_report` |  | Generate a branded PDF or PPTX report from capability analysis results. | `content`, `sections`, `format`*, `title`*, `capability` |
 
@@ -401,10 +401,10 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `list_homepages` |  | List homepage dashboards (CMS content pages used as homepages) | `query`, `limit` |
 | `list_pa_jobs` |  | List Performance Analytics data collection jobs and their schedules | `active`, `query`, `limit` |
 | `get_pa_job` |  | Get details of a Performance Analytics collection job | `sys_id`* |
-| `create_dashboard` | Write | Create a new Performance Analytics dashboard (requires WRITE_ENABLED=true) | `name`*, `description`, `roles`, `active` |
+| `create_dashboard` | Write | Create a new Performance Analytics dashboard (requires WRITE_ENABLED=true) | `name`*, `description`, `roles`, `active`, `owner` |
 | `update_dashboard` | Write | Update an existing PA dashboard (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
-| `create_pa_indicator` | Write | Create a Performance Analytics (PA) indicator / KPI on `pa_indicators` (requires WRITE_ENABLED=true). | `name`*, `description`, `facts_table`, `aggregate`, `field`, `conditions`, `unit`, `direction`, `active` |
-| `create_pa_breakdown` | Write | Create a Performance Analytics (PA) breakdown on `pa_breakdowns` (requires WRITE_ENABLED=true). | `name`*, `description`, `related_field`, `active` |
+| `create_pa_indicator` | Write | Create a Performance Analytics (PA) indicator / KPI on `pa_indicators` (requires WRITE_ENABLED=true). | `name`*, `description`, `facts_table`, `indicator_source`, `aggregate`, `field`, `conditions`, `unit`, `direction`, `active` |
+| `create_pa_breakdown` | Write | Create a Performance Analytics (PA) breakdown on `pa_breakdowns` (requires WRITE_ENABLED=true). | `name`*, `description`, `related_field`, `breakdown_source`, `active` |
 | `check_table_completeness` |  | Analyze data quality and field completeness for a ServiceNow table, returns percentage of non-empty values per field | `table`*, `fields`*, `query`, `sample_size` |
 | `get_table_record_count` |  | Get total record count for a ServiceNow table with optional filters | `table`*, `query` |
 | `compare_record_counts` |  | Compare record counts across multiple ServiceNow tables or time periods, useful for capacity planning | `tables`*, `query` |
@@ -544,7 +544,7 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 |------|------|--------------|------------|
 | `list_flows` |  | List Flow Designer flows with optional filter by name, category, or active status | `query`, `active`, `category`, `limit` |
 | `get_flow` |  | Get full details of a Flow Designer flow including its actions and trigger | `name_or_sysid`* |
-| `trigger_flow` | Write | Trigger a Flow Designer flow with optional input parameters (requires WRITE_ENABLED=true) | `flow_sys_id`*, `inputs` |
+| `trigger_flow` | Scripting | Trigger a published Flow Designer flow or subflow in the background with optional inputs, via the server-side sn_fd.FlowAPI runner (requires WRITE_ENABLED=true and SCRIPTING_ENABLED=true; ServiceNow has no REST endpoi... | `flow_sys_id`*, `inputs` |
 | `get_flow_execution` |  | Get the status and details of a specific flow execution | `execution_sysid`* |
 | `list_flow_executions` |  | List recent executions of a flow with status (completed, error, running) | `flow_sys_id`*, `status`, `limit` |
 | `list_subflows` |  | List available subflows that can be reused across flows | `query`, `active`, `limit` |
@@ -555,9 +555,9 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `create_flow` |  | Create a new Flow Designer flow. | `name`*, `description`, `trigger_type`, `trigger_table`, `scope` |
 | `create_subflow` |  | Create a new reusable subflow. | `name`*, `description`, `inputs`, `scope` |
 | `create_flow_action` |  | Create a custom Flow Designer action. | `name`*, `description`, `inputs`, `outputs`, `script` |
-| `publish_flow` |  | Publish (activate) a draft flow or subflow. | `flow_sys_id`*, `type` |
+| `publish_flow` | Scripting | Publish a draft flow or subflow (compiles and activates it via sn_fd.FlowAPI.publish; needs SCRIPTING_ENABLED). | `flow_sys_id`*, `type` |
 | `update_flow` |  | Update a flow or subflow's METADATA only (activate/deactivate, name, description, run-as). | `flow_sys_id`*, `type`, `active`, `name`, `description`, `run_as` |
-| `test_flow` |  | Execute a flow in test mode with sample inputs. | `flow_sys_id`*, `test_inputs` |
+| `test_flow` | Scripting | Run a published flow or subflow synchronously (foreground) with sample inputs and return its context id and outputs (needs SCRIPTING_ENABLED). | `flow_sys_id`*, `test_inputs` |
 | `get_flow_error_log` |  | Get detailed error logs for failed flow executions | `flow_sys_id`*, `days`, `limit` |
 
 ## Decision tables
@@ -570,7 +570,7 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `get_decision_table` |  | Get a decision table with its inputs and answer rows, by name or sys_id | `name_or_sysid`* |
 | `list_decision_inputs` |  | List the inputs of a decision table | `decision_sys_id`* |
 | `list_decision_answers` |  | List the answer/result rows of a decision table | `decision_sys_id`*, `limit` |
-| `create_decision_table` | Write | Create a Decision Builder decision table (sys_decision). | `name`*, `description`, `active`, `fields` |
+| `create_decision_table` | Write | Create a Decision Builder decision table (sys_decision). | `name`*, `description`, `active`, `answer_table`, `fields` |
 | `create_decision_input` | Write | Add an input to a decision table (sys_decision_input). | `decision_sys_id`*, `name`*, `type`, `order`, `fields` |
 | `publish_decision_table` | Write | Publish a Decision Builder decision table, sets sys_decision.status to "published". | `decision_sys_id`* |
 
@@ -580,9 +580,9 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 
 | Tool | Tier | What it does | Parameters |
 |------|------|--------------|------------|
-| `create_playbook` | Now Assist | Create a playbook definition with ordered steps that chain tool calls (requires NOW_ASSIST_ENABLED + WRITE_ENABLED) | `name`*, `description`*, `steps`* |
+| `create_playbook` | Now Assist | Create (or update) a NowAIKit playbook definition with ordered steps that chain tool calls, stored as system property nowaikit.playbook.<name>; run it with execute_playbook (requires NOW_ASSIST_ENABLED + WRITE_ENABLED) | `name`*, `description`*, `steps`* |
 | `execute_playbook` | Now Assist | Execute a playbook step by step, passing results forward through context (requires NOW_ASSIST_ENABLED). | `playbook`*, `context`, `dry_run` |
-| `list_playbooks` |  | List stored playbook definitions from sys_hub_action_type_definition | `limit` |
+| `list_playbooks` |  | List stored NowAIKit playbook definitions (system properties nowaikit.playbook.*) | `limit` |
 
 ## Integration (REST, import sets, transforms, events)
 
@@ -596,7 +596,7 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `create_rest_message` | Write | Create a new outbound REST Message definition (requires WRITE_ENABLED=true) | `name`*, `endpoint`*, `description`, `use_mutual_auth`, `authentication_type` |
 | `list_transform_maps` |  | List Transform Maps used for importing data into ServiceNow tables | `query`, `target_table`, `limit` |
 | `get_transform_map` |  | Get details of a Transform Map including its field mappings | `sys_id_or_name`* |
-| `run_transform_map` | Write | Execute a Transform Map on an Import Set to load data (requires WRITE_ENABLED=true) | `transform_map_sys_id`*, `import_set_sys_id`* |
+| `run_transform_map` | Scripting | Execute a Transform Map on an Import Set to load data (runs GlideImportSetTransformer server-side; requires WRITE_ENABLED and SCRIPTING_ENABLED) | `transform_map_sys_id`*, `import_set_sys_id`* |
 | `list_transform_field_maps` |  | List field-level mappings within a Transform Map | `transform_map_sys_id`*, `limit` |
 | `list_import_sets` |  | List Import Sets with optional filter by state or staging table | `state`, `query`, `limit` |
 | `get_import_set` |  | Get details of a specific Import Set including row count and transform status | `sys_id`* |
@@ -604,7 +604,7 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `list_data_sources` |  | List Import Set data source definitions (file/JDBC/REST loaders) | `query`, `type`, `limit` |
 | `list_event_registry` |  | List registered event definitions in the ServiceNow event registry | `query`, `limit` |
 | `get_event_registry_entry` |  | Get details of a specific registered event definition | `name_or_sysid`* |
-| `register_event` | Scripting | Register a new custom event in the event registry (requires SCRIPTING_ENABLED=true) | `name`*, `description`, `table`* |
+| `register_event` | Scripting | Register a new custom event in the event registry (requires SCRIPTING_ENABLED=true) | `name`*, `description`, `table`*, `fired_by`, `queue` |
 | `fire_event` | Write | Fire a custom ServiceNow event for a specific record (requires WRITE_ENABLED=true) | `event_name`*, `table`*, `record_sys_id`*, `parm1`, `parm2` |
 | `list_event_log` |  | List recent event log entries (fired events and their processing status) | `event_name`, `state`, `limit` |
 | `list_oauth_applications` |  | List OAuth application registry entries (client applications that can authenticate) | `query`, `limit` |
@@ -631,7 +631,7 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `list_email_templates` |  | List email notification templates used by notifications | `query`, `limit` |
 | `list_notification_subscriptions` |  | List user subscriptions to notifications (who has opted in/out) | `user_sys_id`, `notification_sys_id`, `limit` |
 | `send_emergency_broadcast` |  | [Write] Send emergency broadcast notification to users or groups | `subject`*, `body`*, `recipients`*, `channels` |
-| `schedule_notification` |  | [Write] Schedule a notification for future delivery | `notification_id`*, `schedule`*, `active` |
+| `schedule_notification` |  | [Write] Explain how to send a notification at a set time. | `notification_id`*, `schedule`*, `active` |
 
 ## System properties
 
@@ -800,8 +800,8 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `ml_predict_change_risk` |  | Predict the risk level of a change request using historical ML analysis | `change_sys_id`, `type`, `category` |
 | `ml_detect_anomalies` |  | Run anomaly detection on operational metrics (alert volume, incident trends, etc.) | `table`*, `field`*, `days`, `threshold` |
 | `ml_forecast_incidents` |  | Forecast incident volume for the next N days based on historical trends | `days_ahead`, `category`, `priority` |
-| `ml_train_incident_classifier` |  | Trigger training of the incident classification ML solution. | `solution_name` |
-| `ml_train_change_risk` |  | Trigger training of the change risk prediction ML model. | `solution_name` |
+| `ml_train_incident_classifier` |  | Trigger training of the incident classification ML solution. | `solution_name`, `dry_run` |
+| `ml_train_change_risk` |  | Trigger training of the change risk prediction ML model. | `solution_name`, `dry_run` |
 | `ml_train_anomaly_detector` |  | Trigger training of an anomaly detection model for a specific table/field. | `table`*, `field`* |
 | `ml_evaluate_model` |  | Get accuracy, training status, and metrics for a trained ML solution | `model_sys_id`* |
 | `ml_model_training_history` |  | Get training run history and accuracy trends for an ML solution over time | `model_sys_id`*, `days` |
@@ -858,8 +858,8 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `list_hr_tasks` |  | List HR tasks associated with an HR case | `hr_case_sysid`*, `state` |
 | `create_hr_task` | Write | Create a task within an HR case (requires WRITE_ENABLED=true) | `hr_case_sysid`*, `short_description`*, `assigned_to`, `due_date` |
 | `get_hr_case_activity` |  | Get the full activity log and journal entries for an HR case | `hr_case_sysid`* |
-| `create_onboarding_case` |  | Create an employee onboarding case with all standard tasks. | `employee_sys_id`*, `start_date`*, `department`, `manager`, `location`, `job_title` |
-| `create_offboarding_case` |  | Create an employee offboarding case with exit tasks. | `employee_sys_id`*, `last_day`*, `reason`, `manager` |
+| `create_onboarding_case` |  | Create an employee onboarding case with all standard tasks. | `employee_sys_id`*, `start_date`*, `department`, `manager`, `location`, `job_title`, `hr_service` |
+| `create_offboarding_case` |  | Create an employee offboarding case with exit tasks. | `employee_sys_id`*, `last_day`*, `reason`, `hr_service`, `manager` |
 | `get_hr_lifecycle_events` |  | Get HR lifecycle events for an employee (promotions, transfers, leaves) | `employee_sys_id`*, `event_type`, `limit` |
 | `list_hr_document_templates` |  | List available HR document templates (offer letters, contracts, policies) | `category`, `active`, `limit` |
 
@@ -916,7 +916,7 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `list_grc_issues` |  | List GRC issues/findings (sn_grc_issue), optionally by state or owner | `state`, `owner`, `query`, `limit` |
 | `create_grc_issue` | Write | Raise a GRC issue/finding (sn_grc_issue). | `short_description`*, `description`, `source`, `fields` |
 | `create_grc_control` | Write | Author a compliance control (sn_compliance_control). | `name`*, `description`, `profile`, `fields` |
-| `run_control_test` | Write | Create/attest a control test (sn_compliance_control_test). | `control`*, `result`, `notes`, `fields` |
+| `run_control_test` | Write | Record a control test result: an indicator result (sn_grc_indicator_result) on the control's manual indicator, which is created if the control has none. | `control`*, `result`, `indicator`, `notes`, `fields` |
 
 ## IT Asset Management
 
@@ -1014,22 +1014,22 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 
 | Tool | Tier | What it does | Parameters |
 |------|------|--------------|------------|
-| `list_uib_pages` |  | List UI Builder pages and their route configurations | `limit`, `app` |
-| `get_uib_page` |  | Get details of a specific UI Builder page including layout and child elements | `sys_id`* |
-| `create_uib_page` |  | Create a new UI Builder page with route registration. | `title`*, `path`*, `app`, `layout` |
-| `update_uib_page` |  | Update an existing UI Builder page. | `sys_id`*, `title`, `path`, `layout` |
-| `delete_uib_page` |  | Delete a UI Builder page. | `sys_id`* |
+| `list_uib_pages` |  | List UI Builder pages (app routes with their screen collections) and their route configurations | `limit`, `app` |
+| `get_uib_page` |  | Get details of a specific UI Builder page (screen collection) including its routes and screen variants | `sys_id`* |
+| `create_uib_page` |  | Create a new UI Builder page: a screen collection (sys_ux_screen_type) plus, when app is given, its route (sys_ux_app_route). | `title`*, `path`*, `app`, `layout` |
+| `update_uib_page` |  | Update an existing UI Builder page (title and/or route path). | `sys_id`*, `title`, `path`, `layout` |
+| `delete_uib_page` |  | Delete a UI Builder page (screen collection) with its routes and screen variants. | `sys_id`* |
 | `list_uib_components` |  | List available UI Builder components (macroponents) in the instance | `limit`, `scope` |
 | `create_uib_component` |  | Create a custom UI Builder component (macroponent). | `name`*, `label`*, `description`, `category` |
 | `update_uib_component` |  | Update a UI Builder component. | `sys_id`*, `label`, `description` |
 | `list_uib_data_brokers` |  | List UI Builder data brokers (data sources for pages) | `page_sys_id`, `limit` |
-| `create_uib_data_broker` |  | Create a UI Builder data broker to feed data to a page. | `name`*, `table`*, `query`, `page` |
+| `create_uib_data_broker` |  | Create a UI Builder transform data broker (server script) that returns records from a table. | `name`*, `table`*, `query`, `page`, `fields` |
 | `list_workspaces` |  | List all configurable agent workspaces | `active`, `limit` |
 | `get_workspace` |  | Get details of a configurable agent workspace including tabs and lists | `sys_id`* |
 | `create_workspace` |  | Create a new configurable workspace config (sys_aw_master_config) with a default list for its primary table. | `name`*, `description`, `table`*, `icon`, `url`, `navigation_type`, `columns` |
 | `configure_workspace_list` |  | Add or update a list view in an agent workspace. | `workspace_sys_id`*, `table`*, `title`*, `query`, `columns`, `category`, `order` |
 | `create_ux_app_route` |  | Register a new route (URL path) in a UX app. | `app_sys_id`*, `path`*, `page_sys_id`*, `title` |
-| `create_ux_experience` |  | Create a new UX Experience (app shell) configuration. | `name`*, `app_sys_id`*, `landing_page` |
+| `create_ux_experience` |  | Create a new UX Experience (app shell) configuration. | `name`*, `app_sys_id`*, `landing_page`, `path` |
 
 ## Mobile
 
@@ -1044,7 +1044,7 @@ Tiers are detected from each tool description, so a tool that checks its tier at
 | `create_mobile_applet` |  | Create a mobile applet in a mobile app. | `name`*, `table`*, `icon`, `app_config`, `query`, `description` |
 | `list_mobile_layouts` |  | List mobile layout configurations | `limit` |
 | `create_mobile_layout` |  | Create a mobile layout for a specific view. | `name`*, `table`*, `type`, `template`, `description` |
-| `configure_offline_sync` |  | Configure which tables/records are available offline in mobile. | `table`*, `query`, `max_records` |
+| `configure_offline_sync` |  | Configure which records of a table are available offline in mobile: sets the data item offline query condition, and optionally marks a screen available offline and enables offline on an app config. | `table`*, `query`, `max_records`, `data_item`, `screen`, `app_config` |
 | `send_push_notification` |  | Send a push notification to mobile app users. | `user`, `group`, `title`*, `body`*, `action_url` |
 | `get_mobile_analytics` |  | Get mobile app usage analytics, sessions, active users, popular applets | `days` |
 

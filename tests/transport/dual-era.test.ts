@@ -424,7 +424,7 @@ describe('Streamable HTTP: both eras', () => {
   }, TIMEOUT);
 });
 
-describe('SSE (2024-11-05 transport, frozen server-legacy copy)', () => {
+describe('SSE (2024-11-05 transport, v1 SDK transport)', () => {
   let url: string;
   beforeAll(async () => { url = (await startHttpServer({ TRANSPORT: 'sse' })).replace(/\/mcp$/, '/sse'); }, TIMEOUT);
 
