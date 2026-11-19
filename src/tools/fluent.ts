@@ -16,6 +16,7 @@ import { promisify } from 'util';
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
 import { requireWrite, requireFluent, requireScripting } from '../utils/permissions.js';
+import { batchHasWrites } from '../servicenow/batch.js';
 
 const execFileAsync = promisify(execFileCb);
 
@@ -204,7 +205,7 @@ export function getFluentToolDefinitions() {
               type: 'object',
               properties: {
                 id: { type: 'string', description: 'Unique operation ID for correlating responses' },
-                method: { type: 'string', description: 'HTTP method: GET, POST, PATCH, DELETE', enum: ['GET', 'POST', 'PATCH', 'DELETE'] },
+                method: { type: 'string', description: 'HTTP method: GET, POST, PUT, PATCH, DELETE', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
                 url: { type: 'string', description: 'API URL path (e.g., "/api/now/table/incident?sysparm_limit=5")' },
                 body: { type: 'object', description: 'Request body for POST/PATCH operations' },
               },
@@ -638,9 +639,8 @@ export async function executeFluentToolCall(
         throw new ServiceNowError('Maximum 50 operations per batch', 'INVALID_REQUEST');
       }
 
-      // Check for write operations
-      const hasWrites = operations.some((op: any) => op.method !== 'GET');
-      if (hasWrites) {
+      // Any method other than GET (in any case) changes data.
+      if (batchHasWrites(operations)) {
         requireWrite();
       }
 

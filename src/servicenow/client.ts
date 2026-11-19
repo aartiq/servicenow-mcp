@@ -10,6 +10,7 @@ import type {
 import { ServiceNowError } from '../utils/errors.js';
 import { logger } from '../utils/logging.js';
 import { missingRequiredFields } from './mandatory-fields.js';
+import { BATCH_MAX_REQUESTS, buildBatchPayload, orderResults, parseBatchResponse, type BatchResult } from './batch.js';
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import { readLocalUploadFile } from '../utils/local-files.js';
@@ -1736,58 +1737,24 @@ export class ServiceNowClient {
 
   /**
    * Execute multiple REST API operations in a single HTTP call (Batch API).
-   * Uses /api/now/v1/batch endpoint. Up to 50 operations per batch.
+   * Uses /api/now/v1/batch. Bodies go up Base64-encoded and come back decoded. More than 50
+   * operations are split into several batches. Results keep the order of `operations`, and
+   * anything ServiceNow did not run comes back with status_code 0 and an error.
    */
   async batchRequest(operations: Array<{ id: string; method: string; url: string; body?: any }>): Promise<any> {
     await this.authenticate();
     logger.info(`Executing batch request with ${operations.length} operations`);
-
-    if (operations.length > 50) {
-      throw new ServiceNowError('Maximum 50 operations per batch request', 'INVALID_REQUEST');
-    }
-
-    const batchPayload = {
-      batch_request_id: `nowaikit_${Date.now()}`,
-      rest_requests: operations.map(op => ({
-        id: op.id,
-        method: op.method,
-        url: op.url.startsWith('/') ? op.url : `/${op.url}`,
-        headers: [
-          { name: 'Content-Type', value: 'application/json' },
-          { name: 'Accept', value: 'application/json' },
-        ],
-        ...(op.body ? { body: JSON.stringify(op.body) } : {}),
-      })),
-    };
-
+    const batchId = `nowaikit_${Date.now()}`;
+    const ops = operations.map((op, i) => ({ ...op, id: op.id ? String(op.id) : `${batchId}_${i}` }));
     const url = `${this.baseUrl}/api/now/v1/batch`;
-
+    const all: BatchResult[] = [];
     try {
-      const response = await this.request<any>(url, {
-        method: 'POST',
-        body: JSON.stringify(batchPayload),
-      });
-
-      // Parse individual responses
-      const results = (response.serviced_requests || []).map((r: any) => {
-        let parsedBody: any;
-        try {
-          parsedBody = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;
-        } catch {
-          parsedBody = r.body;
-        }
-        return {
-          id: r.id,
-          status_code: r.status_code,
-          body: parsedBody,
-        };
-      });
-
-      return {
-        batch_id: batchPayload.batch_request_id,
-        total: operations.length,
-        results,
-      };
+      for (let i = 0; i < ops.length; i += BATCH_MAX_REQUESTS) {
+        const chunk = ops.slice(i, i + BATCH_MAX_REQUESTS);
+        const payload = buildBatchPayload(chunk, i === 0 ? batchId : `${batchId}_${i / BATCH_MAX_REQUESTS}`);
+        const response = await this.request<any>(url, { method: 'POST', body: JSON.stringify(payload) });
+        all.push(...parseBatchResponse(response));
+      }
     } catch (error) {
       if (error instanceof ServiceNowError) throw error;
       throw new ServiceNowError(
@@ -1795,6 +1762,14 @@ export class ServiceNowClient {
         'BATCH_FAILED'
       );
     }
+    const results = orderResults(ops, all);
+    const failed = results.filter((r) => r.status_code === 0 || r.status_code >= 400).length;
+    return {
+      batch_id: batchId,
+      total: operations.length,
+      results,
+      ...(failed ? { failed } : {}),
+    };
   }
 
   /**
