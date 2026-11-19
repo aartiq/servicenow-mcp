@@ -133,7 +133,7 @@ const PROVIDERS: {
     signInSteps: [
       'Download Ollama from ollama.com/download',
       'Install and open — it runs in the background',
-      'Open Terminal and pull a model: ollama pull llama3.3',
+      'Open Terminal and pull a model: ollama pull qwen3.8',
       'Wait for download (models are 2–40 GB depending on size)',
       'Verify it\'s running: open http://localhost:11434 in browser — should show "Ollama is running"',
       'Come back here — no API key needed, just keep the default URL',
@@ -161,55 +161,52 @@ const PROVIDERS: {
 
 const MODELS_BY_PROVIDER: Record<AiProviderId, { value: string; label: string; desc: string }[]> = {
   anthropic: [
-    { value: 'claude-opus-5',             label: 'Claude Opus 5',     desc: 'Most capable, complex reasoning' },
-    { value: 'claude-fable-5',            label: 'Claude Fable 5',    desc: 'Creative, fast frontier model' },
-    { value: 'claude-sonnet-5',           label: 'Claude Sonnet 5',   desc: 'Balanced — recommended' },
-    { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5',  desc: 'Fastest, lowest cost' },
+    { value: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', desc: 'Balanced, recommended' },
+    { value: 'claude-opus-5-5', label: 'Claude Opus 5.5', desc: 'Most capable for agentic work' },
+    { value: 'claude-fable-5-2', label: 'Claude Fable 5.2', desc: 'Hardest reasoning and long tasks' },
+    { value: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', desc: 'Fastest, lowest cost' },
   ],
   openai: [
-    { value: 'gpt-5.6-sol',     label: 'GPT-5.6 Sol',     desc: 'Latest flagship — hardest reasoning & coding' },
-    { value: 'gpt-5.6-terra',   label: 'GPT-5.6 Terra',   desc: 'Balanced everyday — GPT-5.5 quality, lower cost' },
-    { value: 'gpt-5.6-luna',    label: 'GPT-5.6 Luna',    desc: 'Fastest & cheapest — high-volume, low latency' },
-    { value: 'gpt-5.5',         label: 'GPT-5.5',         desc: 'Previous flagship — strong all-round' },
+    { value: 'gpt-6.2-sol', label: 'GPT-6.2 Sol', desc: 'Balanced, recommended' },
+    { value: 'gpt-6.2-astra', label: 'GPT-6.2 Astra', desc: 'Flagship, hardest reasoning and coding' },
+    { value: 'gpt-6.1-terra', label: 'GPT-6.1 Terra', desc: 'Everyday work at lower cost' },
+    { value: 'gpt-6-luna', label: 'GPT-6 Luna', desc: 'Fastest and cheapest' },
   ],
   google: [
-    { value: 'gemini-3.1-pro-preview',  label: 'Gemini 3.1 Pro',  desc: 'Latest — state-of-the-art reasoning' },
-    { value: 'gemini-3-pro-preview',     label: 'Gemini 3 Pro',    desc: 'Frontier-class multimodal' },
-    { value: 'gemini-3-flash-preview',   label: 'Gemini 3 Flash',  desc: 'Fast & capable — best value' },
-    { value: 'gemini-2.5-flash',         label: 'Gemini 2.5 Flash', desc: 'Previous gen — stable & proven' },
-    { value: 'gemini-2.5-pro',           label: 'Gemini 2.5 Pro',   desc: 'Previous gen — advanced reasoning' },
+    { value: 'gemini-4-hydrogen', label: 'Gemini 4 Hydrogen', desc: 'Balanced, recommended' },
+    { value: 'gemini-4-carbon', label: 'Gemini 4 Carbon', desc: 'Most capable (paid tier)' },
+    { value: 'gemini-4-neon', label: 'Gemini 4 Neon', desc: 'Newest Gemini 4 model' },
+    { value: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', desc: 'Fast and low cost' },
+    { value: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite', desc: 'Lowest cost' },
   ],
   groq: [
-    { value: 'meta-llama/llama-4-maverick-17b-128e-instruct', label: 'Llama 4 Maverick', desc: 'Best quality — 128 experts (recommended)' },
-    { value: 'meta-llama/llama-4-scout-17b-16e-instruct',     label: 'Llama 4 Scout',    desc: 'Fast & efficient — 16 experts' },
-    { value: 'llama-3.3-70b-versatile',                       label: 'Llama 3.3 70B',    desc: 'Reliable workhorse — tool use' },
-    { value: 'llama-3.1-8b-instant',                          label: 'Llama 3.1 8B',     desc: 'Ultra-fast, lightweight' },
+    { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B', desc: 'Reliable tool use, recommended' },
+    { value: 'qwen/qwen3.8-27b', label: 'Qwen 3.8 27B', desc: 'Newest, preview' },
+    { value: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B', desc: 'Open-weight OpenAI model' },
+    { value: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B', desc: 'Ultra-fast, lightweight' },
   ],
   openrouter: [
-    { value: 'openai/o1-pro',                                   label: 'OpenAI o1 Pro',       desc: 'High-end reasoning via OpenRouter' },
-    { value: 'xai/grok-4',                                      label: 'Grok 4 (xAI)',        desc: 'Latest xAI general-purpose model' },
-    { value: 'anthropic/claude-sonnet-5',                       label: 'Claude Sonnet 5',     desc: 'Latest Claude variant via OpenRouter' },
-    { value: 'google/gemini-3-flash-preview',                   label: 'Gemini 3 Flash',      desc: 'Google Gemini Flash variant' },
-    { value: 'deepseek/deepseek-r1:free',                        label: 'DeepSeek R1',         desc: 'Free — open reasoning model' },
-    { value: 'meta-llama/llama-4-maverick-17b-128e-instruct',    label: 'Llama 4 Maverick',    desc: 'Free — best open model' },
-    { value: 'meta-llama/llama-3.3-70b-instruct',                label: 'Llama 3.3 70B',       desc: 'Free — strong general-purpose' },
-    { value: 'google/gemma-2-9b-it:free',                        label: 'Gemma 2 9B',          desc: 'Free — lightweight Google model' },
+    { value: 'anthropic/claude-sonnet-5.5', label: 'Claude Sonnet 5.5', desc: 'Recommended' },
+    { value: 'openai/gpt-6.2-sol', label: 'GPT-6.2 Sol', desc: 'OpenAI balanced' },
+    { value: 'google/gemini-4-hydrogen', label: 'Gemini 4 Hydrogen', desc: 'Google balanced' },
+    { value: 'x-ai/grok-4.7', label: 'Grok 4.7', desc: 'xAI' },
+    { value: 'deepseek/deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash', desc: 'Low cost' },
+    { value: 'meta/muse-spark-1.3', label: 'Muse Spark 1.3', desc: 'Meta' },
+    { value: 'google/gemma-4-31b-it:free', label: 'Gemma 4 31B', desc: 'Free' },
+    { value: 'nvidia/nemotron-3-ultra-550b-a55b:free', label: 'Nemotron 3 Ultra', desc: 'Free' },
   ],
   ollama: [
-    { value: 'llama3.3:latest',       label: 'Llama 3.3 70B',    desc: 'Best quality open model' },
-    { value: 'llama3.2:latest',       label: 'Llama 3.2 3B',     desc: 'Fast & lightweight' },
-    { value: 'qwen3:latest',          label: 'Qwen 3',           desc: 'Strong multilingual reasoning' },
-    { value: 'deepseek-r1:latest',    label: 'DeepSeek R1',      desc: 'Advanced reasoning model' },
-    { value: 'gemma3:latest',         label: 'Gemma 3',          desc: 'Google open model' },
-    { value: 'phi4:latest',           label: 'Phi-4',            desc: 'Microsoft compact model' },
-    { value: 'mistral:latest',        label: 'Mistral',          desc: 'Efficient general-purpose' },
-    { value: 'granite3.3:latest',     label: 'Granite 3.3',      desc: 'IBM enterprise model' },
+    { value: 'qwen3.8:latest', label: 'Qwen 3.8 27B', desc: 'Best local tool use' },
+    { value: 'gemma4:latest', label: 'Gemma 4', desc: 'Google open model' },
+    { value: 'gpt-oss:20b', label: 'gpt-oss 20B', desc: 'OpenAI open model' },
+    { value: 'deepseek-v4.1-flash:latest', label: 'DeepSeek V4.1 Flash', desc: 'Fast reasoning' },
+    { value: 'llama3.3:latest', label: 'Llama 3.3 70B', desc: 'Proven general model' },
   ],
   lmstudio: [
     { value: 'llama-3.3-70b',         label: 'Llama 3.3 70B',    desc: 'Best quality open model' },
-    { value: 'qwen3-8b',              label: 'Qwen 3 8B',        desc: 'Strong multilingual reasoning' },
+    { value: 'qwen3.8-27b',              label: 'Qwen 3.8 27B',        desc: 'Strong multilingual reasoning' },
     { value: 'deepseek-r1-distill',   label: 'DeepSeek R1 Distill', desc: 'Reasoning distilled model' },
-    { value: 'gemma-3-9b',            label: 'Gemma 3 9B',       desc: 'Google open model' },
+    { value: 'gemma-4-12b',            label: 'Gemma 4 12B',       desc: 'Google open model' },
     { value: 'phi-4',                 label: 'Phi-4',            desc: 'Microsoft compact model' },
     { value: 'mistral-7b',            label: 'Mistral 7B',       desc: 'Efficient general-purpose' },
   ],
@@ -392,7 +389,7 @@ export default function Settings({ settings, onSave, activeInstance, onNavigate 
         const data = await res.json() as { models?: Array<{ name: string; size?: number }> };
         const models = (data.models || []).map(m => ({ value: m.name, label: m.name }));
         setDetectedModels(models);
-        if (models.length === 0) setTestResult({ ok: false, msg: 'No models found. Pull one first: ollama pull llama3.3' });
+        if (models.length === 0) setTestResult({ ok: false, msg: 'No models found. Pull one first: ollama pull qwen3.8' });
         else setTestResult({ ok: true, msg: `Found ${models.length} model${models.length > 1 ? 's' : ''}` });
       } else {
         const res = await localFetch(`${baseUrl}/v1/models`, '/api/ai/lmstudio/v1/models');

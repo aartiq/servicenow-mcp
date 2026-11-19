@@ -171,55 +171,52 @@ const PROVIDER_META: { id: AiProviderId; label: string }[] = [
 
 const MODELS_BY_PROVIDER: Record<AiProviderId, { value: string; label: string }[]> = {
   anthropic: [
-    { value: 'claude-opus-5',             label: 'Claude Opus 5' },
-    { value: 'claude-fable-5',            label: 'Claude Fable 5' },
-    { value: 'claude-sonnet-5',           label: 'Claude Sonnet 5' },
-    { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+    { value: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5' },
+    { value: 'claude-opus-5-5', label: 'Claude Opus 5.5' },
+    { value: 'claude-fable-5-2', label: 'Claude Fable 5.2' },
+    { value: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' },
   ],
   openai: [
-    { value: 'gpt-5.6-sol',     label: 'GPT-5.6 Sol' },
-    { value: 'gpt-5.6-terra',   label: 'GPT-5.6 Terra' },
-    { value: 'gpt-5.6-luna',    label: 'GPT-5.6 Luna' },
-    { value: 'gpt-5.5',         label: 'GPT-5.5' },
+    { value: 'gpt-6.2-sol', label: 'GPT-6.2 Sol' },
+    { value: 'gpt-6.2-astra', label: 'GPT-6.2 Astra' },
+    { value: 'gpt-6.1-terra', label: 'GPT-6.1 Terra' },
+    { value: 'gpt-6-luna', label: 'GPT-6 Luna' },
   ],
   google: [
-    { value: 'gemini-3.1-pro-preview',  label: 'Gemini 3.1 Pro' },
-    { value: 'gemini-3-pro-preview',     label: 'Gemini 3 Pro' },
-    { value: 'gemini-3-flash-preview',   label: 'Gemini 3 Flash' },
-    { value: 'gemini-2.5-flash',         label: 'Gemini 2.5 Flash' },
-    { value: 'gemini-2.5-pro',           label: 'Gemini 2.5 Pro' },
+    { value: 'gemini-4-hydrogen', label: 'Gemini 4 Hydrogen' },
+    { value: 'gemini-4-carbon', label: 'Gemini 4 Carbon' },
+    { value: 'gemini-4-neon', label: 'Gemini 4 Neon' },
+    { value: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
+    { value: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite' },
   ],
   groq: [
-    { value: 'meta-llama/llama-4-maverick-17b-128e-instruct', label: 'Llama 4 Maverick' },
-    { value: 'meta-llama/llama-4-scout-17b-16e-instruct',     label: 'Llama 4 Scout' },
-    { value: 'llama-3.3-70b-versatile',                       label: 'Llama 3.3 70B' },
-    { value: 'llama-3.1-8b-instant',                          label: 'Llama 3.1 8B' },
+    { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
+    { value: 'qwen/qwen3.8-27b', label: 'Qwen 3.8 27B' },
+    { value: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B' },
+    { value: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B' },
   ],
   openrouter: [
-    { value: 'openai/o1-pro',                                   label: 'OpenAI o1 Pro' },
-    { value: 'xai/grok-4',                                      label: 'Grok 4 (xAI)' },
-    { value: 'anthropic/claude-sonnet-5',                       label: 'Claude Sonnet 5' },
-    { value: 'google/gemini-3-flash-preview',                   label: 'Gemini 3 Flash' },
-    { value: 'deepseek/deepseek-r1:free',                        label: 'DeepSeek R1 (free)' },
-    { value: 'meta-llama/llama-4-maverick-17b-128e-instruct',    label: 'Llama 4 Maverick' },
-    { value: 'meta-llama/llama-3.3-70b-instruct',                label: 'Llama 3.3 70B' },
-    { value: 'google/gemma-2-9b-it:free',                        label: 'Gemma 2 9B (free)' },
+    { value: 'anthropic/claude-sonnet-5.5', label: 'Claude Sonnet 5.5' },
+    { value: 'openai/gpt-6.2-sol', label: 'GPT-6.2 Sol' },
+    { value: 'google/gemini-4-hydrogen', label: 'Gemini 4 Hydrogen' },
+    { value: 'x-ai/grok-4.7', label: 'Grok 4.7' },
+    { value: 'deepseek/deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash' },
+    { value: 'meta/muse-spark-1.3', label: 'Muse Spark 1.3' },
+    { value: 'google/gemma-4-31b-it:free', label: 'Gemma 4 31B' },
+    { value: 'nvidia/nemotron-3-ultra-550b-a55b:free', label: 'Nemotron 3 Ultra' },
   ],
   ollama: [
-    { value: 'llama3.3:latest',       label: 'Llama 3.3 70B' },
-    { value: 'llama3.2:latest',       label: 'Llama 3.2 3B' },
-    { value: 'qwen3:latest',          label: 'Qwen 3' },
-    { value: 'deepseek-r1:latest',    label: 'DeepSeek R1' },
-    { value: 'gemma3:latest',         label: 'Gemma 3' },
-    { value: 'phi4:latest',           label: 'Phi-4' },
-    { value: 'mistral:latest',        label: 'Mistral' },
-    { value: 'granite3.3:latest',     label: 'Granite 3.3' },
+    { value: 'qwen3.8:latest', label: 'Qwen 3.8 27B' },
+    { value: 'gemma4:latest', label: 'Gemma 4' },
+    { value: 'gpt-oss:20b', label: 'gpt-oss 20B' },
+    { value: 'deepseek-v4.1-flash:latest', label: 'DeepSeek V4.1 Flash' },
+    { value: 'llama3.3:latest', label: 'Llama 3.3 70B' },
   ],
   lmstudio: [
     { value: 'llama-3.3-70b',         label: 'Llama 3.3 70B' },
-    { value: 'qwen3-8b',              label: 'Qwen 3 8B' },
+    { value: 'qwen3.8-27b',              label: 'Qwen 3.8 27B' },
     { value: 'deepseek-r1-distill',   label: 'DeepSeek R1 Distill' },
-    { value: 'gemma-3-9b',            label: 'Gemma 3 9B' },
+    { value: 'gemma-4-12b',            label: 'Gemma 4 12B' },
     { value: 'phi-4',                 label: 'Phi-4' },
     { value: 'mistral-7b',            label: 'Mistral 7B' },
   ],
@@ -509,7 +506,7 @@ function clearChatHistory(providerId: string) {
 
 export default function Chat({ settings, serverUrl, instances }: Props): React.ReactElement {
   const [provider,  setProvider]  = useState<AiProviderId>(settings.activeProvider || 'anthropic');
-  const [model,     setModel]     = useState(settings.model || 'claude-sonnet-5');
+  const [model,     setModel]     = useState(settings.model || 'claude-sonnet-5-5');
   const [messages,  setMessages]  = useState<ChatMessage[]>(() => loadChatHistory(settings.activeProvider || 'anthropic'));
   const [input,     setInput]     = useState('');
   const [loading,   setLoading]   = useState(false);

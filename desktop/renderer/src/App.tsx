@@ -56,7 +56,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     lmstudio:   { apiKey: '', authMethod: 'apiKey', baseUrl: 'http://localhost:1234' },
   },
   activeProvider: 'anthropic',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
 };
 
 // ── Theme context ─────────────────────────────────────────────────────────────
