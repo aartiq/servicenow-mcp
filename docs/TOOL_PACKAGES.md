@@ -37,18 +37,18 @@ picks the package for you.
 
 | Package | `SN_PERSONA` | Target role | Tools |
 |---------|--------------|-------------|------:|
-| `full` | `full` | All roles (default) | 560 |
+| `full` | `full` | All roles (default) | 578 |
 | `service_desk` | `itsm` | IT help desk agent | 27 |
 | `change_coordinator` | `change` | Change manager | 21 |
 | `knowledge_author` | `knowledge` | KB content creator | 14 |
 | `catalog_builder` | `catalog` | Catalog administrator | 17 |
-| `system_administrator` | `admin` | System administrator | 91 |
-| `platform_developer` | `developer` | Platform developer | 74 |
-| `itom_engineer` | `itom` | ITOM and CMDB engineer | 25 |
+| `system_administrator` | `admin` | System administrator | 96 |
+| `platform_developer` | `developer` | Platform developer | 78 |
+| `itom_engineer` | `itom` | ITOM and CMDB engineer | 28 |
 | `agile_manager` | `agile` | Agile team lead | 14 |
-| `ai_developer` | `ai` | Otto (Now Assist) and AI agent developer | 61 |
+| `ai_developer` | `ai` | Otto (Now Assist) and AI agent developer | 69 |
 | `portal_developer` | `portal` | Service Portal and UI Builder developer | 38 |
-| `integration_engineer` | `integration` | Integration specialist | 33 |
+| `integration_engineer` | `integration` | Integration specialist | 35 |
 | `devops_engineer` | `devops` | DevOps and pipeline engineer | 28 |
 | `itam_analyst` | `itam` | IT Asset Management analyst | 13 |
 
@@ -77,7 +77,7 @@ npx -y nowaikit --persona itsm
 ## Package definitions
 
 ### full
-All 560 tools. Default when `MCP_TOOL_PACKAGE` is not set.
+All 578 tools. Default when `MCP_TOOL_PACKAGE` is not set.
 
 ### service_desk
 Tools for IT help desk agents handling incidents, requests, and approvals.
@@ -126,8 +126,9 @@ Includes:
 - Reporting, analytics, and scheduled job management (create/update/trigger)
 - Notifications and email log
 - Attachment management (upload, list, delete)
-- ACL management
-- Performance Analytics and data quality checks
+- ACL management, including Deny Unless ACLs and the ACL posture check (`get_acl_posture`)
+- Release awareness (`get_release_info`), integration authentication posture and the table operation trace
+- Performance Analytics and data quality checks, including Platform Analytics dashboards and their migration status
 - OAuth applications and credential aliases
 - System properties (single and bulk)
 - Update set management
@@ -144,7 +145,8 @@ Includes:
 - UI Policies and UI Actions (create/update)
 - ACL rule management
 - Changeset management
-- ATF testing tools
+- ATF testing tools and ATF code coverage (`get_atf_code_coverage`)
+- What runs when for a table operation (`trace_table_operation`) and the release check (`get_release_info`)
 - Scoped applications
 - Fluent and ServiceNow SDK tools (`fluent_init`, `fluent_build`, `fluent_install`, `fluent_pack` and the rest)
 - ServiceNow documentation search
@@ -174,7 +176,7 @@ Includes:
 - Transform Map execution and field mapping
 - Import Set management
 - Event registry and event firing
-- OAuth and credential alias read tools
+- OAuth and credential alias read tools, integration authentication posture (Basic auth restriction) and MCP exposure
 - Changeset management
 - Core read tools
 - Requires: `WRITE_ENABLED=true`, `SCRIPTING_ENABLED=true` (for register_event)
@@ -187,6 +189,7 @@ Includes:
 - Discovery and MID server tools
 - Event management tools
 - Service Mapping
+- CSDM health, ServiceNow Data Foundations scores and AI and MCP CIs (`get_csdm_health`, `get_cmdb_data_foundations`, `list_ai_inventory_cis`)
 - Core read tools
 
 ### agile_manager
@@ -205,6 +208,7 @@ Includes:
 - Now Assist skills (create, list, get, test)
 - AI agents, agentic workflows and playbooks
 - ServiceNow Action Fabric: the instance's MCP servers (`sn_mcp_*`) and A2A agents (`sn_a2a_*`)
+- AI governance reads: model provider per skill, runtime metrics, who can run each agent, agent teams and strategies, external agent runs and MCP exposure
 - Predictive Intelligence tools
 - Fluent query and batch tools, ServiceNow documentation search
 - Knowledge read tools

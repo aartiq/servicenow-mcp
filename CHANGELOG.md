@@ -6,6 +6,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Platform Analytics dashboards.** `list_pa_dashboards` and `get_pa_dashboard` read Platform Analytics
+  dashboards (`par_dashboard`) as well as the legacy Core UI ones, with a `source` field on each result
+  and a `source` argument. Platform dashboards include tabs, widgets, permissions and workspace
+  visibility. New `get_dashboard_migration_status` shows the move from Core UI to Platform Analytics.
+- **Deny Unless ACLs.** `create_acl` and `update_acl` take `decision_type` (allow or deny), conditions,
+  security attributes and required roles, and refuse roles that do not exist (from Brazil an ACL that
+  names a missing role denies everyone). `list_acls` filters by decision type, `get_acl` lists the
+  required roles, and new `get_acl_posture` counts allow and deny ACLs and lists ACLs with missing roles.
+- **CSDM life cycle.** `cmdb_reconcile` takes `retire_using` (`install_status` by default, `life_cycle`,
+  `both` or `auto`). `cmdb_find_stale` can judge "operational" by the life cycle stage, and the CMDB find
+  tools return both field sets.
+- **AI platform tools.** `get_ai_model_providers` (the LLM provider behind each Otto skill and agent
+  capability), `get_ai_runtime_metrics`, `get_agent_access_matrix` (who can run each AI agent),
+  `list_ai_inventory_cis`, `list_agent_teams`, `list_agent_strategies` and `list_external_agent_runs`.
+  `list_ai_agents` takes an `agent_type` filter, for example voice.
+- **Platform insight tools.** `get_release_info` (current and next family, known Australia and Brazil
+  changes with live counts), `trace_table_operation` (everything that runs for one table operation, in
+  order, with a Mermaid diagram), `get_atf_code_coverage`, `list_process_mining_projects`,
+  `get_process_mining_findings`, `get_integration_auth_posture`, `get_csdm_health`,
+  `get_cmdb_data_foundations` and `get_mcp_exposure`.
+- **Seven new Apex skills:** `ai-governance-audit`, `csdm-data-foundations`, `integration-auth-audit`,
+  `mcp-exposure-review`, `atf-coverage`, `table-execution-order` and `process-insights`.
+- **Grounded direct mode.** `nowaikit run` and `nowaikit report` gather each skill's data with read-only
+  tool calls before the model runs, link every record, and list anything they could not gather. New
+  `--arg key=value` passes skill arguments such as an incident or change number.
+- **Reports.** A 0 to 100 score with area scores, stable finding IDs, effort per finding, clickable record
+  links, and a findings register (CSV and JSON) next to every PDF and PPTX.
+- **`nowaikit doctor`** warns when a Basic auth connection will break under ServiceNow's Basic auth
+  restriction, accepts the CMDB roles `sn_cmdb_admin` and `sn_cmdb_editor`, and names the release.
+- **Claude skills.** Eight more skills in `skills/` (change risk review, update set review, flow
+  debugger, ACL auditor, AI governance, upgrade readiness, what runs when, ATF coverage).
+
+### Changed
+- `scan-upgrade` reads the release from `glide.buildtag.last` and checks the known Australia and Brazil
+  changes. `review-acls` and `scan-security` cover Deny Unless ACLs and missing roles, and `scan-cmdb`
+  uses Data Foundations and the CSDM life cycle fields.
+
 ## [5.0.0] - 2026-11-19
 
 NowAIKit 5.0 adds interactive forms inside the chat, works alongside ServiceNow's own MCP servers and

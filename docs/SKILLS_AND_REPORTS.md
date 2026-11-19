@@ -15,7 +15,37 @@ nowaikit run scan-health -i demo2
 nowaikit run scan-health -i demo2 -o health.md
 ```
 
-Common flags: `-i <instance>`, `-p <provider>`, `-m <model>`, `-t <table>`, `-s <scope>`, `-f <focus>`, `--format <md|pdf|pptx>`, `-o <file>`.
+Common flags: `-i <instance>`, `-p <provider>`, `-m <model>`, `-t <table>`, `-s <scope>`, `-f <focus>`, `--arg <key=value>`, `--format <md|pdf|pptx>`, `-o <file>`.
+
+`--arg` passes a skill argument and can be repeated, for example `--arg incident=INC0010001`, `--arg change=CHG0030001`, `--arg updateset="Release 4"`, `--arg operation=insert` or `--arg days=30`.
+
+## What a skill gathers
+
+Before the model is called, NowAIKit runs the skill's data plan: the read-only tools, queries and counts that skill needs, through the same code the MCP server uses. Nothing is written, and tools that change data are never run in direct mode.
+
+- Every record in the data carries a `record_url`, and every list carries a `list_url`, so the report can link to the real record instead of making up a link.
+- The data starts with a `data_coverage` section. Anything that could not be gathered (a missing argument, a plugin that is not installed, a table the account cannot read) is listed with the reason, and the report says so instead of guessing.
+- Single-record skills take the record as an argument (`ops-triage --arg incident=...`, `ops-risk --arg change=...`). Without one they pick the most relevant open record and say which.
+
+## Assessment skills
+
+| Skill | What it reports |
+|-------|-----------------|
+| `ai-governance-audit` | AI Control Tower assets and approvals, the LLM provider behind each Otto skill, who can run each AI agent, Guardian and guardrails, MCP and A2A exposure, AI CIs and runtime health |
+| `csdm-data-foundations` | ServiceNow's own CMDB and CSDM Data Foundations scores (CSDM stages Foundation to Fly, CMDB tabs, KB playbook links), CSDM 5 domains, services and offerings, product models, relationships and life cycle stage adoption |
+| `integration-auth-audit` | The Basic auth restriction: which integrations break when the default decision flips, OAuth clients by grant and token format, credential aliases, outbound Basic auth, failed logins, and an OAuth migration plan |
+| `mcp-exposure-review` | MCP servers and tools, A2A agents and who can call them, external agent providers, OAuth clients and the agent MCP properties |
+| `atf-coverage` | ATF code coverage per script, recently changed scripts with no tests, suites and results, and the tests to write first |
+| `table-execution-order` | Everything that runs for one table operation in order (ACLs, data policies, business rules, engines, notifications, flows, workflows), with a Mermaid diagram |
+| `process-insights` | Process Mining projects and findings plus reassignment and reopen data: bottlenecks, automation candidates and a plan |
+
+Existing skills now cover more: `scan-upgrade` reads the release from `glide.buildtag.last` and checks the known Australia and Brazil changes, `review-acls` and `scan-security` cover Deny Unless ACLs and ACLs whose role no longer exists, and `scan-cmdb` uses Data Foundations and the CSDM life cycle fields.
+
+```bash
+nowaikit run ai-governance-audit -i demo2 -p claude-cli -o ai-governance.md
+nowaikit run table-execution-order -i demo2 -t incident --arg operation=insert
+nowaikit report csdm-data-foundations -i demo2 -p claude-cli --brand-company "Acme"
+```
 
 ## Instance Scan skills
 
@@ -111,6 +141,13 @@ nowaikit run scan-health -i demo2 -p claude-cli \
 nowaikit report scan-health -i demo2 -p claude-cli --brand-company "Acme"
 ```
 
+### Scores, finding IDs, links and the findings register
+
+- Assessment skills end with `Score: NN/100` and a score per area. The PDF shows the score and the area table on the summary page.
+- Each finding has a stable ID (for example `ACL-03`), a severity, evidence with a link to the record, the impact, the recommendation and an effort (S, M or L).
+- Markdown links and URLs in the output become clickable links in the PDF and PPTX.
+- Next to every PDF or PPTX, NowAIKit writes a findings register as `<name>.findings.csv` and `<name>.findings.json`, one row per finding, ready for a spreadsheet or a backlog.
+
 ### Branding via environment variables
 
 Handy when the same branding applies to every run (CI, a client engagement):
@@ -128,5 +165,5 @@ Precedence is CLI flag, then environment variable, then the NowAIKit default. Le
 
 ## Notes
 
-- Direct mode is a single text-in, text-out call around data NowAIKit already fetched. It is not agentic tool-calling, which is why a CLI subscription (`claude-cli` / `codex-cli`) fits cleanly here but not in the agentic chat clients.
+- Direct mode is a single text-in, text-out call around data NowAIKit already fetched (see "What a skill gathers"). It is not agentic tool-calling, which is why a CLI subscription (`claude-cli` / `codex-cli`) fits cleanly here but not in the agentic chat clients.
 - The instance type you pick during `nowaikit setup` (Production, Development, Demo, Test/QA) is a label for your own record keeping; it doesn't change tool behaviour.

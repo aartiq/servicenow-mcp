@@ -11,11 +11,19 @@
 
 **Connect Claude, ChatGPT, Gemini, Cursor, Copilot, or any AI, to ServiceNow.**
 
-500+ tools across ITSM, ITOM, CMDB, HRSD, CSM, Flow Designer, scripting & portal. Read, build, query and automate any instance in plain English.
+550+ tools across ITSM, ITOM, CMDB, HRSD, CSM, Flow Designer, scripting & portal. Read, build, query and automate any instance in plain English.
 
-500+ does not mean a heavy context. Your AI does not load every tool. It finds the right one on demand with `search_tools`, you can expose a role package instead of the full set, and clients that load tools only when needed pull just what a task requires, so token cost stays low.
+550+ does not mean a heavy context. Your AI does not load every tool. It finds the right one on demand with `search_tools`, you can expose a role package instead of the full set, and clients that load tools only when needed pull just what a task requires, so token cost stays low.
 
 </div>
+
+---
+
+## Coming next (unreleased)
+
+- **New assessments:** AI governance, CSDM and Data Foundations, integration authentication (Basic auth restriction), MCP and A2A exposure, ATF coverage, what runs when, and process insights.
+- **Grounded reports:** every skill gathers its data first, links each record, scores 0 to 100, and writes a findings register next to the PDF.
+- **Platform Analytics dashboards, Deny Unless ACLs, CSDM life cycle** and the LLM provider behind each Otto skill.
 
 ---
 
@@ -119,18 +127,18 @@ Set `SN_PERSONA` (or `--persona`) to a short name, or `MCP_TOOL_PACKAGE` to the 
 
 | `SN_PERSONA` | `MCP_TOOL_PACKAGE` | Tools |
 |--------------|--------------------|------:|
-| `full` | `full` (default) | 560 |
+| `full` | `full` (default) | 578 |
 | `itsm` | `service_desk` | 27 |
 | `change` | `change_coordinator` | 21 |
 | `knowledge` | `knowledge_author` | 14 |
 | `catalog` | `catalog_builder` | 17 |
-| `admin` | `system_administrator` | 91 |
-| `developer` | `platform_developer` | 74 |
-| `itom` | `itom_engineer` | 25 |
+| `admin` | `system_administrator` | 96 |
+| `developer` | `platform_developer` | 78 |
+| `itom` | `itom_engineer` | 28 |
 | `agile` | `agile_manager` | 14 |
-| `ai` | `ai_developer` | 61 |
+| `ai` | `ai_developer` | 69 |
 | `portal` | `portal_developer` | 38 |
-| `integration` | `integration_engineer` | 33 |
+| `integration` | `integration_engineer` | 35 |
 | `devops` | `devops_engineer` | 28 |
 | `itam` | `itam_analyst` | 13 |
 
