@@ -37,13 +37,13 @@ picks the package for you.
 
 | Package | `SN_PERSONA` | Target role | Tools |
 |---------|--------------|-------------|------:|
-| `full` | `full` | All roles (default) | 558 |
+| `full` | `full` | All roles (default) | 560 |
 | `service_desk` | `itsm` | IT help desk agent | 27 |
 | `change_coordinator` | `change` | Change manager | 21 |
 | `knowledge_author` | `knowledge` | KB content creator | 14 |
 | `catalog_builder` | `catalog` | Catalog administrator | 17 |
-| `system_administrator` | `admin` | System administrator | 87 |
-| `platform_developer` | `developer` | Platform developer | 70 |
+| `system_administrator` | `admin` | System administrator | 91 |
+| `platform_developer` | `developer` | Platform developer | 74 |
 | `itom_engineer` | `itom` | ITOM and CMDB engineer | 25 |
 | `agile_manager` | `agile` | Agile team lead | 14 |
 | `ai_developer` | `ai` | Otto (Now Assist) and AI agent developer | 61 |
@@ -77,7 +77,7 @@ npx -y nowaikit --persona itsm
 ## Package definitions
 
 ### full
-All 558 tools. Default when `MCP_TOOL_PACKAGE` is not set.
+All 560 tools. Default when `MCP_TOOL_PACKAGE` is not set.
 
 ### service_desk
 Tools for IT help desk agents handling incidents, requests, and approvals.
@@ -132,6 +132,7 @@ Includes:
 - System properties (single and bulk)
 - Update set management
 - CMDB reconciliation (duplicates, orphans, stale CIs)
+- Instance Scan (suites, findings, summary, running a scan)
 - System log
 - Core read tools
 
@@ -147,6 +148,7 @@ Includes:
 - Scoped applications
 - Fluent and ServiceNow SDK tools (`fluent_init`, `fluent_build`, `fluent_install`, `fluent_pack` and the rest)
 - ServiceNow documentation search
+- Instance Scan (suites, findings, summary, running a scan)
 - Core read tools
 - Requires: `SCRIPTING_ENABLED=true` for script changes (script reads need nothing),
   `ATF_ENABLED=true` to run tests, `FLUENT_ENABLED=true` for SDK commands

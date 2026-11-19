@@ -17,6 +17,50 @@ nowaikit run scan-health -i demo2 -o health.md
 
 Common flags: `-i <instance>`, `-p <provider>`, `-m <model>`, `-t <table>`, `-s <scope>`, `-f <focus>`, `--format <md|pdf|pptx>`, `-o <file>`.
 
+## Instance Scan skills
+
+ServiceNow's Instance Scan runs best-practice checks (security, performance, upgradability, manageability and user experience) and stores the results on the instance. NowAIKit reads those results and builds them into the scan skills.
+
+`scan-instance` is the dedicated Instance Scan report. It takes the latest and previous run of every saved scan and covers:
+
+- scores, plus findings grouped by category, priority, check, table and application
+- which checks are new, worse, better or resolved since the previous run
+- whether any checks cover Now Assist, AI agents or Virtual Agent, compared with the AI agents and skills on the instance
+- remediation for the top checks, based on each check's own resolution notes
+
+```bash
+# Report on the results already on the instance
+nowaikit run scan-instance -i demo2 -p claude-cli -o scan.md
+
+# Security checks only
+nowaikit run scan-instance -i demo2 -s security
+
+# One scan result (sys_id, SR number or CI/CD progress id)
+nowaikit run scan-instance -i demo2 --scan-result SR0001234
+
+# Run a suite first, wait for it, then report on the new result
+nowaikit run scan-instance -i demo2 --run-scan "suite:Instance Security Hardening Settings"
+```
+
+`--run-scan` accepts the following:
+
+- `suite:<name or sys_id>` re-runs a suite's saved instance-wide scan.
+- `combo:<sys_id>` re-runs a saved scan combo.
+- `point:<table>:<sys_id>` scans one record.
+- `apps:<suite>:<scope ids>` runs a suite against scoped apps.
+- `update-sets:<suite>:<ids>` runs a suite against update sets.
+- `full` runs every active check. On a large instance that can take hours.
+
+Scans run through the CI/CD REST API, so the account needs `sn_cicd.sys_ci_automation` or admin. NowAIKit polls the progress for up to 15 minutes. Set `NOWAIKIT_SCAN_TIMEOUT_MS` to wait longer. The CI/CD API can only re-run a suite that has already been run once instance-wide. For a new suite, run it once from Instance Scan in the platform UI.
+
+`scan-health`, `scan-security`, `scan-debt` and `scan-upgrade` also pull the Instance Scan findings that matter to them (performance and manageability, security, manageability and upgradability, and upgradability) and cite them as evidence.
+
+In an MCP client the same data comes from three tools:
+
+- `get_instance_scan_summary` gives the grouped view.
+- `get_instance_scan_findings` lists individual findings, filtered by result, check, category, priority or table.
+- `run_instance_scan` starts a scan. It needs `WRITE_ENABLED=true`. Pass `async: true` to follow the scan as a job.
+
 ## Choose a model
 
 You can point NowAIKit at a hosted API, a local model, or your own AI subscription.

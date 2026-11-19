@@ -11,6 +11,8 @@ import { loadConfig } from '../cli/config-store.js';
 import type { LlmConfig, LlmMessage, LlmResponse } from './llm-client.js';
 import { callLlm } from './llm-client.js';
 import { resolvePromptAsync, getCapabilities } from '../prompts/index.js';
+import type { CapabilityDefinition } from '../prompts/types.js';
+import { getInstanceScanSummary, isScanCategory, parseScanSpec, startInstanceScan, waitForInstanceScan } from '../servicenow/instance-scan.js';
 
 export interface DirectExecutionOptions {
   capability: string;
@@ -18,6 +20,8 @@ export interface DirectExecutionOptions {
   instance?: string;
   llmConfig: LlmConfig;
   output?: string;
+  /** Progress messages for long steps (for example a fresh Instance Scan). */
+  onProgress?: (message: string) => void;
 }
 
 export interface DirectExecutionResult {
@@ -31,13 +35,75 @@ export interface DirectExecutionResult {
  * Map of tool names to SDK methods and their parameters.
  * Covers the most commonly used tools in capabilities.
  */
+/**
+ * Instance Scan data, split into small sections so each one fits the per-section size limit.
+ * `compact` keeps it to the overview and findings (for capabilities where scan data is one input of many).
+ */
+export async function gatherInstanceScanData(
+  client: ServiceNowClient,
+  args: Record<string, string>,
+  categories: string[] | undefined,
+  compact: boolean,
+): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  const s = await getInstanceScanSummary(client, {
+    categories,
+    result: args.result || undefined,
+    compact,
+    topChecks: compact ? 15 : 25,
+    maxResults: compact ? 4 : 6,
+  });
+  out['instance_scan_runs'] = { scope: s.scope, runs: s.runs.slice(0, compact ? 8 : 15) };
+  out['instance_scan_analysed_results'] = s.analysed_results;
+  out['instance_scan_findings_by_category_and_priority'] = { by_category: s.by_category, by_priority: s.by_priority, notes: s.notes };
+  if (compact) {
+    out['instance_scan_top_checks'] = s.top_checks.map(({ check_sys_id: _id, documentation_url: _u, description: _d, ...rest }) => rest);
+  } else {
+    // Small chunks so the remediation text is not cut off.
+    for (let i = 0; i < s.top_checks.length; i += 8) out[`instance_scan_top_checks_${i / 8 + 1}`] = s.top_checks.slice(i, i + 8);
+  }
+  out['instance_scan_trend_resolved_checks'] = s.resolved_checks;
+  out['instance_scan_by_table_and_app'] = { by_table: s.by_table, by_app: s.by_app };
+  if (s.inventory) out['instance_scan_inventory'] = s.inventory;
+  if (s.ai_coverage) out['instance_scan_ai_agent_coverage'] = s.ai_coverage;
+  if (s.sample_findings) out['instance_scan_sample_findings'] = s.sample_findings;
+  return out;
+}
+
+/** Instance Scan sections (sent as compact JSON) may run longer than other data before they are cut. */
+function sectionLimit(key: string): number {
+  return key.startsWith('instance_scan') ? 9000 : 3000;
+}
+
 async function gatherData(
   client: ServiceNowClient,
   recommendedTools: string[],
-  args: Record<string, string>
+  args: Record<string, string>,
+  cap?: CapabilityDefinition,
+  onProgress?: (message: string) => void,
 ): Promise<Record<string, unknown>> {
   const results: Record<string, unknown> = {};
-  const table = args.table || args.scope || '';
+  // -s is a table for some skills, but "instance" (whole instance) and scan categories are not tables.
+  const scopeIsTable = !!args.scope && args.scope !== 'instance' && !isScanCategory(args.scope);
+  const table = args.table || (scopeIsTable ? args.scope! : '');
+
+  // A fresh Instance Scan, only when asked for (--run-scan). The summary then focuses on its result.
+  if (args.run_scan && recommendedTools.includes('run_instance_scan')) {
+    try {
+      const spec = parseScanSpec(args.run_scan);
+      onProgress?.(`Starting ${spec.scan_type} scan`);
+      const started = await startInstanceScan(client, spec);
+      if (!started.progress_id) throw new Error(`The CI/CD API did not return a progress id (status ${started.status}${started.status_message ? `: ${started.status_message}` : ''})`);
+      const outcome = await waitForInstanceScan(client, started.progress_id, {
+        timeoutMs: Number(process.env.NOWAIKIT_SCAN_TIMEOUT_MS) || 15 * 60_000,
+        onProgress: (p) => onProgress?.(`Instance scan ${p.status}${p.percent !== undefined ? ` ${p.percent}%` : ''}${p.message ? `: ${p.message}` : ''}`),
+      });
+      results['instance_scan_fresh_run'] = { scan_type: spec.scan_type, suite: started.suite, progress_id: started.progress_id, ...outcome };
+      if (typeof outcome.scan_result_sys_id === 'string') args = { ...args, result: outcome.scan_result_sys_id };
+    } catch (error) {
+      results['instance_scan_fresh_run_error'] = error instanceof Error ? error.message : 'Failed';
+    }
+  }
 
   for (const tool of recommendedTools) {
     try {
@@ -150,6 +216,20 @@ async function gatherData(
           results['catalog_items'] = items;
           break;
         }
+        case 'get_instance_scan_summary': {
+          // Full Instance Scan view (scan-instance). -s <category> narrows it to one or more categories.
+          const categories = args.categories
+            ? args.categories.split(',')
+            : (isScanCategory(args.scope) ? args.scope!.split(',') : cap?.instanceScanCategories);
+          Object.assign(results, await gatherInstanceScanData(client, args, categories, false));
+          break;
+        }
+        case 'get_instance_scan_findings': {
+          // Instance Scan findings as one input among others (scan-health, scan-security, scan-debt, scan-upgrade).
+          if (recommendedTools.includes('get_instance_scan_summary')) break;
+          Object.assign(results, await gatherInstanceScanData(client, args, cap?.instanceScanCategories, true));
+          break;
+        }
         default:
           break;
       }
@@ -217,7 +297,7 @@ export async function executeDirectly(options: DirectExecutionOptions): Promise<
   const { client, name: instanceName } = createClientFromConfig(options.instance);
 
   // 3. Gather data from ServiceNow
-  const data = await gatherData(client, recommendedTools, options.args || {});
+  const data = await gatherData(client, recommendedTools, options.args || {}, cap, options.onProgress);
   const dataCount = Object.keys(data).length;
 
   // 4. Build LLM messages
@@ -239,7 +319,7 @@ export async function executeDirectly(options: DirectExecutionOptions): Promise<
 
   // User message with gathered data
   const dataContext = Object.entries(data)
-    .map(([key, value]) => `### ${key}\n\`\`\`json\n${JSON.stringify(value, null, 2).substring(0, 3000)}\n\`\`\``)
+    .map(([key, value]) => `### ${key}\n\`\`\`json\n${JSON.stringify(value, null, key.startsWith('instance_scan') ? undefined : 2).substring(0, sectionLimit(key))}\n\`\`\``)
     .join('\n\n');
 
   messages.push({

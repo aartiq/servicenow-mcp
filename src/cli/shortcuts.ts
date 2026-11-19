@@ -72,7 +72,7 @@ export function runShortcuts(): void {
   const termCommands: [string, string][] = [
     ['nowaikit run <capability>',   'Run an AI capability directly (BYOK)'],
     ['nowaikit web',                'Open the NowAIKit web dashboard'],
-    ['nowaikit caps',               'List all 26 capabilities'],
+    ['nowaikit caps',               'List all 27 capabilities'],
     ['nowaikit shortcuts',          'Show this help'],
     ['nowaikit setup',              'Interactive setup wizard'],
     ['nowaikit setup --add',        'Add another ServiceNow instance'],

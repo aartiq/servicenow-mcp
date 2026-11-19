@@ -28,6 +28,11 @@ export interface CapabilityDefinition {
   arguments?: Array<{ name: string; description: string; required?: boolean }>;
   /** Tool names this capability commonly uses. */
   recommendedTools?: string[];
+  /**
+   * Instance Scan categories this capability cares about (security, performance, upgradability,
+   * manageability, user_experience). Direct mode uses it to pull only the relevant scan findings.
+   */
+  instanceScanCategories?: string[];
   /** Build the multi-message prompt. */
   buildPrompt: (args?: Record<string, string>) => AgentMessage[];
 }

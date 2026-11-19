@@ -1,4 +1,5 @@
 import type { CapabilityDefinition } from '../types.js';
+import { instanceScanSection } from '../instance-scan-section.js';
 
 const capability: CapabilityDefinition = {
   name: 'scan-security',
@@ -36,7 +37,9 @@ const capability: CapabilityDefinition = {
     'list_oauth_applications',
     'query_records',
     'get_table_schema',
+    'get_instance_scan_findings',
   ],
+  instanceScanCategories: ['security'],
 
   buildPrompt(args) {
     const scope = args?.scope ?? 'instance';
@@ -359,6 +362,12 @@ const capability: CapabilityDefinition = {
       '```',
     ];
 
+    const scanSection = instanceScanSection(['security'], [
+      'Security checks (hardening settings, access, encryption, email and authentication) are the main evidence here. Map each one to the audit area it belongs to.',
+      'Treat priority 1 and 2 security findings as critical or high unless the data shows otherwise.',
+      'Point out failed or missing runs of security suites such as the hardening and access auditor suites, if the data shows them.',
+    ]);
+
     return [
       {
         role: 'assistant' as const,
@@ -379,6 +388,7 @@ const capability: CapabilityDefinition = {
             'UI macros, catalog client scripts, and email templates.',
             '',
             ...sections.flatMap(s => [...s, '']),
+            ...scanSection, '',
             ...reportFormat,
             '',
             '---',

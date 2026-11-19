@@ -119,13 +119,13 @@ Set `SN_PERSONA` (or `--persona`) to a short name, or `MCP_TOOL_PACKAGE` to the 
 
 | `SN_PERSONA` | `MCP_TOOL_PACKAGE` | Tools |
 |--------------|--------------------|------:|
-| `full` | `full` (default) | 558 |
+| `full` | `full` (default) | 560 |
 | `itsm` | `service_desk` | 27 |
 | `change` | `change_coordinator` | 21 |
 | `knowledge` | `knowledge_author` | 14 |
 | `catalog` | `catalog_builder` | 17 |
-| `admin` | `system_administrator` | 87 |
-| `developer` | `platform_developer` | 70 |
+| `admin` | `system_administrator` | 91 |
+| `developer` | `platform_developer` | 74 |
 | `itom` | `itom_engineer` | 25 |
 | `agile` | `agile_manager` | 14 |
 | `ai` | `ai_developer` | 61 |

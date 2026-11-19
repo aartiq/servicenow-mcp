@@ -1,4 +1,5 @@
 import type { CapabilityDefinition } from '../types.js';
+import { instanceScanSection } from '../instance-scan-section.js';
 
 const capability: CapabilityDefinition = {
   name: 'scan-upgrade',
@@ -23,7 +24,9 @@ const capability: CapabilityDefinition = {
     'query_records',
     'list_system_properties',
     'get_table_schema',
+    'get_instance_scan_findings',
   ],
+  instanceScanCategories: ['upgradability'],
 
   buildPrompt(args) {
     const targetRelease = args?.target_release ?? 'latest';
@@ -303,6 +306,11 @@ const capability: CapabilityDefinition = {
       '```',
     ];
 
+    const scanSection = instanceScanSection(['upgradability'], [
+      'Upgradability checks, and suites such as Deprecated APIs, flag code and configuration that breaks or needs review on upgrade. Add them to the blocker and warning lists.',
+      'Use the findings by table to say which customised areas need regression testing after the upgrade.',
+    ]);
+
     return [
       {
         role: 'assistant' as const,
@@ -329,6 +337,7 @@ const capability: CapabilityDefinition = {
             ...uiSection, '',
             ...javaImportSection, '',
             ...undocumentedApiSection, '',
+            ...scanSection, '',
             ...reportFormat,
             '',
             '---',

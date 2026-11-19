@@ -1,6 +1,6 @@
 /**
  * MCP Prompts registry — exposes built-in ITSM prompts, user-defined prompts,
- * and 26 Apex capability prompts (scan/review/build/ops/docs).
+ * and 27 Apex capability prompts (scan/review/build/ops/docs).
  *
  * Performance: Capability modules are lazy-loaded — only imported when a
  * capability prompt is actually resolved. The prompt listing uses a lightweight
@@ -52,6 +52,7 @@ const capabilityMeta: CapabilityMeta[] = [
   { name: 'scan-debt', title: 'Technical Debt Analysis', description: 'Find dead code, unused scripts, duplicate logic, stale configurations across ALL artifact types', category: 'scan', file: 'scan-debt' },
   { name: 'scan-upgrade', title: 'Upgrade Readiness Check', description: 'Check deprecated APIs, incompatible patterns, and plugin conflicts before upgrading', category: 'scan', file: 'scan-upgrade' },
   { name: 'scan-cmdb', title: 'CMDB Health Scan', description: 'CMDB health — stale CIs, broken relationships, data quality, orphan detection, class compliance', category: 'scan', file: 'scan-cmdb' },
+  { name: 'scan-instance', title: 'Instance Scan Report', description: 'Instance Scan report: latest results and findings by category, priority, check, table and app, trend against the previous run, AI and agent check coverage, remediation, and an optional fresh scan', category: 'scan', file: 'scan-instance', arguments: [{ name: 'scope', description: 'Categories: "all" (default) or a comma list of security, performance, upgradability, manageability, user_experience', required: false }, { name: 'result', description: 'One scan result (sys_id, SR number or progress id)', required: false }, { name: 'run_scan', description: 'Run a scan first: full, suite:<name|sys_id>, combo:<sys_id>, point:<table>:<sys_id>', required: false }] },
   { name: 'scan-automation', title: 'Automation Conflict Scan', description: 'Automation conflict detection — overlapping business rules and flows, circular triggers, execution order', category: 'scan', file: 'scan-automation' },
   // Review
   { name: 'review-code', title: 'Deep Code Review', description: 'Deep code review — security, performance, best practices, upgrade safety across all artifact types', category: 'review', file: 'review-code' },

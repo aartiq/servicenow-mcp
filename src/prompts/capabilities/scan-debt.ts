@@ -1,4 +1,5 @@
 import type { CapabilityDefinition } from '../types.js';
+import { instanceScanSection } from '../instance-scan-section.js';
 
 const capability: CapabilityDefinition = {
   name: 'scan-debt',
@@ -26,7 +27,9 @@ const capability: CapabilityDefinition = {
     'list_update_sets',
     'list_scheduled_jobs',
     'list_flows',
+    'get_instance_scan_findings',
   ],
+  instanceScanCategories: ['manageability', 'upgradability'],
 
   buildPrompt(args) {
     const scope = args?.scope ?? 'instance';
@@ -263,6 +266,11 @@ const capability: CapabilityDefinition = {
       '```',
     ];
 
+    const scanSection = instanceScanSection(['manageability', 'upgradability'], [
+      'Manageability findings (unused, duplicated or hard-to-maintain configuration) are direct evidence of technical debt.',
+      'Upgradability findings show customisations that will cost effort at every upgrade. Count them in the debt score.',
+    ]);
+
     return [
       {
         role: 'assistant' as const,
@@ -288,6 +296,7 @@ const capability: CapabilityDefinition = {
             ...orphanedSection, '',
             ...deprecatedApiSection, '',
             ...debugSection, '',
+            ...scanSection, '',
             ...reportFormat,
             '',
             '---',

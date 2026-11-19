@@ -1,4 +1,5 @@
 import type { CapabilityDefinition } from '../types.js';
+import { instanceScanSection } from '../instance-scan-section.js';
 
 const capability: CapabilityDefinition = {
   name: 'scan-health',
@@ -25,7 +26,9 @@ const capability: CapabilityDefinition = {
     'list_system_properties',
     'check_table_completeness',
     'get_table_record_count',
+    'get_instance_scan_findings',
   ],
+  instanceScanCategories: ['performance', 'manageability', 'user_experience'],
 
   buildPrompt(args) {
     const scope = args?.scope ?? 'full';
@@ -216,6 +219,12 @@ const capability: CapabilityDefinition = {
       '```',
     ];
 
+    const scanSection = instanceScanSection(['performance', 'manageability', 'user_experience'], [
+      'Performance checks point at slow queries, heavy business rules and table design issues. Link them to the log and performance sections above.',
+      'Manageability and user experience findings show configuration drift that makes the instance harder to run.',
+      'Report the overall and per-category scores from the latest scan runs as part of the health verdict.',
+    ]);
+
     return [
       {
         role: 'assistant' as const,
@@ -231,6 +240,7 @@ const capability: CapabilityDefinition = {
             'findings with severity ratings.',
             '',
             ...sections.flatMap(s => [...s, '']),
+            ...(scope === 'full' ? [...scanSection, ''] : []),
             ...reportFormat,
             '',
             '---',

@@ -221,6 +221,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     // v4.0 additions
     'cmdb_find_duplicates', 'cmdb_find_orphans', 'cmdb_find_stale', 'cmdb_reconcile',
     'discover_table',
+    // Instance Scan
+    'list_scan_suites', 'get_instance_scan_findings', 'get_instance_scan_summary', 'run_instance_scan',
     // Background jobs for long-running tools
     'get_job', 'list_jobs', 'cancel_job',
   ],
@@ -245,6 +247,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'discover_table',
     // ServiceNow product documentation
     'search_servicenow_docs', 'fetch_servicenow_doc',
+    // Instance Scan (best-practice checks before promoting work)
+    'list_scan_suites', 'get_instance_scan_findings', 'get_instance_scan_summary', 'run_instance_scan',
     // Background jobs for long-running tools (ATF runs, SDK builds and CI/CD)
     'get_job', 'list_jobs', 'cancel_job',
   ],

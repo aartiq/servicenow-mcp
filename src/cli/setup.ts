@@ -990,7 +990,7 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
           checked: false,
         },
         {
-          name: `${teal('AI Skills (Apex)')} ${dim('— 26 expert capabilities (scan, review, build, ops, docs)')}`,
+          name: `${teal('AI Skills (Apex)')} ${dim('— 27 expert capabilities (scan, review, build, ops, docs)')}`,
           value: 'apex',
           checked: true,
         },
@@ -1015,7 +1015,7 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
   console.log('');
   if (mcpEnabled)  console.log(`  ${success('✓')} MCP Server — AI clients will auto-discover your 500+ tools`);
   if (sdkEnabled)  console.log(`  ${success('✓')} TypeScript SDK — import NowAIKit in your project`);
-  if (apexEnabled) console.log(`  ${success('✓')} AI Skills (Apex) — 26 capabilities enabled`);
+  if (apexEnabled) console.log(`  ${success('✓')} AI Skills (Apex) — 27 capabilities enabled`);
   if (!apexEnabled) console.log(`  ${dim('✗')} Apex AI Skills disabled — only MCP tools and ITSM prompts active`);
   console.log('');
 
@@ -1231,7 +1231,7 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
   console.log('');
 
   if (apexEnabled) {
-    console.log(`  ${accent('▸')} ${white('26 AI Capabilities')} ${dim('— run directly from terminal (no MCP client needed)')}`);
+    console.log(`  ${accent('▸')} ${white('27 AI Capabilities')} ${dim('— run directly from terminal (no MCP client needed)')}`);
     console.log('');
     const capCategories = [
       { icon: '🔍', label: 'Scan & Monitor', items: ['health', 'security', 'debt', 'upgrade', 'cmdb', 'automation'] },
@@ -1251,10 +1251,10 @@ export async function runSetup(options: { add?: boolean } = {}): Promise<void> {
     console.log(dim('  Supports: ') + accent('Anthropic') + dim(', ') + accent('OpenAI') + dim(', ') + accent('Ollama') + dim(' (BYOK — bring your own key)'));
     console.log('');
 
-    console.log(dim('  See all 26 in detail any time: ') + brand('npx nowaikit capabilities'));
+    console.log(dim('  See all 27 in detail any time: ') + brand('npx nowaikit capabilities'));
     console.log('');
   } else {
-    console.log(`  ${dim('▸')} ${dim('Apex AI Skills disabled — 26 capabilities not loaded.')}`);
+    console.log(`  ${dim('▸')} ${dim('Apex AI Skills disabled — 27 capabilities not loaded.')}`);
     console.log('');
   }
 
@@ -1606,7 +1606,7 @@ function printSummary(instance: InstanceConfig): void {
 
   console.log(`  ${accent('▸')} ${white('Direct Mode')} ${dim('(run capabilities from terminal — no MCP client):')}`);
   console.log('');
-  console.log(`    ${brand('npx nowaikit capabilities')}    ${dim('List all 26 capabilities')}`);
+  console.log(`    ${brand('npx nowaikit capabilities')}    ${dim('List all 27 capabilities')}`);
   console.log(`    ${brand('npx nowaikit run scan-health')} ${dim('Run a capability directly')}`);
   console.log(`    ${brand('npx nowaikit report scan-health')} ${dim('Generate branded PDF report')}`);
   console.log(`    ${brand('nowaikit shortcuts')}           ${dim('Show all commands & keyboard shortcuts')}`);

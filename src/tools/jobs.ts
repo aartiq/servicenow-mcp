@@ -9,6 +9,7 @@ import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
 import { describeJob, jobOwner, jobStore, type Job, type JobContext, type JobOrigin, type JobStatus } from '../utils/jobs.js';
 import { isScriptingEnabled } from '../utils/permissions.js';
+import { getScanProgress, isFinalScanStatus, scanOutcome } from '../servicenow/instance-scan.js';
 
 /**
  * Tools that can take a while. They accept `async: true`, may switch to a job automatically after the
@@ -28,7 +29,7 @@ export const LONG_RUNNING_TOOLS: ReadonlySet<string> = new Set([
   'scan_vulnerabilities',
   // Instance-wide analysis
   'compare_instances', 'export_update_set', 'preview_update_set', 'check_table_completeness',
-  'analyze_data_quality', 'get_instance_scan_findings',
+  'analyze_data_quality', 'get_instance_scan_findings', 'get_instance_scan_summary', 'run_instance_scan',
   // Predictive Intelligence
   'ml_train_incident_classifier', 'ml_train_change_risk', 'ml_train_anomaly_detector', 'ml_forecast_incidents',
   // ServiceNow SDK (spawns now-sdk; installs, builds and CI/CD runs take minutes)
@@ -199,6 +200,20 @@ const WATCHERS: Record<string, Watcher> = {
           details: 'Use list_atf_test_results with suite_result_sys_id for each test.',
         };
       }
+      await sleep(pollMs, ctx.signal);
+    }
+  },
+
+  /** Instance Scan through the CI/CD API: poll /api/sn_cicd/progress/{id}, then read the scan_result and scores. */
+  async run_instance_scan(client, start, ctx, { pollMs }) {
+    const progressId = start?.progress_id;
+    if (!progressId) return undefined;
+    ctx.onCancel(() => client.apiRequest('POST', `/api/sn_cicd/progress/${encodeURIComponent(progressId)}/cancel`, {}));
+    if (ctx.signal.aborted) return undefined;
+    for (;;) {
+      const p = await getScanProgress(client, progressId);
+      ctx.progress({ percent: p.percent || undefined, message: `Instance scan ${p.status}${p.message ? `: ${p.message}` : ''}` });
+      if (isFinalScanStatus(p.status)) return scanOutcome(client, p, progressId);
       await sleep(pollMs, ctx.signal);
     }
   },
