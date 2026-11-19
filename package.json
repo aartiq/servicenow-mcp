@@ -133,16 +133,20 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.5.2",
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@modelcontextprotocol/node": "^2.1.2",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "@modelcontextprotocol/server-legacy": "^2.4.0",
     "chalk": "^6.0.0",
     "commander": "^14.0.3",
     "dotenv": "^17.4.2",
     "ora": "^9.4.1",
     "pdfmake": "^0.3.11",
     "pptxgenjs": "^4.0.1",
-    "zod": "^3.22.4"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/node": "^20.19.33",
     "@typescript-eslint/eslint-plugin": "^8.56.0",
     "@typescript-eslint/parser": "^8.56.0",

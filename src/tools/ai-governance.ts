@@ -590,7 +590,8 @@ export async function executeAiGovernanceToolCall(
         target_key_field: e.target_key_field || undefined,
         mapping_table: e.mapping_table || undefined,
       }));
-      const { schema_json: _omit, ...graphInfo } = graph;
+      const graphInfo = { ...graph };
+      delete graphInfo.schema_json;
       return {
         graph: graphInfo,
         source: nodes.length ? sourceOfTruth : 'none',

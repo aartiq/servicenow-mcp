@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 import { compatNotes } from './bootstrap-env.js';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
-  CallToolRequestSchema,
-  GetPromptRequestSchema,
-  ListPromptsRequestSchema,
-  ListResourcesRequestSchema,
-  ListResourceTemplatesRequestSchema,
-  ListToolsRequestSchema,
-  ReadResourceRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+  Server,
+  CLIENT_CAPABILITIES_META_KEY,
+  CLIENT_INFO_META_KEY,
+  acceptedContent,
+  inputRequired,
+  inputResponse,
+  type ClientCapabilities,
+  type Implementation,
+  type ServerContext,
+  type Tool,
+} from '@modelcontextprotocol/server';
 import { instanceManager } from './servicenow/instances.js';
 import { getTools, getAppToolsFor, getCatalogTool, isLeanDiscovery } from './tools/index.js';
 import { clientSupportsApps, getAppResources, isAppResourceUri, readAppResource } from './apps/index.js';
@@ -55,7 +57,29 @@ const LONG_RUNNING_TOOLS = new Set([
   'ml_train_incident_classifier', 'ml_train_change_risk', 'ml_train_anomaly_detector', 'ml_forecast_incidents',
 ]);
 
-export function createServer(): Server {
+export interface CreateServerOptions {
+  /**
+   * The instance serves a single request and is then discarded (2026-07-28 Streamable HTTP via
+   * createMcpHandler). Session state such as the lean-discovery set cannot persist there, so lean
+   * mode lets catalog tools be called by name directly instead.
+   */
+  perRequest?: boolean;
+}
+
+/**
+ * The client's declared capabilities and identity for this request. 2026-07-28 requests carry them in
+ * the per-request `_meta` envelope; 2025-era connections declared them once at `initialize`.
+ */
+function clientIdentity(server: Server, ctx: ServerContext): { caps?: ClientCapabilities; info?: Implementation } {
+  const envelope = ctx.mcpReq.envelope as Record<string, unknown> | undefined;
+  // getClientCapabilities/getClientVersion are deprecated in v2 but remain the 2025-era (initialize) source.
+  return {
+    caps: (envelope?.[CLIENT_CAPABILITIES_META_KEY] as ClientCapabilities | undefined) ?? server.getClientCapabilities(),
+    info: (envelope?.[CLIENT_INFO_META_KEY] as Implementation | undefined) ?? server.getClientVersion(),
+  };
+}
+
+export function createServer(options: CreateServerOptions = {}): Server {
   const server = new Server(
     {
       name: SERVER_NAME,
@@ -68,6 +92,16 @@ export function createServer(): Server {
         resources: {},
         prompts: {},
       },
+      // 2026-07-28 cache fields (ignored on 2025-era responses). Private: lists depend on the
+      // client's capabilities (MCP Apps) and, behind the gateway, on the caller. Lean tool lists grow
+      // during a session, so they are never cached; resources/read is live record data (default 0).
+      cacheHints: {
+        'tools/list': { ttlMs: isLeanDiscovery() ? 0 : 60_000, cacheScope: 'private' },
+        'prompts/list': { ttlMs: 300_000, cacheScope: 'private' },
+        'resources/list': { ttlMs: 300_000, cacheScope: 'private' },
+        'resources/templates/list': { ttlMs: 300_000, cacheScope: 'private' },
+        'server/discover': { ttlMs: 300_000, cacheScope: 'private' },
+      },
     }
   );
 
@@ -76,22 +110,27 @@ export function createServer(): Server {
   // ─── Tools ──────────────────────────────────────────────────────────────────
 
   /** MCP Apps views and their app-only tools, for clients that can render them. */
-  const appsEnabled = () => clientSupportsApps(server.getClientCapabilities(), server.getClientVersion()?.name);
+  const appsEnabled = (ctx: ServerContext) => {
+    const { caps, info } = clientIdentity(server, ctx);
+    return clientSupportsApps(caps, info?.name);
+  };
 
   // Lean discovery: tools that search_tools found in this session are added to the list, so the model
   // can call them directly. Clients that ignore tools/list_changed can still use run_tool.
   const discovered = new Set<string>();
   const MAX_DISCOVERED = 60;
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
+  server.setRequestHandler('tools/list', async (_request, ctx) => {
     const listed = getTools();
     const have = new Set(listed.map((t) => t.name));
     const extra = [...discovered].filter((n) => !have.has(n)).map((n) => getCatalogTool(n)).filter((t): t is NonNullable<typeof t> => !!t);
     const all = [...listed, ...extra];
-    return { tools: appsEnabled() ? [...all, ...getAppToolsFor(all)] : all };
+    // Tool definitions are plain JSON-schema literals; the SDK types them as the spec Tool shape.
+    const withApps = appsEnabled(ctx) ? [...all, ...getAppToolsFor(all)] : all;
+    return { tools: withApps as unknown as Tool[] };
   });
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler('tools/call', async (request, ctx) => {
     const { name, arguments: args } = request.params;
 
     logger.info(`Tool called: ${name}`);
@@ -99,7 +138,7 @@ export function createServer(): Server {
     try {
       const tool = tools.find(t => t.name === name)
         || getAppToolsFor(tools).find(t => t.name === name)
-        || (discovered.has(name) ? getCatalogTool(name) : undefined);
+        || (discovered.has(name) || (options.perRequest && isLeanDiscovery()) ? getCatalogTool(name) : undefined);
       if (!tool) {
         throw new ServiceNowError(`Unknown tool: ${name}`, 'UNKNOWN_TOOL');
       }
@@ -138,21 +177,27 @@ export function createServer(): Server {
       // Only triggers for real (non-dry-run) destructive operations and only when
       // the connected client advertised the elicitation capability. Falls back to
       // the existing WRITE_ENABLED/guardrail gates when unsupported.
-      if (isDestructiveTool(name) && !toolArgs['dry_run'] && server.getClientCapabilities()?.elicitation) {
-        try {
-          const confirm = await server.elicitInput({
-            message: `Confirm ${name} on table "${String(toolArgs['table'] ?? '?')}"${toolArgs['sys_id'] ? ` (sys_id ${String(toolArgs['sys_id'])})` : ''} on instance "${instanceManager.getCurrentName()}". This is a destructive write.`,
-            requestedSchema: {
-              type: 'object',
-              properties: { confirm: { type: 'boolean', description: 'Proceed with this destructive operation?' } },
-              required: ['confirm'],
+      // Written once in the 2026-07-28 multi-round-trip form: 2026 clients answer the input_required
+      // result and retry; on 2025-era connections (stdio, sessionful HTTP) the SDK's legacy shim sends
+      // a real elicitation/create and re-enters this handler with the answer.
+      if (isDestructiveTool(name) && !toolArgs['dry_run'] && clientIdentity(server, ctx).caps?.elicitation) {
+        const answer = inputResponse(ctx.mcpReq.inputResponses, 'confirm');
+        if (answer.kind === 'missing') {
+          return inputRequired({
+            inputRequests: {
+              confirm: inputRequired.elicit({
+                message: `Confirm ${name} on table "${String(toolArgs['table'] ?? '?')}"${toolArgs['sys_id'] ? ` (sys_id ${String(toolArgs['sys_id'])})` : ''} on instance "${instanceManager.getCurrentName()}". This is a destructive write.`,
+                requestedSchema: {
+                  type: 'object',
+                  properties: { confirm: { type: 'boolean', description: 'Proceed with this destructive operation?' } },
+                  required: ['confirm'],
+                },
+              }),
             },
           });
-          if (confirm.action !== 'accept' || !(confirm.content as Record<string, unknown> | undefined)?.['confirm']) {
-            return { content: [{ type: 'text' as const, text: `Cancelled: ${name} was not confirmed.` }] };
-          }
-        } catch {
-          // Elicitation failed/declined by transport — fall through to normal gates.
+        }
+        if (acceptedContent<{ confirm?: unknown }>(ctx.mcpReq.inputResponses, 'confirm')?.confirm !== true) {
+          return { content: [{ type: 'text' as const, text: `Cancelled: ${name} was not confirmed.` }] };
         }
       }
 
@@ -161,13 +206,14 @@ export function createServer(): Server {
       // MCP progress notifications: if the client passed a progressToken and this
       // is a long-running tool, emit periodic heartbeats so the UI shows activity.
       // Purely additive — when no token is sent the path below behaves as before.
-      const progressToken = (request.params as { _meta?: { progressToken?: string | number } })._meta?.progressToken;
+      const progressToken = ctx.mcpReq._meta?.progressToken;
       const trackProgress = progressToken !== undefined && LONG_RUNNING_TOOLS.has(name);
       let heartbeat: ReturnType<typeof setInterval> | undefined;
       if (trackProgress) {
         let pct = 0;
+        // Request-related, so it rides this call's own stream (2025 sessionful HTTP and 2026 HTTP).
         const sendProgress = (progress: number, message: string) =>
-          server.notification({
+          ctx.mcpReq.notify({
             method: 'notifications/progress',
             params: { progressToken, progress, total: 100, message },
           }).catch(() => { /* client may not track this token; ignore */ });
@@ -184,7 +230,7 @@ export function createServer(): Server {
       } finally {
         if (heartbeat) clearInterval(heartbeat);
         if (trackProgress) {
-          await server.notification({
+          await ctx.mcpReq.notify({
             method: 'notifications/progress',
             params: { progressToken, progress: 100, total: 100, message: `${name} complete` },
           }).catch(() => { /* ignore */ });
@@ -192,13 +238,21 @@ export function createServer(): Server {
       }
 
       // Lean discovery: expose what the search found and tell the client its tool list changed.
+      // A per-request (2026 HTTP) instance has no session to remember the set, so there every catalog
+      // tool is callable by name and the hint points at run_tool for clients that only call listed tools.
       if (name === 'search_tools' && isLeanDiscovery() && result && typeof result === 'object') {
         const found = ((result as { tools?: Array<{ name: string }> }).tools || []).slice(0, 10).map((t) => t.name);
-        const before = discovered.size;
-        for (const n of found) if (discovered.size < MAX_DISCOVERED && getCatalogTool(n)) discovered.add(n);
-        if (discovered.size > before) {
-          await server.sendToolListChanged().catch(() => { /* client may not support list_changed */ });
-          (result as Record<string, unknown>).hint = 'These tools are now available to call directly. If your client does not refresh its tool list, call them through run_tool { name, arguments }.';
+        if (options.perRequest) {
+          if (found.length) (result as Record<string, unknown>).hint = 'Call these tools through run_tool { name, arguments }, or by name if your client allows unlisted tools.';
+        } else {
+          const before = discovered.size;
+          for (const n of found) if (discovered.size < MAX_DISCOVERED && getCatalogTool(n)) discovered.add(n);
+          if (discovered.size > before) {
+            try {
+              await server.sendToolListChanged();
+            } catch { /* client may not support list_changed */ }
+            (result as Record<string, unknown>).hint = 'These tools are now available to call directly. If your client does not refresh its tool list, call them through run_tool { name, arguments }.';
+          }
         }
       }
 
@@ -245,15 +299,15 @@ export function createServer(): Server {
 
   // ─── Resources (@ mentions) ─────────────────────────────────────────────────
 
-  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  server.setRequestHandler('resources/list', async () => {
     return { resources: [...getResources(), ...getAppResources()] };
   });
 
-  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+  server.setRequestHandler('resources/templates/list', async () => {
     return { resourceTemplates: getResourceTemplates() };
   });
 
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  server.setRequestHandler('resources/read', async (request) => {
     const { uri } = request.params;
 
     // MCP Apps views are static HTML and need no instance connection.
@@ -284,12 +338,12 @@ export function createServer(): Server {
 
   // ─── Prompts (/ slash commands) ─────────────────────────────────────────────
 
-  server.setRequestHandler(ListPromptsRequestSchema, async () => {
+  server.setRequestHandler('prompts/list', async () => {
     return { prompts: getPrompts() };
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  server.setRequestHandler(GetPromptRequestSchema, async (request): Promise<any> => {
+  server.setRequestHandler('prompts/get', async (request): Promise<any> => {
     const { name, arguments: args } = request.params;
 
     const result = await resolvePromptAsync(name, args as Record<string, string> | undefined);
@@ -309,9 +363,8 @@ async function main() {
   // Running as a local stdio server means we are on the user's own machine, so upload_attachment may
   // read local files (file_path). HTTP mode stays off unless NOWAIKIT_LOCAL_FILES=true.
   if (getTransportType() === 'stdio') enableLocalFileAccess();
-  const server = createServer();
   const tools = getTools();
-  const httpServer = await connectTransport(server, tools.length, createServer);
+  const httpServer = await connectTransport(createServer, tools.length);
 
   // If HTTP-based transport, mount API routes and A2A
   if (httpServer) {

@@ -63,7 +63,10 @@ export class NowAIKitHttpServer {
       // CORS headers
       res.setHeader('Access-Control-Allow-Origin', this.corsOrigin);
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      // MCP headers: the 2025 session headers plus the 2026-07-28 standard headers (Mcp-Method, Mcp-Name),
+      // which browser-based clients must be allowed to send on every modern request.
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id, Mcp-Protocol-Version, Mcp-Method, Mcp-Name, Last-Event-ID');
+      res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
       res.setHeader('Access-Control-Max-Age', '86400');
 
       // Handle preflight

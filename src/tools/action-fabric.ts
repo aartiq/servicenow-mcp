@@ -7,8 +7,9 @@
  * the instance's OAuth app uses the JWT token format (`nowaikit setup` creates it that way). The same
  * token works for the REST API, so one sign-in covers NowAIKit's own tools and ServiceNow's.
  */
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+// v2 client in its default (legacy) negotiation mode: the same 2025 initialize handshake as v1, which is
+// what the instance's MCP servers speak today.
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
 import { requireWrite } from '../utils/permissions.js';
