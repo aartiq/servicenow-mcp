@@ -17,8 +17,55 @@
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { mkdirSync, existsSync } from 'fs';
-import type { ReportFormat, ReportOptions, ReportResult } from './types.js';
+import type { ReportData, ReportFormat, ReportOptions, ReportResult } from './types.js';
 import { parseMarkdown } from './parser.js';
+
+const CSV_COLUMNS = ['id', 'severity', 'category', 'title', 'description', 'evidence', 'impact', 'recommendation', 'effort', 'record_url'] as const;
+
+function csvCell(v: unknown): string {
+  const s = String(v ?? '').replace(/\r?\n/g, ' ');
+  return /[",]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** The findings register as CSV and JSON rows (one per finding), for spreadsheets and backlogs. */
+export function findingsRegister(data: ReportData): { csv: string; json: Record<string, unknown> } {
+  const rows = data.findings.map((f) => ({
+    id: f.id ?? '',
+    severity: f.severity,
+    category: f.category,
+    title: f.title,
+    description: f.description,
+    evidence: f.evidence ?? '',
+    impact: f.impact ?? '',
+    recommendation: f.recommendation ?? '',
+    effort: f.effort ?? '',
+    record_url: f.recordUrl ?? '',
+  }));
+  const csv = [CSV_COLUMNS.join(','), ...rows.map((r) => CSV_COLUMNS.map((c) => csvCell(r[c])).join(','))].join('\n') + '\n';
+  const json = {
+    capability: data.capability,
+    instance: data.instanceName,
+    instance_url: data.instanceUrl,
+    date: data.scanDate,
+    score: data.metrics.score ?? null,
+    area_scores: data.metrics.areaScores ?? [],
+    overall_health: data.metrics.overallHealth ?? null,
+    severity_counts: data.metrics.severityCounts,
+    findings: rows,
+  };
+  return { csv, json };
+}
+
+/** Write the findings register next to a report file (same base name, .findings.csv and .findings.json). */
+export async function writeFindingsRegister(data: ReportData, reportPath: string): Promise<{ csv: string; json: string }> {
+  const { writeFileSync } = await import('fs');
+  const base = reportPath.replace(/\.(pdf|pptx|md)$/i, '');
+  const reg = findingsRegister(data);
+  const paths = { csv: `${base}.findings.csv`, json: `${base}.findings.json` };
+  writeFileSync(paths.csv, reg.csv);
+  writeFileSync(paths.json, JSON.stringify(reg.json, null, 2));
+  return paths;
+}
 
 /**
  * Generate a branded report from capability markdown output.
@@ -74,15 +121,17 @@ export async function generateReport(
     footer: options.brand?.footer || process.env.NOWAIKIT_REPORT_FOOTER,
   });
 
-  // Lazy-load generators
+  // Lazy-load generators. The findings register (CSV + JSON) is written next to the report.
   if (format === 'pdf') {
     const { generatePdf } = await import('./pdf-generator.js');
-    return generatePdf(reportData, outputPath);
+    const res = await generatePdf(reportData, outputPath);
+    return { ...res, registerPaths: await writeFindingsRegister(reportData, res.filePath) };
   }
 
   if (format === 'pptx') {
     const { generatePptx } = await import('./pptx-generator.js');
-    return generatePptx(reportData, outputPath);
+    const res = await generatePptx(reportData, outputPath);
+    return { ...res, registerPaths: await writeFindingsRegister(reportData, res.filePath) };
   }
 
   throw new Error(`Unsupported report format: ${format}`);
@@ -90,4 +139,4 @@ export async function generateReport(
 
 // Re-export types for SDK consumers
 export type { ReportData, ReportFormat, ReportOptions, ReportResult, ReportFinding, ReportMetrics, Severity } from './types.js';
-export { parseMarkdown } from './parser.js';
+export { parseMarkdown, parseScores, derivedFindingId } from './parser.js';

@@ -68,6 +68,21 @@ const RECORD_PREFIXES: Record<string, string> = {
   TASK: 'task', PTASK: 'pm_project_task', PRJ: 'pm_project',
 };
 
+/** Markdown link: [label](http(s)://...). */
+const MARKDOWN_LINK_RE = /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)/g;
+
+/** A bare http(s) URL. */
+const BARE_URL_RE = /https?:\/\/[^\s)<>\]]+/g;
+
+/** A ServiceNow record URL: https://host/<table>.do?sys_id=<32 hex>. */
+const RECORD_URL_RE = /https?:\/\/[^\s)]+\/([a-z0-9_]+)\.do\?sys_id=([0-9a-f]{32})/i;
+
+/** The table and sys_id of the first ServiceNow record URL in a text, if any. */
+export function findRecordRef(text: string): { table: string; sysId: string } | null {
+  const m = RECORD_URL_RE.exec(text);
+  return m ? { table: m[1]!, sysId: m[2]! } : null;
+}
+
 /** Regex matching ServiceNow record numbers like INC0000052, CHG0040003, PRB0000011. */
 const RECORD_NUMBER_RE = /\b(INC|CHG|PRB|RITM|REQ|STASK|SCTASK|KB|TASK|PTASK|PRJ)\d{5,10}\b/g;
 
@@ -124,6 +139,15 @@ interface EntityMatch {
  */
 export function findAllEntityMatches(text: string, instanceUrl: string): EntityMatch[] {
   const matches: EntityMatch[] = [];
+
+  // 0. Markdown links [label](https://...) show the label and link to the URL; bare URLs link to themselves.
+  for (const m of text.matchAll(MARKDOWN_LINK_RE)) {
+    matches.push({ start: m.index!, end: m.index! + m[0].length, text: m[1]!.replace(/[*`]/g, ''), link: m[2]! });
+  }
+  for (const m of text.matchAll(BARE_URL_RE)) {
+    const url = m[0].replace(/[.,;:!?'"]+$/, '');
+    matches.push({ start: m.index!, end: m.index! + url.length, text: url, link: url });
+  }
 
   // 1. Record numbers (highest priority)
   for (const m of text.matchAll(RECORD_NUMBER_RE)) {

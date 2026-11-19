@@ -1,6 +1,6 @@
 /**
  * MCP Prompts registry — exposes built-in ITSM prompts, user-defined prompts,
- * and 27 Apex capability prompts (scan/review/build/ops/docs).
+ * and the Apex capability prompts (scan/review/build/ops/docs).
  *
  * Performance: Capability modules are lazy-loaded — only imported when a
  * capability prompt is actually resolved. The prompt listing uses a lightweight
@@ -80,7 +80,33 @@ const capabilityMeta: CapabilityMeta[] = [
   { name: 'docs-script', title: 'Document Script', description: 'Detailed script documentation — JSDoc, explanation, usage examples, dependencies, security', category: 'docs', file: 'docs-script', arguments: [{ name: 'script', description: 'script name or pasted code', required: true }] },
   // v4.0 addition
   { name: 'build-atf-suite', title: 'Generate ATF Test Suite', description: 'AI-generates runnable ATF test suites from business rules, script includes, flows, or any artifact', category: 'build', file: 'build-atf-suite', arguments: [{ name: 'target', description: 'artifact name/sys_id or feature description', required: true }, { name: 'coverage', description: 'basic, standard, comprehensive. Default: standard', required: false }] },
+  // Platform and AI assessments
+  { name: 'ai-governance-audit', title: 'AI Governance Audit', description: 'AI governance audit: AI Control Tower assets and approvals, who can run each AI agent, LLM provider per Otto skill, Guardian, MCP and A2A exposure, AI CIs and runtime health, with a score and links', category: 'scan', file: 'ai-governance-audit' },
+  { name: 'csdm-data-foundations', title: 'CSDM and Data Foundations Assessment', description: 'CSDM 5 assessment from ServiceNow Data Foundations scores (CMDB tabs, CSDM stages, KB playbooks) plus domains, services, offerings, product models, relationships and life cycle adoption, with scores and links', category: 'scan', file: 'csdm-data-foundations' },
+  { name: 'integration-auth-audit', title: 'Integration Authentication Audit', description: 'Basic auth restriction readiness: integrations that will break, OAuth clients by grant and token format, credential aliases, outbound Basic auth, failed logins, and an OAuth migration plan', category: 'scan', file: 'integration-auth-audit' },
+  { name: 'mcp-exposure-review', title: 'MCP and A2A Exposure Review', description: 'What the instance exposes to outside AI and what it calls: MCP servers and tools, A2A agents and access, external agent providers, OAuth clients and properties', category: 'scan', file: 'mcp-exposure-review' },
+  { name: 'atf-coverage', title: 'ATF Coverage Report', description: 'ATF code coverage per script, recently changed scripts with no tests, suites and results, and the tests to add first', category: 'review', file: 'atf-coverage', arguments: [{ name: 'days', description: 'window for recently changed scripts (default 90)', required: false }] },
+  { name: 'table-execution-order', title: 'What Runs When', description: 'Everything that fires for one table operation in order (ACLs, business rules, engines, notifications, flows, workflows) with a Mermaid diagram and the risks', category: 'review', file: 'table-execution-order', arguments: [{ name: 'table', description: 'table to trace (default incident)', required: false }, { name: 'operation', description: 'insert, update, delete or query', required: false }] },
+  { name: 'process-insights', title: 'Process Insights', description: 'Process improvement report from Process Mining projects and findings plus task reassignment and reopen data: bottlenecks, automation candidates and a plan', category: 'ops', file: 'process-insights', arguments: [{ name: 'table', description: 'task table (default incident)', required: false }, { name: 'project', description: 'one Process Mining project', required: false }] },
 ];
+
+/**
+ * Output rules added to every Apex skill prompt: real links to records, and a finding format the
+ * report renderer (PDF and PPTX) understands.
+ */
+export const REPORT_OUTPUT_RULES = [
+  '## Output rules (all reports)',
+  '',
+  '- Link every record you name (incident, ACL, CI, business rule, scan finding, flow, agent, dashboard and so on) as a markdown link to the record, using the `record_url` or `list_url` from the gathered data or tool results, for example `[INC0010001](https://<instance>/incident.do?sys_id=...)`.',
+  '- Never invent, guess or edit a URL or sys_id. If the data has no URL for an item, name it without a link.',
+  '- Write each finding as one line that starts with a severity tag, then indented detail lines, so it can be turned into a branded PDF or PPTX with clickable links:',
+  '  `- [HIGH] Short title - what is wrong`',
+  '  `  Evidence: the record link and the numbers from the data`',
+  '  `  Impact: who or what is affected`',
+  '  `  Recommendation: the fix`',
+  '  Severity tags: [CRITICAL], [HIGH], [MEDIUM], [LOW], [INFO].',
+  '- Only state facts that are in the data. Say clearly when a table was not readable or had no rows, instead of guessing.',
+].join('\n');
 
 // Cache for loaded capability modules (lazy-load on first resolve)
 const capabilityCache = new Map<string, CapabilityDefinition>();
@@ -211,7 +237,10 @@ export async function resolvePromptAsync(name: string, args?: Record<string, str
     if (capMeta) {
       await loadProExtensions();
       const cap = await loadCapability(capMeta.file);
-      const messages = cap.buildPrompt(args);
+      const messages = [
+        ...cap.buildPrompt(args),
+        { role: 'user' as const, content: { type: 'text' as const, text: REPORT_OUTPUT_RULES } },
+      ];
       return { description: cap.description, messages };
     }
   }

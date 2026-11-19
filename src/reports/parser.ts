@@ -3,6 +3,27 @@
  * Extracts sections, findings, tables, and metrics from capability output.
  */
 import type { ReportData, ReportSection, ReportFinding, ReportTable, ReportMetrics, Severity } from './types.js';
+import { findRecordRef } from './brand.js';
+import { createHash } from 'node:crypto';
+
+const FINDING_ID = /^(?:\*\*)?([A-Z][A-Z0-9]{1,6}-\d{1,4})(?:\*\*)?[\s:.-]+/;
+const SCORE_LINE = /^\s*(?:[-*]\s*)?(?:\*\*)?(?:overall\s+)?score(?:\*\*)?\s*:?\s*(?:\*\*)?\s*(\d{1,3})\s*\/\s*100/im;
+const AREA_SCORE_LINE = /^\s*(?:[-*]\s*)?(?:\*\*)?area score(?:\*\*)?\s*:?\s*(.+?)\s*[:-]?\s*(?:\*\*)?(\d{1,3})\s*\/\s*100/gim;
+
+/** The overall score and per-area scores a report states. */
+export function parseScores(markdown: string): { score?: number; areaScores: Array<{ area: string; score: number }> } {
+  const m = SCORE_LINE.exec(markdown);
+  const score = m ? Math.min(100, Number(m[1])) : undefined;
+  const areaScores = [...markdown.matchAll(AREA_SCORE_LINE)].map((a) => ({ area: a[1]!.replace(/[*`]/g, '').replace(/[:-]\s*$/, '').trim(), score: Math.min(100, Number(a[2])) }));
+  return { score, areaScores };
+}
+
+/** A short, stable ID for a finding without one: capability prefix plus a hash of the title. */
+export function derivedFindingId(capability: string, title: string): string {
+  const prefix = (capability || 'NAK').split('-').map((w) => w[0] || '').join('').toUpperCase().padEnd(2, 'X').slice(0, 4);
+  const h = createHash('sha1').update(title.toLowerCase().replace(/https?:\/\/\S+/g, '').replace(/\d+/g, '#').replace(/\s+/g, ' ').trim()).digest('hex').slice(0, 4).toUpperCase();
+  return `${prefix}-${h}`;
+}
 
 const SEVERITY_PATTERN = /\[(CRITICAL|HIGH|MEDIUM|LOW|INFO)\]/i;
 const SECTION_PATTERN = /^#{1,3}\s+(?:\d+\.\s*)?(.+)$/;
@@ -19,16 +40,23 @@ function parseFinding(line: string, category: string): ReportFinding | null {
   // Remove the severity tag and clean up the line
   const rest = line.replace(SEVERITY_PATTERN, '').replace(/^[\s\-*]+/, '').trim();
 
+  // A leading stable ID ("ACL-03 ...") is kept as the finding ID.
+  const idMatch = FINDING_ID.exec(rest);
+  const body = idMatch ? rest.slice(idMatch[0].length) : rest;
   // Try to split on common delimiters: " — ", " - ", ": "
-  const parts = rest.split(/\s+[—\-]\s+/);
-  const title = parts[0]?.trim() || rest;
+  const parts = body.split(/\s+[—\-]\s+/);
+  const title = parts[0]?.trim() || body;
   const description = parts.slice(1).join(' — ').trim() || title;
 
+  // A record link in the finding (from the gathered record_url) becomes the finding's "open record" link.
+  const ref = findRecordRef(rest);
   return {
     severity,
     category,
     title,
     description,
+    ...(idMatch ? { id: idMatch[1] } : {}),
+    ...(ref ? { table: ref.table, sysId: ref.sysId } : {}),
   };
 }
 
@@ -36,17 +64,26 @@ function parseFinding(line: string, category: string): ReportFinding | null {
 function enrichFinding(finding: ReportFinding, lines: string[]): void {
   for (const line of lines) {
     const trimmed = line.trim();
-    const evidenceMatch = trimmed.match(/^Evidence:\s*(.+)/i);
+    const evidenceMatch = trimmed.match(/^(?:[-*]\s*)?(?:\*\*)?Evidence:(?:\*\*)?\s*(.+)/i);
     if (evidenceMatch) {
       finding.evidence = evidenceMatch[1].trim();
+      if (!finding.sysId) {
+        const ref = findRecordRef(finding.evidence);
+        if (ref) { finding.table = ref.table; finding.sysId = ref.sysId; }
+      }
       continue;
     }
-    const impactMatch = trimmed.match(/^Impact:\s*(.+)/i);
+    const impactMatch = trimmed.match(/^(?:[-*]\s*)?(?:\*\*)?Impact:(?:\*\*)?\s*(.+)/i);
     if (impactMatch) {
       finding.impact = impactMatch[1].trim();
       continue;
     }
-    const recMatch = trimmed.match(/^Recommendation:\s*(.+)/i);
+    const effortMatch = trimmed.match(/^(?:[-*]\s*)?(?:\*\*)?Effort:(?:\*\*)?\s*(.+)/i);
+    if (effortMatch) {
+      finding.effort = effortMatch[1].trim();
+      continue;
+    }
+    const recMatch = trimmed.match(/^(?:[-*]\s*)?(?:\*\*)?Recommendation:(?:\*\*)?\s*(.+)/i);
     if (recMatch) {
       finding.recommendation = recMatch[1].trim();
       continue;
@@ -185,7 +222,7 @@ export function parseMarkdown(
     }
 
     // Context lines for findings (evidence, impact, recommendation)
-    if (lastFinding && line.match(/^\s+(Evidence|Impact|Recommendation):/i)) {
+    if (lastFinding && line.match(/^\s+(?:[-*]\s*)?(?:\*\*)?(Evidence|Impact|Recommendation|Effort):/i)) {
       findingContextLines.push(line);
       continue;
     } else if (lastFinding && line.trim() === '') {
@@ -210,11 +247,25 @@ export function parseMarkdown(
     categoryBreakdown[f.category] = (categoryBreakdown[f.category] || 0) + 1;
   }
 
+  // Every finding gets an ID (its own, or a stable one derived from the title) and a record URL when it has one.
+  const seen = new Set<string>();
+  for (const f of allFindings) {
+    let id = f.id || derivedFindingId(options.capability, f.title);
+    while (seen.has(id)) id = `${id}x`;
+    seen.add(id);
+    f.id = id;
+    if (f.table && f.sysId) f.recordUrl = `${options.instanceUrl.replace(/\/$/, '')}/${f.table}.do?sys_id=${f.sysId}`;
+  }
+
+  const { score, areaScores } = parseScores(markdown);
+  const health = detectOverallHealth(markdown) ?? (score === undefined ? undefined : score >= 80 ? 'healthy' : score >= 60 ? 'degraded' : 'critical');
   const metrics: ReportMetrics = {
     severityCounts,
     categoryBreakdown,
     totalFindings: allFindings.length,
-    overallHealth: detectOverallHealth(markdown),
+    overallHealth: health,
+    ...(score !== undefined ? { score } : {}),
+    ...(areaScores.length ? { areaScores } : {}),
   };
 
   return {

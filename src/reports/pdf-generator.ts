@@ -84,6 +84,31 @@ export async function generatePdf(data: ReportData, outputPath: string): Promise
     });
   }
 
+  // Score (0 to 100) and per-area scores, when the report states them.
+  if (typeof data.metrics.score === 'number') {
+    content.push({
+      columns: [
+        { text: 'Score: ', style: 'bodyBold', width: 'auto' },
+        { text: `${data.metrics.score}/100`, bold: true, fontSize: 14, color: accent, width: 'auto', margin: [5, -2, 0, 0] },
+      ],
+      margin: [0, 0, 0, 6],
+    });
+    if (data.metrics.areaScores?.length) {
+      content.push({
+        table: {
+          headerRows: 1,
+          widths: ['*', 60],
+          body: [
+            [{ text: 'Area', style: 'tableHeader' }, { text: 'Score', style: 'tableHeader' }],
+            ...data.metrics.areaScores.map((a) => [{ text: a.area, fontSize: 9 }, { text: `${a.score}/100`, fontSize: 9, bold: true }]),
+          ],
+        },
+        layout: 'lightHorizontalLines',
+        margin: [0, 0, 0, 10],
+      });
+    }
+  }
+
   // Severity count boxes
   const severityBoxes = SEVERITY_ORDER.map(sev => ({
     stack: [
@@ -161,6 +186,7 @@ export async function generatePdf(data: ReportData, outputPath: string): Promise
 
       for (const finding of section.findings) {
         const findingStack: any[] = [
+          ...(finding.id ? [{ text: finding.id, fontSize: 7, color: BRAND.gray, bold: true }] : []),
           { text: linkifyTextPdf(finding.title, data.instanceUrl, { bold: true, fontSize: 9 }) },
         ];
         if (finding.description !== finding.title) {
@@ -181,7 +207,12 @@ export async function generatePdf(data: ReportData, outputPath: string): Promise
           { text: severityLabel(finding.severity), color: severityColor(finding.severity), bold: true, fontSize: 9 },
           { stack: findingStack },
           { text: linkifyTextPdf(finding.impact || '—', data.instanceUrl, { fontSize: 9, color: BRAND.textLight }) },
-          { text: linkifyTextPdf(finding.recommendation || '—', data.instanceUrl, { fontSize: 9 }) },
+          {
+            stack: [
+              { text: linkifyTextPdf(finding.recommendation || '—', data.instanceUrl, { fontSize: 9 }) },
+              ...(finding.effort ? [{ text: `Effort: ${finding.effort}`, fontSize: 8, color: BRAND.gray, margin: [0, 2, 0, 0] }] : []),
+            ],
+          },
         ];
         tableBody.push(row);
       }

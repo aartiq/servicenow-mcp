@@ -18,6 +18,12 @@ export interface ReportFinding {
   table?: string;
   /** ServiceNow record sys_id (for building record links) */
   sysId?: string;
+  /** Stable finding ID, e.g. "ACL-03" (from the report, or derived from the title). */
+  id?: string;
+  /** Effort to fix: S, M or L, plus any note. */
+  effort?: string;
+  /** Record URL taken from the evidence or title, if any. */
+  recordUrl?: string;
 }
 
 export interface ReportMetrics {
@@ -25,6 +31,10 @@ export interface ReportMetrics {
   categoryBreakdown: Record<string, number>;
   totalFindings: number;
   overallHealth?: 'healthy' | 'degraded' | 'critical';
+  /** Overall 0 to 100 score from a "Score: NN/100" line. */
+  score?: number;
+  /** Per-area scores from "Area score: <area> NN/100" lines. */
+  areaScores?: Array<{ area: string; score: number }>;
 }
 
 export interface ReportTable {
@@ -86,4 +96,6 @@ export interface BrandKit {
 export interface ReportResult {
   filePath: string;
   sizeBytes: number;
+  /** Findings register written next to the report (CSV and JSON). */
+  registerPaths?: { csv: string; json: string };
 }
