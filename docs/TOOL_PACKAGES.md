@@ -11,7 +11,7 @@ list small while keeping the whole catalog reachable.
 
 | Mode | Advertised tools | Use when |
 |------|------------------|----------|
-| `lean` | 16: `search_tools`, `run_tool` and 14 core record, schema and instance tools. The model finds anything else on demand, and `search_tools` adds what it finds to the session's tool list (clients that support `tools/list_changed` see them straight away; others call them through `run_tool`). | Recommended default. Works with every client, keeps token cost low. `nowaikit setup` writes this for the full package. |
+| `lean` | 17: `search_tools`, `run_tool`, `get_job` and 14 core record, schema and instance tools. The model finds anything else on demand, and `search_tools` adds what it finds to the session's tool list (clients that support `tools/list_changed` see them straight away; others call them through `run_tool`). | Recommended default. Works with every client, keeps token cost low. `nowaikit setup` writes this for the full package. |
 | `core` | 14: only the core CRUD, query and instance tools, no `search_tools`. | You want a fixed, deterministic set with no discovery round-trip. |
 | unset | The whole package (all 500+ for `full`). | A client with no tool cap where you want everything listed directly. |
 
