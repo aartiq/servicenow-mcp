@@ -180,6 +180,21 @@ export function getAiPlatformToolDefinitions() {
       annotations: READ,
     },
     {
+      name: 'get_agent_access_matrix',
+      description:
+        'Who can run each AI agent: its execute ACLs (type gen_ai_agent, falling back to the "*" wildcard rule), the roles on them (flagging roles that do not exist), whether the agent is active and exposed over A2A, its run-as user, and its role masking (sys_agent_access_role_configuration). Agents with no execute ACL of their own are flagged, because Brazil makes AI agent access deny-by-default. Read-only.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Agent name contains' },
+          active_only: { type: 'boolean', description: 'Only active agents (default false)' },
+          limit: { type: 'number', description: 'Max agents (default 50, max 300)' },
+        },
+        required: [],
+      },
+      annotations: READ,
+    },
+    {
       name: 'list_agent_teams',
       description: 'AI Agent Studio teams (sn_aia_team) with their member agents and memory scope (sn_aia_team_member), and how often each team ran (sn_aia_execution_plan). Read-only.',
       inputSchema: {
@@ -438,6 +453,87 @@ export async function listAiInventoryCis(client: ServiceNowClient, args: Record<
   return out;
 }
 
+export async function getAgentAccessMatrix(client: ServiceNowClient, args: Record<string, any>): Promise<Record<string, any>> {
+  const max = lim(args.limit, 50, 300);
+  const nameQ = args.name ? `nameLIKE${safe(args.name, 'name')}^` : '';
+  let agents;
+  try {
+    agents = await client.queryRecords({ table: 'sn_aia_agent', query: `${nameQ}ORDERBYname`, fields: 'sys_id,name,agent_type,sys_scope.scope', limit: max });
+  } catch (err) {
+    if (/invalid table/i.test(errText(err))) throw new ServiceNowError('sn_aia_agent is not available on this instance. It needs ServiceNow Otto AI Agents (sn_aia).', 'PLUGIN_NOT_INSTALLED');
+    throw err;
+  }
+  const ids = agents.records.map((a: any) => String(val(a.sys_id)));
+  const [acls, configs, masking] = await Promise.all([
+    soft(client, { table: 'sys_security_acl', query: 'type.name=gen_ai_agent^operation=execute^active=true', fields: 'sys_id,name,decision_type,condition,advanced,security_attribute', limit: 3000 }),
+    ids.length ? soft(client, { table: 'sn_aia_agent_config', query: `agentIN${ids.join(',')}`, fields: 'agent,active,public,run_as_user', limit: ids.length * 2, displayValue: 'all' }) : Promise.resolve({ records: [] as any[] }),
+    ids.length ? soft(client, { table: 'sys_agent_access_role_configuration', query: `agent_table=sn_aia_agent^agentIN${ids.join(',')}`, fields: 'agent,action,role_list,allow_all_session_roles', limit: ids.length * 2, displayValue: 'all' }) : Promise.resolve({ records: [] as any[] }),
+  ]);
+  const aclIds = acls.records.map((a: any) => String(val(a.sys_id)));
+  const roleLinks: any[] = [];
+  for (let i = 0; i < aclIds.length; i += 150) {
+    const chunk = aclIds.slice(i, i + 150);
+    const r = await soft(client, { table: 'sys_security_acl_role', query: `sys_security_aclIN${chunk.join(',')}`, fields: 'sys_security_acl,sys_user_role,sys_user_role.name', limit: 2000 });
+    roleLinks.push(...r.records);
+  }
+  const rolesByAcl = new Map<string, Array<{ name: string; exists: boolean }>>();
+  for (const l of roleLinks) {
+    const acl = String(val(l.sys_security_acl));
+    const name = String(val(l['sys_user_role.name']) ?? '');
+    const list = rolesByAcl.get(acl) ?? [];
+    list.push({ name: name || String(val(l.sys_user_role) ?? '').trim(), exists: !!name });
+    rolesByAcl.set(acl, list);
+  }
+  const wildcard = acls.records.filter((a: any) => val(a.name) === '*');
+  const cfgBy = new Map(configs.records.map((c: any) => [String(val(c.agent)), c]));
+  const maskBy = new Map(masking.records.map((m: any) => [String(val(m.agent)), m]));
+  const rows = agents.records.map((a: any) => {
+    const id = String(val(a.sys_id));
+    const suffix = `.${val(a['sys_scope.scope'])}.${val(a.name)}`;
+    const own = acls.records.filter((x: any) => {
+      const n = String(val(x.name));
+      return n !== '*' && n === `${n.split('.')[0]}${suffix}`;
+    });
+    const used = own.length ? own : wildcard;
+    const roles = used.flatMap((x: any) => rolesByAcl.get(String(val(x.sys_id))) ?? []);
+    const cfg = cfgBy.get(id);
+    const mask = maskBy.get(id);
+    const missing = roles.filter((r) => !r.exists).map((r) => r.name);
+    const unconditioned = used.some((x: any) => !(rolesByAcl.get(String(val(x.sys_id))) ?? []).length && !String(val(x.condition) ?? '') && String(val(x.advanced)) !== 'true' && !String(val(x.security_attribute) ?? ''));
+    return {
+      agent: String(val(a.name)),
+      type: val(a.agent_type) || null,
+      active: cfg ? val(cfg.active) === 'true' : null,
+      a2a_exposed: cfg ? val(cfg.public) === 'true' : false,
+      run_as: cfg ? disp(cfg.run_as_user) || 'the calling user' : null,
+      execute_acl: own.length ? 'own' : wildcard.length ? 'wildcard only' : 'none',
+      execute_roles: [...new Set(roles.filter((r) => r.exists).map((r) => r.name))],
+      execute_acl_uses_security_attribute: used.some((x: any) => !!String(val(x.security_attribute) ?? '')),
+      ...(missing.length ? { missing_roles: missing } : {}),
+      ...(unconditioned ? { open_to_any_signed_in_user: true } : {}),
+      role_masking: mask ? { action: disp(mask.action) || null, roles: String(disp(mask.role_list) ?? '').split(',').map((x) => x.trim()).filter(Boolean), allow_all_session_roles: val(mask.allow_all_session_roles) === 'true' } : null,
+      acl_urls: used.slice(0, 3).map((x: any) => url(client, 'sys_security_acl', x.sys_id)),
+      record_url: url(client, 'sn_aia_agent', id),
+    };
+  }).filter((r) => !args.active_only || r.active === true);
+  const notes = [acls.note, (configs as any).note, (masking as any).note].filter(Boolean);
+  return {
+    summary: {
+      agents: rows.length,
+      with_own_execute_acl: rows.filter((r) => r.execute_acl === 'own').length,
+      wildcard_only: rows.filter((r) => r.execute_acl === 'wildcard only').length,
+      without_execute_acl: rows.filter((r) => r.execute_acl === 'none').length,
+      open_to_any_signed_in_user: rows.filter((r) => (r as any).open_to_any_signed_in_user).length,
+      with_missing_roles: rows.filter((r) => (r as any).missing_roles).length,
+      a2a_exposed: rows.filter((r) => r.a2a_exposed).length,
+      with_role_masking: rows.filter((r) => r.role_masking).length,
+    },
+    agents: rows,
+    note: 'Agents without their own execute ACL fall back to the "*" gen_ai_agent rule. From Brazil, AI agent access is deny-by-default, so agents without a matching ACL stop working for their users.',
+    ...(notes.length ? { notes } : {}),
+  };
+}
+
 export async function executeAiPlatformToolCall(client: ServiceNowClient, name: string, args: Record<string, any>): Promise<any> {
   switch (name) {
     case 'get_ai_model_providers':
@@ -446,6 +542,8 @@ export async function executeAiPlatformToolCall(client: ServiceNowClient, name: 
       return getAiRuntimeMetrics(client, args);
     case 'list_ai_inventory_cis':
       return listAiInventoryCis(client, args);
+    case 'get_agent_access_matrix':
+      return getAgentAccessMatrix(client, args);
     case 'list_agent_teams': {
       const max = lim(args.limit, 25, 200);
       const q = [args.name ? `nameLIKE${safe(args.name, 'name')}` : '', 'ORDERBYname'].filter(Boolean).join('^');

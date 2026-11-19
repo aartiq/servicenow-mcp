@@ -16,7 +16,7 @@ beforeEach(() => vi.resetAllMocks());
 describe('ai-platform definitions', () => {
   it('exposes the new read-only tools', () => {
     const defs = getAiPlatformToolDefinitions();
-    expect(defs.map((d) => d.name)).toEqual(['get_ai_model_providers', 'get_ai_runtime_metrics', 'list_ai_inventory_cis', 'list_agent_teams', 'list_agent_strategies', 'list_external_agent_runs']);
+    expect(defs.map((d) => d.name)).toEqual(['get_ai_model_providers', 'get_ai_runtime_metrics', 'list_ai_inventory_cis', 'get_agent_access_matrix', 'list_agent_teams', 'list_agent_strategies', 'list_external_agent_runs']);
     for (const d of defs) expect(d.annotations.readOnlyHint).toBe(true);
   });
 });
@@ -143,5 +143,36 @@ describe('Agent Studio gaps', () => {
     q.mockResolvedValue({ count: 0, records: [] });
     await executeAiAgentsToolCall(client, 'list_ai_agents', { agent_type: 'voice' });
     expect(q.mock.calls[0][0].query).toBe('agent_type=voice');
+  });
+});
+
+describe('get_agent_access_matrix', () => {
+  it('matches each agent to its own execute ACL, falls back to the wildcard, and flags gaps', async () => {
+    q.mockImplementation(async (p: any) => {
+      switch (p.table) {
+        case 'sn_aia_agent': return { records: [
+          { sys_id: 'a1', name: 'Triage agent', 'sys_scope.scope': 'sn_itsm' },
+          { sys_id: 'a2', name: 'Orphan agent', 'sys_scope.scope': 'x_acme' },
+        ] };
+        case 'sys_security_acl': return { records: [
+          { sys_id: 'acl1', name: 'global.sn_itsm.Triage agent', decision_type: 'allow' },
+          { sys_id: 'acl2', name: '*', decision_type: 'allow' },
+        ] };
+        case 'sys_security_acl_role': return { records: [
+          { sys_security_acl: 'acl1', sys_user_role: 'r1', 'sys_user_role.name': 'itil' },
+          { sys_security_acl: 'acl1', sys_user_role: 'ghost' },
+        ] };
+        case 'sn_aia_agent_config': return { records: [{ agent: { value: 'a1' }, active: { value: 'true' }, public: { value: 'true' }, run_as_user: { display_value: '' } }] };
+        default: return { records: [] };
+      }
+    });
+    const r = await executeAiPlatformToolCall(client, 'get_agent_access_matrix', {});
+    const triage = r.agents.find((a: any) => a.agent === 'Triage agent');
+    expect(triage).toMatchObject({ execute_acl: 'own', execute_roles: ['itil'], missing_roles: ['ghost'], a2a_exposed: true, active: true, run_as: 'the calling user' });
+    expect(triage.record_url).toContain('sn_aia_agent.do?sys_id=a1');
+    const orphan = r.agents.find((a: any) => a.agent === 'Orphan agent');
+    expect(orphan.execute_acl).toBe('wildcard only');
+    expect(orphan.open_to_any_signed_in_user).toBe(true);
+    expect(r.summary).toMatchObject({ agents: 2, with_own_execute_acl: 1, wildcard_only: 1, with_missing_roles: 1, a2a_exposed: 1 });
   });
 });

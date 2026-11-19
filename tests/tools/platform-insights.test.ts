@@ -40,7 +40,7 @@ describe('release awareness', () => {
 describe('platform insight definitions', () => {
   it('are read-only', () => {
     const defs = getPlatformInsightsToolDefinitions();
-    expect(defs.map((d) => d.name)).toEqual(['get_release_info', 'list_process_mining_projects', 'get_process_mining_findings', 'get_atf_code_coverage', 'trace_table_operation', 'get_integration_auth_posture', 'get_csdm_health', 'get_mcp_exposure']);
+    expect(defs.map((d) => d.name)).toEqual(['get_release_info', 'list_process_mining_projects', 'get_process_mining_findings', 'get_atf_code_coverage', 'trace_table_operation', 'get_integration_auth_posture', 'get_csdm_health', 'get_cmdb_data_foundations', 'get_mcp_exposure']);
     for (const d of defs) expect(d.annotations.readOnlyHint).toBe(true);
   });
   it('builds list links', () => {
@@ -185,5 +185,22 @@ describe('integration auth, CSDM and MCP exposure', () => {
       : { records: [] }));
     const r = await executePlatformInsightsToolCall(client, 'get_mcp_exposure', {});
     expect(r.summary).toMatchObject({ mcp_tools: 2, write_capable_looking_tools: 1 });
+  });
+});
+
+describe('get_cmdb_data_foundations', () => {
+  it('reads CMDB and CSDM scores with playbook links and drill-downs', async () => {
+    q.mockImplementation(async (p: any) => {
+      if (p.table === 'sn_getwell_cmdb_score') return { records: [{ sys_id: 'c1', name: 'Hardware CIs with serial numbers', result: '60', count: '12', cmdb_tab: { display_value: 'Completeness' }, remediation_playbook_url: 'https://support.servicenow.com/kb?id=kb_article_view&sysparm_article=KB1' }] };
+      if (p.table === 'sn_getwell_csdm_score') return { records: [{ sys_id: 's1', name: 'App services with business app', result: '100', count: '0', csdm_stage: { value: '2', display_value: 'Crawl' } }] };
+      if (p.table === 'sn_getwell_duplicate_location') return { records: [{ location: { value: 'l1', display_value: 'London' } }] };
+      return { records: [] };
+    });
+    stats.mockImplementation(async (t: string) => [{ stats: { count: t === 'sn_getwell_duplicate_location' ? 3 : t === 'sn_getwell_metric' ? 40 : 0 } }]);
+    const r = await executePlatformInsightsToolCall(client, 'get_cmdb_data_foundations', {});
+    expect(r.summary).toMatchObject({ active_metrics: 40, cmdb_average_result_pct: 60, csdm_average_result_pct: 100, metrics_below_80_pct: 1 });
+    expect(r.cmdb_metrics[0]).toMatchObject({ failing_records: 12, tab: 'Completeness', playbook_url: expect.stringContaining('KB1') });
+    expect(r.csdm_metrics[0].stage).toBe('Crawl');
+    expect(r.drill_downs).toEqual([expect.objectContaining({ table: 'sn_getwell_duplicate_location', count: 3, sample: [{ name: 'London', record_url: expect.stringContaining('cmn_location.do?sys_id=l1') }] })]);
   });
 });

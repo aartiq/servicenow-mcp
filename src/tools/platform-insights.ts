@@ -175,6 +175,18 @@ export function getPlatformInsightsToolDefinitions() {
       annotations: READ,
     },
     {
+      name: 'get_cmdb_data_foundations',
+      description: 'ServiceNow\'s own CMDB and CSDM Data Foundations scores (plugin com.snc.cmdb.getwell): each metric\'s result percent, failing record count, priority, CMDB tab or CSDM stage (Foundation, Crawl, Walk, Run, Fly) and the ServiceNow KB remediation playbook link, plus the drill-down tables (for example application services missing a business application, duplicate locations) with counts, list links and sample CIs. Read-only',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          limit: { type: 'number', description: 'Max sample CIs per drill-down table (default 5)' },
+        },
+        required: [],
+      },
+      annotations: READ,
+    },
+    {
       name: 'get_mcp_exposure',
       description: 'What the instance exposes to outside AI and what outside AI it calls: MCP Server Console servers and their tools (with tools that look write-capable flagged), the external MCP server registry, A2A-exposed agents, external agent providers, OAuth clients that can reach them (token format, grant type), MCP roles and the agent MCP and external agent properties. Read-only',
       inputSchema: {
@@ -709,6 +721,86 @@ export async function getCsdmHealth(client: ServiceNowClient, args: Record<strin
   };
 }
 
+// ─── CMDB / CSDM Data Foundations ────────────────────────────────────────────
+
+const GETWELL_DRILLDOWNS: Record<string, string> = {
+  sn_getwell_app_svc_missing_biz_app: 'Application services with no business application',
+  sn_getwell_app_svc_missing_biz_svc_off: 'Application services with no business service offering',
+  sn_getwell_app_svc_missing_inf_obj: 'Application services with no information object',
+  sn_getwell_app_svc_incorrect_biz_app_rel: 'Application services with the wrong business application relationship',
+  sn_getwell_biz_app_missing_app_svc: 'Business applications with no application service',
+  sn_getwell_biz_app_missing_inf_obj: 'Business applications with no information object',
+  sn_getwell_biz_svc_off_missing_app_svc: 'Business service offerings with no application service',
+  sn_getwell_tech_svc_missing_tech_svc_off: 'Technical services with no technical service offering',
+  sn_getwell_inf_obj_missing_biz_app: 'Information objects with no business application',
+  sn_getwell_inf_obj_missing_app_svc: 'Information objects with no application service',
+  sn_getwell_ci_name_not_reflecting_hostname: 'CIs whose name does not match the host name',
+  sn_getwell_duplicate_location: 'Duplicate locations',
+  sn_getwell_biz_svc_from_custom_tables: 'Business services built on custom tables',
+  sn_getwell_unconventional_custom_table: 'Unconventional custom CMDB tables',
+};
+
+const CSDM_STAGES: Record<string, string> = { '1': 'Foundation', '2': 'Crawl', '3': 'Walk', '4': 'Run', '5': 'Fly' };
+
+export async function getCmdbDataFoundations(client: ServiceNowClient, args: Record<string, any>): Promise<Record<string, any>> {
+  const max = lim(args.limit, 5, 50);
+  const fields = 'sys_id,name,result,count,priority,remediation_playbook_url,active,sys_updated_on';
+  const [cmdb, csdm, metrics] = await Promise.all([
+    soft(client, { table: 'sn_getwell_cmdb_score', query: 'active=true^ORDERBYresult', fields: `${fields},cmdb_tab`, limit: 200, displayValue: 'all' }),
+    soft(client, { table: 'sn_getwell_csdm_score', query: 'active=true^ORDERBYcsdm_stage', fields: `${fields},csdm_stage`, limit: 200, displayValue: 'all' }),
+    countOf(client, 'sn_getwell_metric', 'active=true'),
+  ]);
+  if (cmdb.note && csdm.note && /not available/.test(cmdb.note)) {
+    throw new ServiceNowError('Data Foundations tables (sn_getwell_*) are not available. They need the CMDB and CSDM Data Foundations dashboards (plugin com.snc.cmdb.getwell).', 'PLUGIN_NOT_INSTALLED');
+  }
+  const row = (r: any, extra: Record<string, unknown>) => ({
+    metric: disp(r.name),
+    result_pct: Number(val(r.result)) || 0,
+    failing_records: Number(val(r.count)) || 0,
+    priority: disp(r.priority) || null,
+    ...extra,
+    playbook_url: val(r.remediation_playbook_url) || null,
+    updated: disp(r.sys_updated_on),
+    record_url: recUrl(client, extra.stage ? 'sn_getwell_csdm_score' : 'sn_getwell_cmdb_score', r.sys_id),
+  });
+  const cmdbRows = cmdb.records.map((r: any) => row(r, { tab: disp(r.cmdb_tab) || null }));
+  const csdmRows = csdm.records.map((r: any) => row(r, { stage: CSDM_STAGES[String(val(r.csdm_stage))] ?? disp(r.csdm_stage) }));
+  const avg = (xs: Array<{ result_pct: number }>) => (xs.length ? Math.round((xs.reduce((n, x) => n + x.result_pct, 0) / xs.length) * 10) / 10 : null);
+  const byKey = (xs: any[], key: string) => {
+    const m = new Map<string, any[]>();
+    for (const x of xs) m.set(String(x[key] ?? '(none)'), [...(m.get(String(x[key] ?? '(none)')) ?? []), x]);
+    return [...m.entries()].map(([k, v]) => ({ [key]: k, metrics: v.length, average_result_pct: avg(v), below_80_pct: v.filter((x) => x.result_pct < 80).length }));
+  };
+  const drill = await Promise.all(Object.entries(GETWELL_DRILLDOWNS).map(async ([table, label]) => {
+    const n = await countOf(client, table, 'to_delete=false');
+    if (typeof n !== 'number' || n === 0) return { table, label, count: n };
+    const sample = await soft(client, { table, query: 'to_delete=false', fields: 'ci,location', limit: max, displayValue: 'all' });
+    return {
+      table, label, count: n, list_url: listUrl(client, table, 'to_delete=false'),
+      sample: sample.records.map((s: any) => (val(s.ci)
+        ? { name: disp(s.ci), record_url: recUrl(client, 'cmdb_ci', s.ci) }
+        : { name: disp(s.location), record_url: recUrl(client, 'cmn_location', s.location) })),
+    };
+  }));
+  const notes = [cmdb.note, csdm.note].filter(Boolean);
+  return {
+    summary: {
+      active_metrics: metrics,
+      cmdb_average_result_pct: avg(cmdbRows),
+      csdm_average_result_pct: avg(csdmRows),
+      metrics_below_80_pct: [...cmdbRows, ...csdmRows].filter((r) => r.result_pct < 80).length,
+      last_calculated: cmdbRows[0]?.updated ?? csdmRows[0]?.updated ?? null,
+    },
+    cmdb_by_tab: byKey(cmdbRows, 'tab'),
+    csdm_by_stage: byKey(csdmRows, 'stage'),
+    cmdb_metrics: cmdbRows,
+    csdm_metrics: csdmRows,
+    drill_downs: drill.filter((d) => d.count !== 0),
+    note: 'These are ServiceNow\'s own Data Foundations results (calculated by the instance\'s scheduled job). The playbook links go to the matching ServiceNow KB article.',
+    ...(notes.length ? { notes } : {}),
+  };
+}
+
 // ─── MCP exposure ────────────────────────────────────────────────────────────
 
 const WRITE_WORDS = /\b(create|update|delete|close|resolve|assign|approve|reject|submit|order|cancel|write|modify|reassign|escalate|add|remove|set)\b/i;
@@ -765,6 +857,7 @@ export async function executePlatformInsightsToolCall(client: ServiceNowClient, 
     case 'get_integration_auth_posture': return getIntegrationAuthPosture(client, args);
     case 'get_csdm_health': return getCsdmHealth(client, args);
     case 'get_mcp_exposure': return getMcpExposure(client, args);
+    case 'get_cmdb_data_foundations': return getCmdbDataFoundations(client, args);
     default: return null;
   }
 }

@@ -271,7 +271,7 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'cmdb_find_duplicates', 'cmdb_find_orphans', 'cmdb_find_stale', 'cmdb_reconcile',
     'discover_table',
     // CSDM health and AI / MCP CIs
-    'get_csdm_health', 'list_ai_inventory_cis',
+    'get_csdm_health', 'get_cmdb_data_foundations', 'list_ai_inventory_cis',
     // Background jobs for long-running tools (discovery scans, reconcile)
     'get_job', 'list_jobs', 'cancel_job',
   ],
@@ -291,7 +291,7 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'sn_mcp_create_server', 'sn_mcp_delete_server', 'sn_mcp_add_tool', 'sn_mcp_remove_tool',
     'sn_mcp_list_registry', 'sn_mcp_register_external_server', 'sn_mcp_unregister_external_server',
     // Providers, runtime metrics, inventory, Agent Studio teams and strategies, exposure
-    'get_ai_model_providers', 'get_ai_runtime_metrics', 'list_ai_inventory_cis', 'get_mcp_exposure',
+    'get_ai_model_providers', 'get_ai_runtime_metrics', 'list_ai_inventory_cis', 'get_mcp_exposure', 'get_agent_access_matrix',
     'list_agent_teams', 'list_agent_strategies', 'list_external_agent_runs',
     'query_records', 'get_record', 'natural_language_search', 'create_record', 'update_record', 'delete_record',
     'nlq_query', 'ai_search', 'categorize_incident',
