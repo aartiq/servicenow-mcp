@@ -447,7 +447,7 @@ export async function getInstanceScanSummary(client: ServiceNowClient, opts: Sca
       aggregate(client, 'scan_check', 'active', 'active=false'),
       safe(() => aggregate(client, 'scan_mute_rule', 'sys_class_name'), []),
       safe(() => aggregate(client, 'scan_queue', 'status'), []),
-      safe(() => client.queryRecords({ table: 'sys_properties', query: 'nameSTARTSWITHglide.scan.', fields: 'name,value', limit: 30 }), { count: 0, records: [] as any[] }),
+      safe(() => client.queryRecords({ table: 'sys_properties', query: 'nameSTARTSWITHglide.scan.^ORname=glide.buildtag.last', fields: 'name,value', limit: 30 }), { count: 0, records: [] as any[] }),
       aggregate(client, 'scan_result', 'state', 'sys_created_on>=javascript:gs.daysAgoStart(30)'),
     ]);
     return {
@@ -459,7 +459,9 @@ export async function getInstanceScanSummary(client: ServiceNowClient, opts: Sca
       mute_rules: mutes.reduce((n, r) => n + r.count, 0),
       queued_scans: sumByKey(queued),
       scan_results_last_30_days: sumByKey(recent),
-      properties: Object.fromEntries(props.records.map((p: any) => [refValue(p.name), refValue(p.value)])),
+      // The release the instance runs (e.g. glide-australia-...), so the report can name it.
+      release: refValue((props.records as any[]).find((p) => refValue(p.name) === 'glide.buildtag.last')?.value) || undefined,
+      properties: Object.fromEntries(props.records.filter((p: any) => refValue(p.name) !== 'glide.buildtag.last').map((p: any) => [refValue(p.name), refValue(p.value)])),
     };
   }, undefined);
 

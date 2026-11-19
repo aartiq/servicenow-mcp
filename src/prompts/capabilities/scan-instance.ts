@@ -87,7 +87,7 @@ const capability: CapabilityDefinition = {
       '```',
       'INSTANCE SCAN REPORT',
       '====================',
-      'Instance: [name]  |  Release: [from inventory or properties if known]  |  Categories: [scope]',
+      'Instance: [name]  |  Release: [instance_scan_inventory.release, as a readable name such as Australia patch 5]  |  Categories: [scope]',
       '',
       'SUMMARY',
       '- Scans analysed, latest run date, overall score and change since the previous run',
