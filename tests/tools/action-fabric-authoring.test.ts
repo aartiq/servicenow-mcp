@@ -86,7 +86,7 @@ describe('write gating', () => {
 
 describe('sn_mcp_create_server', () => {
   it('creates a draft server with a derived name, endpoint URL and attached tools', async () => {
-    const client = makeClient((table, query) => {
+    const client = makeClient((table, _query) => {
       if (table === 'sn_mcp_tool_definition') return [{ sys_id: TOOL_A, name: 'sn_mcp_server.incident_summarization', servers: '' }];
       return [];
     });
