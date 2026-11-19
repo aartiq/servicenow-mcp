@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyProbe, compareVersions, inspectClientConfig } from '../../src/cli/doctor.js';
+import { basicAuthCheck, classifyProbe, compareVersions, inspectClientConfig } from '../../src/cli/doctor.js';
 
 describe('doctor helpers', () => {
   it('compares versions', () => {
@@ -35,5 +35,30 @@ describe('doctor tool-list cost', () => {
     expect(lean.fullToolList).toBe(false);
     const flag = inspectClientConfig(JSON.stringify({ mcpServers: { nowaikit: { command: 'npx', args: ['-y', 'nowaikit', '--lean'] } } }), 'mcpServers');
     expect(flag.fullToolList).toBe(false);
+  });
+});
+
+describe('doctor Basic auth restriction check', () => {
+  const props = {
+    'glide.authenticate.basic_auth.restriction.enforce': 'true',
+    'glide.authenticate.basic_auth.restriction.active': 'true',
+    'glide.authenticate.basic_auth.restriction.default_decision': 'Maintain current login - Basic Auth API and UI login allowed',
+    'glide.authenticate.basic_auth.allowed_roles': 'snc_basic_auth_api_access',
+  };
+  it('is informational on releases without the restriction', () => {
+    expect(basicAuthCheck({ authMethod: 'basic', props: {}, roles: new Set(), webServiceOnly: false }).status).toBe('info');
+  });
+  it('passes OAuth connections and allowlisted Basic accounts', () => {
+    expect(basicAuthCheck({ authMethod: 'oauth', props, roles: new Set(), webServiceOnly: false }).status).toBe('ok');
+    expect(basicAuthCheck({ authMethod: 'basic', props, roles: new Set(['snc_basic_auth_api_access']), webServiceOnly: false }).detail).toMatch(/stays allowed/);
+    expect(basicAuthCheck({ authMethod: 'basic', props, roles: new Set(), webServiceOnly: true }).status).toBe('ok');
+  });
+  it('warns a Basic account that is not on the allowlist, and fails once the decision flips', () => {
+    const warn = basicAuthCheck({ authMethod: 'basic', props, roles: new Set(['itil']), webServiceOnly: false });
+    expect(warn.status).toBe('warn');
+    expect(warn.detail).toMatch(/will break when the default decision flips/);
+    expect(warn.fix).toMatch(/OAuth/);
+    const fail = basicAuthCheck({ authMethod: 'basic', props: { ...props, 'glide.authenticate.basic_auth.restriction.default_decision': 'Deny' }, roles: new Set(), webServiceOnly: false });
+    expect(fail.status).toBe('fail');
   });
 });

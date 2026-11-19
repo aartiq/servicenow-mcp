@@ -29,6 +29,49 @@ export interface DoctorOptions {
   offline?: boolean;
 }
 
+/**
+ * ServiceNow's Basic auth restriction (Brazil, also seen on patched Australia): Basic auth API calls
+ * keep working only for accounts on the allowlist once the default decision stops being "Maintain
+ * current login". Says whether this connection would break.
+ */
+export function basicAuthCheck(input: {
+  authMethod: string;
+  props: Record<string, string>;
+  roles: Set<string>;
+  webServiceOnly: boolean;
+  userName?: string;
+}): CheckResult {
+  const { props } = input;
+  const enforce = props['glide.authenticate.basic_auth.restriction.enforce'];
+  const active = props['glide.authenticate.basic_auth.restriction.active'];
+  const decision = props['glide.authenticate.basic_auth.restriction.default_decision'] || '';
+  const title = 'Basic auth restriction';
+  if (enforce === undefined && active === undefined) {
+    return { id: 'basic_auth', title, status: 'info', detail: 'not on this release (no glide.authenticate.basic_auth.restriction properties)' };
+  }
+  const mode = enforce === 'true' ? 'enforce mode' : 'tracking mode';
+  if (input.authMethod !== 'basic') {
+    return { id: 'basic_auth', title, status: 'ok', detail: `${mode}; this connection uses OAuth, so it is not affected` };
+  }
+  const allowedRoles = (props['glide.authenticate.basic_auth.allowed_roles'] || 'snc_basic_auth_api_access').split(',').map((r) => r.trim()).filter(Boolean);
+  const allowedUsers = (props['glide.authenticate.basic_auth.allowed_users'] || '').split(',').map((u) => u.trim().toLowerCase()).filter(Boolean);
+  const viaRole = allowedRoles.some((r) => input.roles.has(r));
+  const viaUser = !!input.userName && allowedUsers.includes(input.userName.toLowerCase());
+  const viaWsao = input.webServiceOnly && props['glide.authenticate.basic_auth.allow_wsao'] !== 'false';
+  const maintained = /maintain current login/i.test(decision);
+  if (viaRole || viaUser || viaWsao) {
+    const why = viaRole ? `has ${allowedRoles.find((r) => input.roles.has(r))}` : viaUser ? 'is in glide.authenticate.basic_auth.allowed_users' : 'is a web service access only account';
+    return { id: 'basic_auth', title, status: 'ok', detail: `${mode}; this Basic auth account ${why}, so it stays allowed` };
+  }
+  return {
+    id: 'basic_auth', title, status: maintained ? 'warn' : 'fail',
+    detail: maintained
+      ? `${mode}; this connection uses Basic and will break when the default decision flips from "Maintain current login" (the account is not on the Basic auth allowlist)`
+      : `${mode}; default decision "${decision || 'unknown'}" and this Basic auth account is not on the allowlist`,
+    fix: 'Switch this instance to OAuth in `nowaikit setup` (recommended), or ask an admin to grant snc_basic_auth_api_access to the account.',
+  };
+}
+
 /** Compare dotted versions. Returns -1, 0 or 1. */
 export function compareVersions(a: string, b: string): number {
   const pa = a.replace(/^v/, '').split(/[.-]/).map((n) => parseInt(n, 10) || 0);
@@ -229,27 +272,55 @@ async function instanceChecks(opts: DoctorOptions): Promise<CheckResult[]> {
   }
 
   // Roles: the common reason a working login still fails on tools.
+  let userRoles = new Set<string>();
   try {
     const roles = await client.queryRecords({
       table: 'sys_user_has_role', query: `user=${user.user_sys_id}^state=active`, fields: 'role.name', limit: 500,
     });
     const names = new Set((roles.records as any[]).map((r) => String(r['role.name'] ?? '')).filter(Boolean));
+    userRoles = names;
     const admin = names.has('admin');
     const itil = names.has('itil');
+    // Australia adds sn_cmdb_admin and sn_cmdb_editor; CMDB tools work with those alone.
+    const cmdb = ['sn_cmdb_admin', 'sn_cmdb_editor'].filter((r) => names.has(r));
+    const ok = admin || itil || cmdb.length > 0;
     out.push({
-      id: 'roles', title: 'Roles', status: admin || itil ? 'ok' : 'warn',
-      detail: admin ? 'admin' : itil ? 'itil (admin-only tools such as scripts, ACLs and update sets will be refused)' : `${names.size} role(s), none of admin or itil`,
-      fix: admin || itil ? undefined : 'Most ITSM tools need itil; developer tools need admin. Ask your ServiceNow admin to grant the roles you need.',
+      id: 'roles', title: 'Roles', status: ok ? 'ok' : 'warn',
+      detail: admin ? 'admin' : itil ? `itil${cmdb.length ? `, ${cmdb.join(', ')}` : ''} (admin-only tools such as scripts, ACLs and update sets will be refused)` : cmdb.length ? `${cmdb.join(', ')} (CMDB tools only; ITSM tools need itil)` : `${names.size} role(s), none of admin, itil, sn_cmdb_admin or sn_cmdb_editor`,
+      fix: ok ? undefined : 'Most ITSM tools need itil; developer tools need admin; CMDB work can use sn_cmdb_editor. Ask your ServiceNow admin to grant the roles you need.',
     });
   } catch {
     out.push({ id: 'roles', title: 'Roles', status: 'info', detail: 'could not read your roles (sys_user_has_role is restricted for this account)' });
   }
 
+  // Basic auth restriction: will this connection keep working when ServiceNow tightens Basic auth?
+  try {
+    const [props, me] = await Promise.all([
+      client.queryRecords({ table: 'sys_properties', query: 'nameSTARTSWITHglide.authenticate.basic_auth', fields: 'name,value', limit: 30 }),
+      client.queryRecords({ table: 'sys_user', query: `sys_id=${user.user_sys_id}`, fields: 'web_service_access_only,user_name', limit: 1 }).catch(() => ({ records: [] as any[] })),
+    ]);
+    const map = Object.fromEntries((props.records as any[]).map((p) => [String(p.name), String(p.value ?? '')]));
+    const rec = (me.records as any[])[0] || {};
+    out.push(basicAuthCheck({
+      authMethod: String((client as any).authMethod || 'basic'),
+      props: map,
+      roles: userRoles,
+      webServiceOnly: String(rec.web_service_access_only) === 'true',
+      userName: String(rec.user_name || user.user_name || ''),
+    }));
+  } catch { /* optional */ }
+
   // Release family, from the build tag.
   try {
     const p = await client.queryRecords({ table: 'sys_properties', query: 'name=glide.buildtag.last', fields: 'value', limit: 1 });
     const tag = String((p.records[0] as any)?.value || '');
-    if (tag) out.push({ id: 'release', title: 'ServiceNow release', status: 'info', detail: tag });
+    if (tag) {
+      const { releaseContext } = await import('../servicenow/release.js');
+      const ctx = releaseContext(tag);
+      const name = ctx.current.label ? `${ctx.current.label}${ctx.current.patch ? ` patch ${ctx.current.patch}` : ''}` : '';
+      const next = ctx.target ? `; next family ${ctx.target.label}${ctx.target.status === 'early_availability' ? ' (early availability)' : ''}` : '';
+      out.push({ id: 'release', title: 'ServiceNow release', status: 'info', detail: name ? `${name}${next} (${tag})` : tag });
+    }
   } catch { /* optional */ }
 
   // Permission gates as the server will apply them for this instance.
