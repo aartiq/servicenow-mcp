@@ -1,6 +1,12 @@
 /**
  * CMDB Reconciliation tools — find duplicates, orphans, stale CIs, and reconcile.
  * Read tools: Tier 0. Reconcile action: Tier 2 (CMDB_WRITE_ENABLED=true).
+ *
+ * CSDM life cycle: CIs carry both the legacy status fields (install_status, operational_status)
+ * and the CSDM life cycle fields (life_cycle_stage, life_cycle_stage_status, references keyed by
+ * name). Reads return both. cmdb_reconcile retires with the legacy fields by default; retire_using
+ * "life_cycle" sets End of Life / Retired, "both" sets both, and "auto" follows
+ * csdm.lifecycle.migration.activated.
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
@@ -39,11 +45,12 @@ export function getCmdbReconciliationToolDefinitions() {
     },
     {
       name: 'cmdb_find_stale',
-      description: 'Find CIs not updated within a given number of days that are still operational',
+      description: 'Find CIs not updated within a given number of days that are still operational. "Operational" can mean the legacy operational_status, the CSDM life cycle stage (life_cycle_stage = Operational), or either',
       inputSchema: {
         type: 'object',
         properties: {
           ci_class: { type: 'string', description: 'CI class table (default cmdb_ci)' },
+          lifecycle_model: { type: 'string', enum: ['legacy', 'life_cycle', 'either'], description: 'How to tell a CI is operational: legacy (operational_status = 1, default), life_cycle (CSDM life_cycle_stage = Operational) or either' },
           days_threshold: { type: 'number', description: 'Number of days since last update to consider stale (default 90)' },
           limit: { type: 'number', description: 'Max stale CIs to return (default 50)' },
         },
@@ -67,11 +74,48 @@ export function getCmdbReconciliationToolDefinitions() {
             description: 'Array of CI sys_ids to act on',
           },
           dry_run: { type: 'boolean', description: 'Preview changes without applying (default true)' },
+          retire_using: {
+            type: 'string',
+            enum: ['install_status', 'life_cycle', 'both', 'auto'],
+            description: 'How a CI is retired: install_status (default: operational_status=6, install_status=7), life_cycle (CSDM life_cycle_stage "End of Life", life_cycle_stage_status "Retired"), both, or auto (life_cycle when csdm.lifecycle.migration.activated is true, else install_status)',
+          },
         },
         required: ['action', 'targets'],
       },
     },
   ];
+}
+
+const LEGACY_RETIRE = { operational_status: 6, install_status: 7 };
+const LIFE_CYCLE_RETIRE = { life_cycle_stage: 'End of Life', life_cycle_stage_status: 'Retired' };
+const LIFE_CYCLE_FIELDS = 'install_status,life_cycle_stage,life_cycle_stage_status';
+
+/** The fields that retire a CI for the chosen model, after checking the life cycle values exist. */
+export async function retireFields(client: ServiceNowClient, mode: unknown): Promise<{ mode: string; fields: Record<string, any>; detail: string }> {
+  let m = String(mode || 'install_status').toLowerCase();
+  if (!['install_status', 'life_cycle', 'both', 'auto'].includes(m)) {
+    throw new ServiceNowError('retire_using must be install_status, life_cycle, both or auto', 'INVALID_REQUEST');
+  }
+  if (m === 'auto') {
+    const p = await client.queryRecords({ table: 'sys_properties', query: 'name=csdm.lifecycle.migration.activated', fields: 'value', limit: 1 }).catch(() => ({ records: [] as any[] }));
+    m = String((p.records[0] as any)?.value) === 'true' ? 'life_cycle' : 'install_status';
+  }
+  if (m !== 'install_status') {
+    const [stage, status] = await Promise.all([
+      client.queryRecords({ table: 'life_cycle_stage', query: 'name=End of Life', fields: 'name', limit: 1 }).catch(() => ({ records: [] as any[] })),
+      client.queryRecords({ table: 'life_cycle_stage_status', query: 'name=Retired', fields: 'name', limit: 1 }).catch(() => ({ records: [] as any[] })),
+    ]);
+    if (!stage.records.length || !status.records.length) {
+      throw new ServiceNowError('CSDM life cycle values "End of Life" / "Retired" were not found (life_cycle_stage, life_cycle_stage_status). Use retire_using: "install_status" on this instance.', 'INVALID_REQUEST');
+    }
+  }
+  const fields = m === 'install_status' ? { ...LEGACY_RETIRE } : m === 'life_cycle' ? { ...LIFE_CYCLE_RETIRE } : { ...LEGACY_RETIRE, ...LIFE_CYCLE_RETIRE };
+  const detail = m === 'install_status'
+    ? 'operational_status=6 (retired)'
+    : m === 'life_cycle'
+      ? 'life_cycle_stage=End of Life, life_cycle_stage_status=Retired'
+      : 'operational_status=6, install_status=7, life_cycle_stage=End of Life, life_cycle_stage_status=Retired';
+  return { mode: m, fields, detail };
 }
 
 const CMDB_RECON_TOOL_NAMES = new Set([
@@ -93,7 +137,7 @@ export async function executeCmdbReconciliationToolCall(
         : ['name', 'serial_number', 'ip_address'];
       const limit = args.limit || 100;
 
-      const fields = ['sys_id', 'name', 'sys_class_name', ...matchFields].filter(
+      const fields = ['sys_id', 'name', 'sys_class_name', ...matchFields, ...LIFE_CYCLE_FIELDS.split(',')].filter(
         (v, i, a) => a.indexOf(v) === i
       );
 
@@ -143,7 +187,7 @@ export async function executeCmdbReconciliationToolCall(
         table: ciClass,
         query: 'active=true',
         limit,
-        fields: 'sys_id,name,sys_class_name,operational_status',
+        fields: `sys_id,name,sys_class_name,operational_status,${LIFE_CYCLE_FIELDS}`,
       });
 
       const orphans: any[] = [];
@@ -174,13 +218,20 @@ export async function executeCmdbReconciliationToolCall(
       const daysThreshold = args.days_threshold || 90;
       const limit = args.limit || 50;
 
-      const query = `sys_updated_on<javascript:gs.daysAgo(${daysThreshold})^operational_status=1^active=true`;
+      const model = String(args.lifecycle_model || 'legacy').toLowerCase();
+      const operational: Record<string, string> = {
+        legacy: 'operational_status=1',
+        life_cycle: 'life_cycle_stage.name=Operational',
+        either: 'operational_status=1^ORlife_cycle_stage.name=Operational',
+      };
+      if (!operational[model]) throw new ServiceNowError('lifecycle_model must be legacy, life_cycle or either', 'INVALID_REQUEST');
+      const query = `sys_updated_on<javascript:gs.daysAgo(${daysThreshold})^${operational[model]}^active=true`;
 
       const resp = await client.queryRecords({
         table: ciClass,
         query,
         limit,
-        fields: 'sys_id,name,sys_class_name,operational_status,sys_updated_on,discovery_source',
+        fields: `sys_id,name,sys_class_name,operational_status,sys_updated_on,discovery_source,${LIFE_CYCLE_FIELDS}`,
       });
 
       return {
@@ -188,6 +239,7 @@ export async function executeCmdbReconciliationToolCall(
         days_threshold: daysThreshold,
         stale_count: resp.count,
         stale_cis: resp.records,
+        ...(model !== 'legacy' ? { lifecycle_model: model } : {}),
       };
     }
 
@@ -207,6 +259,7 @@ export async function executeCmdbReconciliationToolCall(
       }
 
       const dryRun = args.dry_run !== false;
+      const retire = await retireFields(client, args.retire_using);
       const results: { sys_id: string; action: string; status: string; detail: string }[] = [];
 
       switch (args.action) {
@@ -247,10 +300,7 @@ export async function executeCmdbReconciliationToolCall(
               }
 
               // Retire the duplicate
-              await client.updateRecord('cmdb_ci', dupId, {
-                operational_status: 6, // retired
-                install_status: 7,     // retired
-              });
+              await client.updateRecord('cmdb_ci', dupId, retire.fields);
               results.push({ sys_id: dupId, action: 'retire', status: 'completed', detail: `Retired; ${parentRels.count + childRels.count} relationships moved to survivor` });
             }
           }
@@ -260,13 +310,10 @@ export async function executeCmdbReconciliationToolCall(
         case 'retire_stale': {
           for (const sysId of args.targets) {
             if (dryRun) {
-              results.push({ sys_id: sysId, action: 'retire', status: 'dry_run', detail: 'Would set operational_status=6 (retired)' });
+              results.push({ sys_id: sysId, action: 'retire', status: 'dry_run', detail: `Would set ${retire.detail}` });
             } else {
-              await client.updateRecord('cmdb_ci', sysId, {
-                operational_status: 6,
-                install_status: 7,
-              });
-              results.push({ sys_id: sysId, action: 'retire', status: 'completed', detail: 'Set operational_status=6 (retired)' });
+              await client.updateRecord('cmdb_ci', sysId, retire.fields);
+              results.push({ sys_id: sysId, action: 'retire', status: 'completed', detail: `Set ${retire.detail}` });
             }
           }
           break;
@@ -275,13 +322,10 @@ export async function executeCmdbReconciliationToolCall(
         case 'remove_orphans': {
           for (const sysId of args.targets) {
             if (dryRun) {
-              results.push({ sys_id: sysId, action: 'retire', status: 'dry_run', detail: 'Would retire orphan CI (operational_status=6)' });
+              results.push({ sys_id: sysId, action: 'retire', status: 'dry_run', detail: `Would retire orphan CI (${retire.detail})` });
             } else {
-              await client.updateRecord('cmdb_ci', sysId, {
-                operational_status: 6,
-                install_status: 7,
-              });
-              results.push({ sys_id: sysId, action: 'retire', status: 'completed', detail: 'Orphan CI retired (operational_status=6)' });
+              await client.updateRecord('cmdb_ci', sysId, retire.fields);
+              results.push({ sys_id: sysId, action: 'retire', status: 'completed', detail: `Orphan CI retired (${retire.detail})` });
             }
           }
           break;
@@ -291,6 +335,7 @@ export async function executeCmdbReconciliationToolCall(
       return {
         action: args.action,
         dry_run: dryRun,
+        retire_using: retire.mode,
         target_count: args.targets.length,
         results,
       };
