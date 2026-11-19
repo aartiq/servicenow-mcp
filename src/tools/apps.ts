@@ -523,8 +523,11 @@ export async function executeAppsToolCall(client: ServiceNowClient, name: string
       return {
         approvals,
         more: rows.length > limit,
+        // The list itself goes to the screen; the model still gets one short line per approval so it can talk about them.
         summary: approvals.length
-          ? `${approvals.length} approval(s) waiting. In hosts without MCP Apps, use approve_request / reject_request with the sys_id.`
+          ? `${approvals.length} approval(s) waiting: ` +
+            approvals.map((a) => (a.short_description ? `${a.number || a.type} (${String(a.short_description).slice(0, 80)})` : a.number || a.type)).join('; ') +
+            `${rows.length > limit ? '; more not shown' : ''}. In hosts without MCP Apps, use approve_request / reject_request with the sys_id.`
           : 'No approvals are waiting for the current user.',
       };
     }
