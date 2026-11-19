@@ -37,6 +37,10 @@ describe('provider parsing', () => {
     expect(providerKind('Google Gemini')).toBe('third_party');
     expect(providerKind('Now LLM Service')).toBe('servicenow');
     expect(providerKind('No LLM (script or flow)')).toBe('none');
+    expect(providerFromDefinition('X', '{"provider":"Now LLM GenericNow LLM Generic"}')).toBe('Now LLM Generic');
+    expect(providerFamily('Google Search API')).toMatch(/Not an LLM/);
+    expect(providerKind('RAG Retriever API')).toBe('none');
+    expect(providerFamily('Google Gemini')).toBe('Google Gemini');
   });
 });
 

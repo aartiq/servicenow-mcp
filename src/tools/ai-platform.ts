@@ -87,7 +87,18 @@ async function countOf(client: ServiceNowClient, table: string, query = ''): Pro
  * "<skill> (<Provider> - <API>)" or "<skill> (<Provider>)"; filter_properties and the connection
  * alias are fallbacks.
  */
+/** "Now LLM GenericNow LLM Generic" -> "Now LLM Generic" (some filter_properties repeat the name). */
+function undouble(v: string): string {
+  const t = v.trim();
+  if (t.length % 2 === 0 && t.length >= 4 && t.slice(0, t.length / 2) === t.slice(t.length / 2)) return t.slice(0, t.length / 2).trim();
+  return t;
+}
+
 export function providerFromDefinition(name: unknown, filterProps?: unknown, connection?: unknown): string {
+  return undouble(providerFromDefinitionRaw(name, filterProps, connection));
+}
+
+function providerFromDefinitionRaw(name: unknown, filterProps?: unknown, connection?: unknown): string {
   const n = String(disp(name) ?? '');
   const m = /\(([^()]+)\)\s*$/.exec(n);
   if (m) {
@@ -106,9 +117,12 @@ export function providerFromDefinition(name: unknown, filterProps?: unknown, con
 }
 
 /** Group provider labels into families: "Now LLM Generic" and "NOW LLM LARGE" are both Now LLM. */
+const NOT_AN_LLM = /search api|retriever|\brag\b|scrap|executor|inference|strategy|autoeval|benchmark|\bapi$/i;
+
 export function providerFamily(provider: string): string {
   const p = provider.toLowerCase();
   if (/no llm/.test(p)) return 'No LLM (script or flow)';
+  if (NOT_AN_LLM.test(p) && !/now ?llm|azure|openai|claude|gemini|gpt/.test(p)) return 'Not an LLM (tool, search or internal service)';
   if (/now ?llm|servicenow/.test(p)) return 'Now LLM (ServiceNow)';
   if (/azure/.test(p)) return 'Azure OpenAI';
   if (/claude|anthropic|bedrock|aws|amazon/.test(p)) return 'Anthropic Claude (AWS)';
@@ -124,6 +138,7 @@ const THIRD_PARTY = /azure|openai|gpt|claude|anthropic|bedrock|amazon|aws|gemini
 
 export function providerKind(provider: string): 'servicenow' | 'third_party' | 'custom' | 'none' | 'unknown' {
   if (/no llm/i.test(provider)) return 'none';
+  if (NOT_AN_LLM.test(provider) && !/now ?llm|azure|openai|claude|gemini|gpt/i.test(provider)) return 'none';
   if (/now ?llm|servicenow/i.test(provider)) return 'servicenow';
   if (THIRD_PARTY.test(provider)) return 'third_party';
   if (/custom|byo|gaf/i.test(provider)) return 'custom';
@@ -142,6 +157,7 @@ export function getAiPlatformToolDefinitions() {
           skill: { type: 'string', description: 'Only skills or capabilities whose name contains this text' },
           provider: { type: 'string', description: 'Only skills whose provider contains this text, e.g. "Azure", "Claude", "Now LLM"' },
           agents_only: { type: 'boolean', description: 'Only the AI Agents capabilities (scope sn_aia)' },
+          summary_only: { type: 'boolean', description: 'Return the totals by provider and the configuration, without the per-skill list (much smaller)' },
           limit: { type: 'number', description: 'Max skills to list (default 50, max 500). Totals by provider always cover every skill' },
         },
         required: [],
@@ -188,6 +204,7 @@ export function getAiPlatformToolDefinitions() {
         properties: {
           name: { type: 'string', description: 'Agent name contains' },
           active_only: { type: 'boolean', description: 'Only active agents (default false)' },
+          gaps_only: { type: 'boolean', description: 'Only agents with a gap: wildcard or no execute ACL, open to any signed-in user, or missing roles' },
           limit: { type: 'number', description: 'Max agents (default 50, max 300)' },
         },
         required: [],
@@ -298,6 +315,7 @@ export async function getAiModelProviders(client: ServiceNowClient, args: Record
   return {
     summary: {
       skills_with_a_default_definition: skills.length,
+      llm_skills: skills.filter((s) => s.provider_kind !== 'none').length,
       third_party_provider_skills: thirdParty,
       servicenow_model_skills: skills.filter((s) => s.provider_kind === 'servicenow').length,
       no_llm_skills: skills.filter((s) => s.provider_kind === 'none').length,
@@ -320,8 +338,8 @@ export async function getAiModelProviders(client: ServiceNowClient, args: Record
     system_executors: sysMap.records,
     guardian_providers: guardian.records,
     agents_by_strategy: agents.rows.map((r) => ({ strategy: r.strategy || '(none)', agents: r.count })),
-    skills: skills.slice(0, max),
-    ...(skills.length > max ? { skills_truncated: `${skills.length - max} more; narrow with skill or provider` } : {}),
+    ...(args.summary_only ? {} : { skills: skills.slice(0, max) }),
+    ...(!args.summary_only && skills.length > max ? { skills_truncated: `${skills.length - max} more; narrow with skill or provider` } : {}),
     note: 'Provider per skill comes from the default, active definition of each OneExtend capability. Admins can change it per skill in Now Assist Admin; agents run their planner and tools through the AI Agents capabilities (scope sn_aia).',
     ...(notes.length ? { notes } : {}),
   };
@@ -516,6 +534,9 @@ export async function getAgentAccessMatrix(client: ServiceNowClient, args: Recor
       record_url: url(client, 'sn_aia_agent', id),
     };
   }).filter((r) => !args.active_only || r.active === true);
+  const listed = args.gaps_only
+    ? rows.filter((r) => r.execute_acl !== 'own' || (r as any).open_to_any_signed_in_user || (r as any).missing_roles)
+    : rows;
   const notes = [acls.note, (configs as any).note, (masking as any).note].filter(Boolean);
   return {
     summary: {
@@ -528,7 +549,7 @@ export async function getAgentAccessMatrix(client: ServiceNowClient, args: Recor
       a2a_exposed: rows.filter((r) => r.a2a_exposed).length,
       with_role_masking: rows.filter((r) => r.role_masking).length,
     },
-    agents: rows,
+    agents: listed,
     note: 'Agents without their own execute ACL fall back to the "*" gen_ai_agent rule. From Brazil, AI agent access is deny-by-default, so agents without a matching ACL stop working for their users.',
     ...(notes.length ? { notes } : {}),
   };

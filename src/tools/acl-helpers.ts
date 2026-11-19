@@ -154,6 +154,7 @@ export async function aclPosture(client: ServiceNowClient, opts: AclPostureOptio
       type: String(val(r['sys_security_acl.type']) ?? ''),
       decision_type: String(val(r['sys_security_acl.decision_type']) ?? '') || 'allow',
       missing_role: String(val(r.sys_user_role) ?? '').trim(),
+      ...(/^[0-9a-f]{32}$/i.test(String(val(r.sys_user_role) ?? '').trim()) ? { missing_role_note: 'sys_id of a role that was deleted; its name is no longer on the instance' } : {}),
       acl_sys_id: aclId,
       record_url: aclId ? url('sys_security_acl', aclId) : undefined,
     };
