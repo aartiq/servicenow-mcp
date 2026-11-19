@@ -7,6 +7,7 @@
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
 import { requireScripting } from '../utils/permissions.js';
+import { aclPosture, aclRoleLinks, normaliseDecisionType, parseRoleList, resolveRoles, resolveSecurityAttribute, supportsDecisionType } from './acl-helpers.js';
 
 export function getScriptToolDefinitions() {
   return [
@@ -317,13 +318,14 @@ export function getScriptToolDefinitions() {
     // ── ACL Management ───────────────────────────────────────────────────────
     {
       name: 'list_acls',
-      description: 'List Access Control rules (ACLs) — who can read/write/create/delete records (requires SCRIPTING_ENABLED=true)',
+      description: 'List Access Control rules (ACLs) — who can read/write/create/delete records. Shows decision_type: allow (Allow If) or deny (Deny Unless)',
       inputSchema: {
         type: 'object',
         properties: {
           table: { type: 'string', description: 'Filter ACLs by table name' },
           operation: { type: 'string', description: 'Filter by operation: read, write, create, delete, execute' },
           active: { type: 'boolean', description: 'Filter to active ACLs only' },
+          decision_type: { type: 'string', enum: ['allow', 'deny'], description: 'Filter by decision type: allow (Allow If) or deny (Deny Unless)' },
           limit: { type: 'number', description: 'Max results (default: 25)' },
         },
         required: [],
@@ -331,7 +333,7 @@ export function getScriptToolDefinitions() {
     },
     {
       name: 'get_acl',
-      description: 'Get full details of an ACL rule including its script and role requirements (requires SCRIPTING_ENABLED=true)',
+      description: 'Get full details of an ACL rule including its script, decision type and required roles (required_roles flags any role that no longer exists)',
       inputSchema: {
         type: 'object',
         properties: {
@@ -342,17 +344,21 @@ export function getScriptToolDefinitions() {
     },
     {
       name: 'create_acl',
-      description: 'Create a new ACL rule to control access to a table or field (requires SCRIPTING_ENABLED=true)',
+      description: 'Create a new ACL rule to control access to a table or field (requires SCRIPTING_ENABLED=true). Supports Deny Unless ACLs (decision_type "deny"), conditions, security attributes and required roles. Every role must exist: an ACL that names a missing role grants nothing, and from Brazil it denies everyone',
       inputSchema: {
         type: 'object',
         properties: {
           name: { type: 'string', description: 'ACL name (typically "table.field" or "table.*")' },
-          type: { type: 'string', description: '"record" | "field" | "rest_endpoint" | "soap_endpoint"' },
+          type: { type: 'string', description: '"record" | "field" | "rest_endpoint" | "soap_endpoint" | "query_match" | "query_range" and other sys_security_type names' },
           operation: { type: 'string', description: '"read" | "write" | "create" | "delete" | "execute"' },
+          decision_type: { type: 'string', enum: ['allow', 'deny'], description: 'allow (Allow If, default) or deny (Deny Unless: evaluated first, denies access unless its roles, condition and script all pass; it never grants access on its own)' },
           admin_overrides: { type: 'boolean', description: 'Allow admin to override (default: true)' },
           active: { type: 'boolean', description: 'Whether to activate immediately (default: true)' },
-          script: { type: 'string', description: 'Optional condition script (return true to allow)' },
-          roles: { type: 'string', description: 'Comma-separated roles required (e.g. "admin,itil")' },
+          script: { type: 'string', description: 'Optional condition script (set answer = true to allow). Sets advanced=true so the script runs' },
+          condition: { type: 'string', description: 'Optional encoded query the record must match, e.g. "active=true^assignment_group=javascript:gs.getUser().getMyGroups()"' },
+          security_attribute: { type: 'string', description: 'Optional security attribute (sys_security_attribute sys_id or name)' },
+          roles: { type: 'string', description: 'Comma-separated roles required (e.g. "admin,itil"). Each role must exist' },
+          allow_missing_roles: { type: 'boolean', description: 'Create the ACL even if a role does not exist yet (default false). Not recommended: it denies everyone from Brazil' },
           description: { type: 'string', description: 'Description of this access rule' },
         },
         required: ['name', 'operation'],
@@ -360,14 +366,29 @@ export function getScriptToolDefinitions() {
     },
     {
       name: 'update_acl',
-      description: 'Update an existing ACL rule (requires SCRIPTING_ENABLED=true)',
+      description: 'Update an existing ACL rule (requires SCRIPTING_ENABLED=true). Can switch between Allow If and Deny Unless, and replace the required roles (each role must exist)',
       inputSchema: {
         type: 'object',
         properties: {
           sys_id: { type: 'string', description: 'ACL sys_id' },
-          fields: { type: 'object', description: 'Fields to update (active, script, roles, condition, etc.)' },
+          fields: { type: 'object', description: 'Fields to update (active, script, condition, decision_type, security_attribute, etc.)' },
+          decision_type: { type: 'string', enum: ['allow', 'deny'], description: 'Set the decision type: allow (Allow If) or deny (Deny Unless)' },
+          roles: { type: 'string', description: 'Comma-separated roles that replace the ACL\'s current required roles. Each role must exist' },
+          allow_missing_roles: { type: 'boolean', description: 'Apply even if a role does not exist (default false)' },
         },
-        required: ['sys_id', 'fields'],
+        required: ['sys_id'],
+      },
+    },
+    {
+      name: 'get_acl_posture',
+      description: 'Access control posture for the instance or one table: active ACLs by decision type (Allow If vs Deny Unless), operation and type, ACLs whose required role does not exist (these deny everyone from Brazil when glide.security.acl_with_invalid_roles_strict_deny is on), ACLs that use security attributes, AI agent / workflow / skill / flow ACL types, and a sample of deny ACLs with links. Read-only',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          table: { type: 'string', description: 'Limit to one table (its table and field ACLs). Omit for the whole instance' },
+          limit: { type: 'number', description: 'Max rows in each list (default 25, max 200)' },
+        },
+        required: [],
       },
     },
   ];
@@ -380,7 +401,7 @@ const SCRIPT_TOOL_NAMES = new Set([
   'list_changesets', 'get_changeset', 'commit_changeset', 'publish_changeset',
   'list_ui_policies', 'get_ui_policy', 'create_ui_policy',
   'list_ui_actions', 'get_ui_action', 'create_ui_action', 'update_ui_action',
-  'list_acls', 'get_acl', 'create_acl', 'update_acl',
+  'list_acls', 'get_acl', 'create_acl', 'update_acl', 'get_acl_posture',
 ]);
 
 export async function executeScriptToolCall(
@@ -616,20 +637,41 @@ export async function executeScriptToolCall(
       if (args.active !== undefined) query = `active=${args.active}`;
       if (args.table) query = query ? `${query}^name=${args.table}.*^ORname=${args.table}` : `nameLIKE${args.table}`;
       if (args.operation) query = query ? `${query}^operation=${args.operation}` : `operation=${args.operation}`;
+      const decision = normaliseDecisionType(args.decision_type);
+      if (decision) query = query ? `${query}^decision_type=${decision}` : `decision_type=${decision}`;
       const resp = await client.queryRecords({
         table: 'sys_security_acl',
         query: query || undefined,
         limit: args.limit || 25,
-        fields: 'sys_id,name,type,operation,active,admin_overrides,sys_updated_on',
+        fields: 'sys_id,name,type,operation,active,admin_overrides,decision_type,sys_updated_on',
       });
       return { count: resp.count, acls: resp.records };
     }
     case 'get_acl': {
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
-      return await client.getRecord('sys_security_acl', args.sys_id);
+      const acl = await client.getRecord('sys_security_acl', args.sys_id);
+      try {
+        const links = await aclRoleLinks(client, String(args.sys_id));
+        const out: Record<string, any> = { ...acl, required_roles: links.map((l) => ({ name: l.name ?? l.role_id, exists: l.exists })) };
+        if (links.some((l) => !l.exists)) {
+          out.role_warning = 'One or more required roles do not exist. The missing role grants nothing, and from Brazil (glide.security.acl_with_invalid_roles_strict_deny) the ACL denies everyone.';
+        }
+        return out;
+      } catch {
+        return acl;
+      }
     }
     case 'create_acl': {
       if (!args.name || !args.operation) throw new ServiceNowError('name and operation are required', 'INVALID_REQUEST');
+      const decision = normaliseDecisionType(args.decision_type);
+      const roles = parseRoleList(args.roles);
+      const { found, missing } = await resolveRoles(client, roles);
+      if (missing.length && args.allow_missing_roles !== true) {
+        throw new ServiceNowError(`Role(s) not found: ${missing.join(', ')}. An ACL that names a missing role grants nothing, and from Brazil it denies everyone. Fix the name or create the role first (or pass allow_missing_roles: true).`, 'INVALID_REQUEST');
+      }
+      if (decision === 'deny' && !(await supportsDecisionType(client))) {
+        throw new ServiceNowError('This instance has no decision_type on sys_security_acl, so Deny Unless ACLs are not available (they need Washington DC or later).', 'INVALID_REQUEST');
+      }
       const data: Record<string, any> = {
         name: args.name,
         operation: args.operation,
@@ -637,16 +679,79 @@ export async function executeScriptToolCall(
         active: args.active !== false,
         admin_overrides: args.admin_overrides !== false,
       };
-      if (args.script) data.script = args.script;
+      if (decision) data.decision_type = decision;
+      if (args.script) {
+        data.script = args.script;
+        data.advanced = true;
+      }
+      if (args.condition) data.condition = args.condition;
+      if (args.security_attribute) data.security_attribute = await resolveSecurityAttribute(client, String(args.security_attribute));
       if (args.description) data.description = args.description;
       const result = await client.createRecord('sys_security_acl', data);
-      return { ...result, summary: `Created ACL "${args.name}" for operation "${args.operation}"` };
+      const aclId = String((result as any).sys_id ?? '');
+      const linked: string[] = [];
+      for (const r of roles) {
+        const roleId = found.get(r);
+        if (!roleId || !aclId) continue;
+        await client.createRecord('sys_security_acl_role', { sys_security_acl: aclId, sys_user_role: roleId });
+        linked.push(r);
+      }
+      return {
+        ...result,
+        ...(roles.length ? { roles_linked: linked } : {}),
+        ...(missing.length ? { roles_missing: missing } : {}),
+        summary: `Created ${decision === 'deny' ? 'Deny Unless' : 'Allow If'} ACL "${args.name}" for operation "${args.operation}"${linked.length ? ` with roles ${linked.join(', ')}` : ''}`,
+      };
     }
     case 'update_acl': {
-      if (!args.sys_id || !args.fields) throw new ServiceNowError('sys_id and fields are required', 'INVALID_REQUEST');
-      const result = await client.updateRecord('sys_security_acl', args.sys_id, args.fields);
-      return { ...result, summary: `Updated ACL ${args.sys_id}` };
+      if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
+      const fields: Record<string, any> = { ...(args.fields && typeof args.fields === 'object' ? args.fields : {}) };
+      const decision = normaliseDecisionType(args.decision_type ?? fields.decision_type);
+      if (decision) fields.decision_type = decision;
+      if (fields.security_attribute) fields.security_attribute = await resolveSecurityAttribute(client, String(fields.security_attribute));
+      if (typeof fields.script === 'string' && fields.script && fields.advanced === undefined) fields.advanced = true;
+      const roleArg = args.roles !== undefined ? parseRoleList(args.roles) : undefined;
+      if (!Object.keys(fields).length && roleArg === undefined) throw new ServiceNowError('sys_id and fields (or decision_type / roles) are required', 'INVALID_REQUEST');
+      let resolved: Awaited<ReturnType<typeof resolveRoles>> | undefined;
+      if (roleArg) {
+        resolved = await resolveRoles(client, roleArg);
+        if (resolved.missing.length && args.allow_missing_roles !== true) {
+          throw new ServiceNowError(`Role(s) not found: ${resolved.missing.join(', ')}. An ACL that names a missing role grants nothing, and from Brazil it denies everyone. Nothing was changed.`, 'INVALID_REQUEST');
+        }
+      }
+      if (decision === 'deny' && !(await supportsDecisionType(client))) {
+        throw new ServiceNowError('This instance has no decision_type on sys_security_acl, so Deny Unless ACLs are not available.', 'INVALID_REQUEST');
+      }
+      const result = Object.keys(fields).length
+        ? await client.updateRecord('sys_security_acl', args.sys_id, fields)
+        : await client.getRecord('sys_security_acl', args.sys_id);
+      const out: Record<string, any> = { ...result, summary: `Updated ACL ${args.sys_id}` };
+      if (roleArg && resolved) {
+        const links = await aclRoleLinks(client, String(args.sys_id));
+        const want = new Set(roleArg.filter((r) => resolved!.found.has(r)));
+        const have = new Set(links.filter((l) => l.name).map((l) => l.name as string));
+        const added: string[] = [];
+        const removed: string[] = [];
+        for (const l of links) {
+          if (!l.name || !want.has(l.name)) {
+            await client.deleteRecord('sys_security_acl_role', l.link_id);
+            removed.push(l.name ?? `${l.role_id} (missing role)`);
+          }
+        }
+        for (const r of want) {
+          if (!have.has(r)) {
+            await client.createRecord('sys_security_acl_role', { sys_security_acl: args.sys_id, sys_user_role: resolved.found.get(r) });
+            added.push(r);
+          }
+        }
+        out.roles_added = added;
+        out.roles_removed = removed;
+        if (resolved.missing.length) out.roles_missing = resolved.missing;
+      }
+      return out;
     }
+    case 'get_acl_posture':
+      return await aclPosture(client, { table: args.table, limit: args.limit });
     default:
       return null;
   }
