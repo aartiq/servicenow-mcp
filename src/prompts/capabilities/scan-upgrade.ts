@@ -1,5 +1,6 @@
 import type { CapabilityDefinition } from '../types.js';
 import { instanceScanSection } from '../instance-scan-section.js';
+import { CURRENT_GA_FAMILY, EARLY_AVAILABILITY_FAMILY, KNOWN_RELEASE_CHANGES, familyLabel, normaliseFamily } from '../../servicenow/release.js';
 
 const capability: CapabilityDefinition = {
   name: 'scan-upgrade',
@@ -12,12 +13,15 @@ const capability: CapabilityDefinition = {
     {
       name: 'target_release',
       description:
-        'Target ServiceNow release (e.g. "zurich", "xanadu"). If omitted, checks against latest known release.',
+        'Target ServiceNow release family (e.g. "brazil"). If omitted, checks against the next family after the one the instance runs (read from glide.buildtag.last).',
       required: false,
     },
   ],
 
   recommendedTools: [
+    'get_release_info',
+    'get_dashboard_migration_status',
+    'get_acl_posture',
     'list_business_rules',
     'list_script_includes',
     'list_client_scripts',
@@ -30,10 +34,30 @@ const capability: CapabilityDefinition = {
 
   buildPrompt(args) {
     const targetRelease = args?.target_release ?? 'latest';
+    const family = normaliseFamily(targetRelease);
     const releaseLabel =
       targetRelease === 'latest'
-        ? 'Latest available release'
-        : `${targetRelease.charAt(0).toUpperCase()}${targetRelease.slice(1)}`;
+        ? 'The next family after the one the instance runs'
+        : family ? familyLabel(family) : `${targetRelease.charAt(0).toUpperCase()}${targetRelease.slice(1)}`;
+
+    // ─── Release awareness ────────────────────────────────────────────────────
+
+    const knownChanges = (['australia', 'brazil'] as const).flatMap((f) => [
+      `### ${familyLabel(f)}${f === CURRENT_GA_FAMILY ? ' (current GA family)' : f === EARLY_AVAILABILITY_FAMILY ? ' (early availability)' : ''}`,
+      ...(KNOWN_RELEASE_CHANGES[f] ?? []).map((c) => `- **${c.area}:** ${c.change}. Check: ${c.check}.`),
+      '',
+    ]);
+    const releaseSection = [
+      '## 0. Which release, and what changes on the way',
+      '',
+      'Start with `get_release_info` (it reads glide.buildtag.last). Name the current family and patch, the target family, and whether the target is GA or early availability. Use its `changes_to_check` and `instance_checks`: every check has a live count and a list link, so cite them and link them.',
+      `Release families as of November 2026: ${familyLabel(CURRENT_GA_FAMILY)} is the current GA family and ${familyLabel(EARLY_AVAILABILITY_FAMILY)} is in early availability. Older names such as Zurich, Yokohama or Xanadu are still accepted as targets.`,
+      '',
+      'Known changes that can break or change behaviour:',
+      '',
+      ...knownChanges,
+      'Also use `get_dashboard_migration_status` (legacy PA dashboards are unsupported from Australia) and `get_acl_posture` (ACLs naming missing roles deny everyone from Brazil). The upgrade history in `get_release_info` shows how many records were skipped last time; skipped-record details need an admin account.',
+    ];
 
     // ─── Deprecated API Section ───────────────────────────────────────────────
 
@@ -329,6 +353,7 @@ const capability: CapabilityDefinition = {
             'hide everywhere \u2014 a single `Packages.java` call in an obscure UI Page processor can',
             'block an entire upgrade.',
             '',
+            ...releaseSection, '',
             ...deprecatedApiSection, '',
             ...hardcodedSysIdSection, '',
             ...directQuerySection, '',

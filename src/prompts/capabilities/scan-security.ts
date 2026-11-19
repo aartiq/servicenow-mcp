@@ -24,6 +24,9 @@ const capability: CapabilityDefinition = {
   ],
 
   recommendedTools: [
+    'get_acl_posture',
+    'get_integration_auth_posture',
+    'get_mcp_exposure',
     'list_acls',
     'get_acl',
     'list_users',
@@ -92,6 +95,15 @@ const capability: CapabilityDefinition = {
     // ─── Role Section ─────────────────────────────────────────────────────────
 
     const roleSection = [
+      '### Deny Unless ACLs and missing roles',
+      '- Use `get_acl_posture`: report Allow If against Deny Unless counts, ACLs that use security attributes, and every ACL whose required role does not exist (it denies everyone from Brazil when glide.security.acl_with_invalid_roles_strict_deny is on). Link each ACL.',
+      '',
+      '### Basic auth restriction and MFA',
+      '- Use `get_integration_auth_posture`: tracking or enforce mode, the default decision, which accounts keep Basic auth, OAuth clients still on the password grant, and the glide.authenticate.multifactor settings.',
+      '',
+      '### MCP and A2A exposure',
+      '- Use `get_mcp_exposure`: active MCP servers, tools that look write-capable, A2A-exposed agents and the OAuth clients (JWT) that reach them.',
+      '',
       '## 2. Role & Privilege Analysis',
       '',
       'Use `list_users`, `list_groups`, and `query_records` on `sys_user_has_role`, `sys_user_role`, `sys_group_has_role` to scan:',

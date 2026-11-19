@@ -23,6 +23,11 @@ const capability: CapabilityDefinition = {
   ],
 
   recommendedTools: [
+    'get_cmdb_data_foundations',
+    'get_csdm_health',
+    'cmdb_find_duplicates',
+    'cmdb_find_orphans',
+    'cmdb_find_stale',
     'query_records',
     'search_cmdb_ci',
     'get_cmdb_ci',
@@ -94,6 +99,11 @@ const capability: CapabilityDefinition = {
       ciClass
         ? `Focus on \`${ciClass}\` and its child classes.`
         : 'Aggregate counts across all major class branches.',
+      '',
+      '### ServiceNow Data Foundations and CSDM life cycle',
+      '- Use `get_cmdb_data_foundations` for ServiceNow\'s own CMDB and CSDM scores (result percent, failing records, priority) and link the KB playbook for every failing metric.',
+      '- Use `get_csdm_health` for life cycle stage adoption: CIs with `life_cycle_stage` / `life_cycle_stage_status` set against those on the legacy `install_status` / `operational_status` only, and whether `csdm.lifecycle.migration.activated` is on.',
+      '- Find stale CIs with `cmdb_find_stale` using `lifecycle_model: either`, so CIs marked Operational by either model are covered.',
       '',
       '### Status Distribution',
       '- **Operational status:** count by Operational (1), Non-Operational (2), Repair in Progress (3),',
@@ -224,7 +234,7 @@ const capability: CapabilityDefinition = {
       '',
       '**Service CIs (cmdb_ci_service and children):**',
       '- `name`, `owned_by`, `managed_by` — accountability',
-      '- `operational_status`, `busines_criticality` — importance rating',
+      '- `operational_status`, `business_criticality` — importance rating',
       '',
       '### Duplicate Detection',
       '- CIs with the same `name` AND `sys_class_name` — potential duplicates',
