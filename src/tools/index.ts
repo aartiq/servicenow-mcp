@@ -112,6 +112,8 @@ import { getImpactAnalysisToolDefinitions, executeImpactAnalysisToolCall } from 
 import { getLocalSyncToolDefinitions, executeLocalSyncToolCall } from './local-sync.js';
 import { getVisualizationToolDefinitions, executeVisualizationToolCall } from './visualization.js';
 import { schemaCache } from './schema-cache.js';
+// Background jobs for long-running tools (get_job, list_jobs, cancel_job)
+import { getJobToolDefinitions, executeJobToolCall, isLongRunningTool, ASYNC_ARG_SCHEMA } from './jobs.js';
 
 // ─── Package Definitions ──────────────────────────────────────────────────────
 
@@ -123,6 +125,7 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'create_update_set', 'switch_update_set', 'get_current_update_set', 'list_update_sets',
     'complete_update_set', 'preview_update_set', 'export_update_set', 'ensure_active_update_set',
     'get_change_request', 'create_change_request', 'list_change_requests',
+    'get_job', 'list_jobs', 'cancel_job',
   ],
   itam_analyst: [
     'query_records', 'get_record',
@@ -150,6 +153,7 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'list_event_registry', 'get_event_registry_entry', 'register_event', 'fire_event', 'list_event_log',
     'list_oauth_applications', 'list_credential_aliases',
     'list_changesets', 'get_changeset', 'commit_changeset', 'publish_changeset',
+    'get_job', 'list_jobs', 'cancel_job',
   ],
   service_desk: [
     // Interactive forms (MCP Apps)
@@ -216,6 +220,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     // v4.0 additions
     'cmdb_find_duplicates', 'cmdb_find_orphans', 'cmdb_find_stale', 'cmdb_reconcile',
     'discover_table',
+    // Background jobs for long-running tools
+    'get_job', 'list_jobs', 'cancel_job',
   ],
   platform_developer: [
     'query_records', 'get_record', 'get_table_schema', 'create_record', 'update_record', 'delete_record',
@@ -238,6 +244,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'discover_table',
     // ServiceNow product documentation
     'search_servicenow_docs', 'fetch_servicenow_doc',
+    // Background jobs for long-running tools (ATF runs, SDK builds and CI/CD)
+    'get_job', 'list_jobs', 'cancel_job',
   ],
   itom_engineer: [
     'query_records', 'get_record', 'get_table_schema',
@@ -248,6 +256,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     // v4.0 CMDB reconciliation
     'cmdb_find_duplicates', 'cmdb_find_orphans', 'cmdb_find_stale', 'cmdb_reconcile',
     'discover_table',
+    // Background jobs for long-running tools (discovery scans, reconcile)
+    'get_job', 'list_jobs', 'cancel_job',
   ],
   agile_manager: [
     'query_records', 'get_record', 'get_user',
@@ -274,6 +284,8 @@ const PACKAGE_TOOL_NAMES: Record<string, string[]> = {
     'discover_table',
     // ServiceNow product documentation
     'search_servicenow_docs', 'fetch_servicenow_doc',
+    // Background jobs for long-running tools (playbooks, skill tests)
+    'get_job', 'list_jobs', 'cancel_job',
   ],
 };
 
@@ -341,6 +353,7 @@ const ALL_TOOLS = [
   ...getImpactAnalysisToolDefinitions(),
   ...getLocalSyncToolDefinitions(),
   ...getVisualizationToolDefinitions(),
+  ...getJobToolDefinitions(),
 ];
 
 // ─── Dynamic tool discovery (search_tools) ──────────────────────────────────────
@@ -386,6 +399,8 @@ const LEAN_CORE_TOOL_NAMES = new Set([
   // without paging a whole result set. Keep these in the core so a lean connection can count/aggregate
   // in one call instead of being told to search for a tool it then can't invoke.
   'get_table_record_count', 'run_aggregate_query',
+  // A long-running tool reached through run_tool can return a job_id; get_job must be callable to follow it.
+  'get_job',
 ]);
 
 /** Everyday ServiceNow words → the terms tool names and descriptions actually use. */
@@ -490,7 +505,23 @@ function toolAnnotations(name: string): ToolAnnotations {
   return { readOnlyHint: true, openWorldHint: true };
 }
 function withAnnotations<T extends { name: string; annotations?: unknown }>(tool: T): T {
-  return tool.annotations ? tool : { ...tool, annotations: toolAnnotations(tool.name) };
+  return withAsyncOption(tool.annotations ? tool : { ...tool, annotations: toolAnnotations(tool.name) });
+}
+
+/**
+ * Long-running tools take an optional `async` argument and declare task support for 2025-11-25
+ * clients (`execution.taskSupport`, a field the 2026-07-28 encoder drops on its own).
+ */
+function withAsyncOption<T extends { name: string }>(tool: T): T {
+  if (!isLongRunningTool(tool.name)) return tool;
+  const t = tool as T & { inputSchema?: { type?: string; properties?: Record<string, unknown> } };
+  const schema = t.inputSchema ?? { type: 'object', properties: {} as Record<string, unknown> };
+  if (schema.properties?.['async']) return tool;
+  return {
+    ...tool,
+    inputSchema: { ...schema, properties: { ...(schema.properties || {}), async: ASYNC_ARG_SCHEMA } },
+    execution: { taskSupport: 'optional' },
+  };
 }
 
 /**
@@ -569,6 +600,7 @@ export async function executeTool(
 
   // Try each domain handler in order; first non-null result wins
   const handlers = [
+    () => executeJobToolCall(client, name, args),
     () => executeCoreToolCall(client, name, args),
     () => executeGovernanceToolCall(client, name, args),
     () => executeIncidentToolCall(client, name, args),

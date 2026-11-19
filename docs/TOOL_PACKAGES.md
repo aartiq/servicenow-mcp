@@ -37,19 +37,19 @@ picks the package for you.
 
 | Package | `SN_PERSONA` | Target role | Tools |
 |---------|--------------|-------------|------:|
-| `full` | `full` | All roles (default) | 544 |
+| `full` | `full` | All roles (default) | 547 |
 | `service_desk` | `itsm` | IT help desk agent | 27 |
 | `change_coordinator` | `change` | Change manager | 21 |
 | `knowledge_author` | `knowledge` | KB content creator | 14 |
 | `catalog_builder` | `catalog` | Catalog administrator | 17 |
-| `system_administrator` | `admin` | System administrator | 84 |
-| `platform_developer` | `developer` | Platform developer | 67 |
-| `itom_engineer` | `itom` | ITOM and CMDB engineer | 22 |
+| `system_administrator` | `admin` | System administrator | 87 |
+| `platform_developer` | `developer` | Platform developer | 70 |
+| `itom_engineer` | `itom` | ITOM and CMDB engineer | 25 |
 | `agile_manager` | `agile` | Agile team lead | 14 |
-| `ai_developer` | `ai` | Otto (Now Assist) and AI agent developer | 47 |
+| `ai_developer` | `ai` | Otto (Now Assist) and AI agent developer | 50 |
 | `portal_developer` | `portal` | Service Portal and UI Builder developer | 38 |
-| `integration_engineer` | `integration` | Integration specialist | 30 |
-| `devops_engineer` | `devops` | DevOps and pipeline engineer | 25 |
+| `integration_engineer` | `integration` | Integration specialist | 33 |
+| `devops_engineer` | `devops` | DevOps and pipeline engineer | 28 |
 | `itam_analyst` | `itam` | IT Asset Management analyst | 13 |
 
 The package name itself also works as a persona (`SN_PERSONA=service_desk`). A few older persona names
@@ -77,7 +77,7 @@ npx -y nowaikit --persona itsm
 ## Package definitions
 
 ### full
-All 544 tools. Default when `MCP_TOOL_PACKAGE` is not set.
+All 547 tools. Default when `MCP_TOOL_PACKAGE` is not set.
 
 ### service_desk
 Tools for IT help desk agents handling incidents, requests, and approvals.

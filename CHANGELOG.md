@@ -53,12 +53,21 @@ working, see Compatibility below.
   `resources/templates/list`.
 - `/api/health` answers alongside `/health`.
 - `scripts/gen-tool-docs.mjs` generates `docs/TOOLS.md` from the built manifest, so the tool reference
-  always matches the code (544 tools).
+  always matches the code (547 tools).
 
 - **MCP specification 2026-07-28.** NowAIKit now runs on the v2 MCP SDK and serves both protocol
   generations from one server: clients on the July 2026 spec (stateless requests, `server/discover`)
   and every client still on the 2025 versions (VS Code, Cursor, Claude Desktop, Copilot Studio). This is
   negotiated automatically over stdio, Streamable HTTP and SSE, so no client or config change is needed.
+- **Long-running operations run as background jobs.** ATF runs, discovery scans, CMDB
+  reconcile, transform maps, bulk imports, scheduled and PA job triggers, flows, ServiceNow SDK builds and
+  CI/CD runs (41 tools) accept `async: true` and return a `job_id` straight away. A call that is still
+  running after 20 seconds turns into a job by itself, so slow calls don't run into client tool timeouts. New tools
+  `get_job`, `list_jobs` and `cancel_job` follow and stop jobs, and where ServiceNow runs the work in the
+  background (ATF through CI/CD, discovery, flows, scheduled jobs) the job follows ServiceNow's own
+  status to the end. Jobs belong to the user who started them. Clients that support MCP tasks get the
+  same jobs as tasks: the 2026-07-28 `io.modelcontextprotocol/tasks` extension (Claude Code) and the
+  2025-11-25 tasks (VS Code). Calls that finish in time return exactly what they did before.
 - `nowaikit auth login --instance <name> --no-browser` and `nowaikit auth test --instance <name>`.
 - OAuth with only a client id and secret now uses the client credentials grant.
 

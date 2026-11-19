@@ -2,6 +2,8 @@
 import { compatNotes } from './bootstrap-env.js';
 import {
   Server,
+  ProtocolError,
+  ProtocolErrorCode,
   CLIENT_CAPABILITIES_META_KEY,
   CLIENT_INFO_META_KEY,
   acceptedContent,
@@ -23,6 +25,17 @@ import { connectTransport, getTransportType } from './transport/index.js';
 import { enableLocalFileAccess } from './utils/local-files.js';
 import { getDelegatedAuth, strictDelegationViolation } from './utils/request-context.js';
 import { VERSION, SERVER_NAME } from './utils/version.js';
+import { isLongRunningTool, runLongRunningTool, startToolJob, type ToolExecutor } from './tools/jobs.js';
+import {
+  TaskAwareServer,
+  TASK_CAPABILITIES,
+  createTaskResult,
+  notifyLegacyTaskStatus,
+  registerTaskHandlers,
+  returnTaskResult,
+  taskRequestFor,
+  toolResult,
+} from './utils/tasks.js';
 
 // .env and documented aliases (SN_INSTANCE_URL, --allow-write, SN_PERSONA, ...) were applied by bootstrap-env.
 for (const note of compatNotes) logger.warn(note);
@@ -47,15 +60,9 @@ function isDestructiveTool(name: string): boolean {
   return DESTRUCTIVE_TOOLS.has(name) || /^delete_|^retire_/.test(name);
 }
 
-// Tools that can take a while — emit MCP progress notifications (only when the
-// client supplies a progressToken; otherwise nothing changes).
-const LONG_RUNNING_TOOLS = new Set([
-  'run_discovery_scan', 'run_atf_suite', 'run_atf_test', 'cmdb_reconcile', 'cmdb_impact_analysis',
-  'bulk_create_records', 'import_cmdb_data', 'run_transform_map', 'scan_vulnerabilities',
-  'run_security_playbook', 'execute_playbook', 'compare_instances',
-  'export_update_set', 'preview_update_set', 'check_table_completeness', 'analyze_data_quality',
-  'ml_train_incident_classifier', 'ml_train_change_risk', 'ml_train_anomaly_detector', 'ml_forecast_incidents',
-]);
+// Tools that can take a while (src/tools/jobs.ts LONG_RUNNING_TOOLS) emit MCP progress notifications
+// when the client supplies a progressToken, accept `async: true`, switch to a background job when a
+// call runs past NOWAIKIT_AUTO_ASYNC_MS, and run as MCP tasks for clients that support them.
 
 export interface CreateServerOptions {
   /**
@@ -80,7 +87,7 @@ function clientIdentity(server: Server, ctx: ServerContext): { caps?: ClientCapa
 }
 
 export function createServer(options: CreateServerOptions = {}): Server {
-  const server = new Server(
+  const server = new TaskAwareServer(
     {
       name: SERVER_NAME,
       version: VERSION,
@@ -91,6 +98,9 @@ export function createServer(options: CreateServerOptions = {}): Server {
         tools: { listChanged: true },
         resources: {},
         prompts: {},
+        // Long-running tools run as MCP tasks: the 2025-11-25 `tasks` capability and the 2026-07-28
+        // io.modelcontextprotocol/tasks extension, each shown only to its own era.
+        ...TASK_CAPABILITIES,
       },
       // 2026-07-28 cache fields (ignored on 2025-era responses). Private: lists depend on the
       // client's capabilities (MCP Apps) and, behind the gateway, on the caller. Lean tool lists grow
@@ -202,12 +212,37 @@ export function createServer(options: CreateServerOptions = {}): Server {
       }
 
       const { executeTool } = await import('./tools/index.js');
+      const execute: ToolExecutor = (c, n, a) => executeTool(c, n, a);
+
+      // Long-running tools, called directly or through run_tool (lean mode).
+      const viaRunTool = name === 'run_tool';
+      const target = viaRunTool ? String(toolArgs['name'] || '').trim() : name;
+      const longRunning = isLongRunningTool(target);
+      const targetArgs = (viaRunTool
+        ? (toolArgs['arguments'] && typeof toolArgs['arguments'] === 'object' ? toolArgs['arguments'] : {})
+        : toolArgs) as Record<string, unknown>;
+      const { async: asyncFlag, ...jobArgs } = targetArgs;
+
+      // MCP tasks: a 2026 request that declared the tasks extension, or a 2025 request with params.task.
+      const taskRequest = taskRequestFor(request.params as Record<string, unknown>, ctx);
+      if (taskRequest?.era === 'legacy' && !longRunning) {
+        throw new ProtocolError(ProtocolErrorCode.MethodNotFound, `Tool "${name}" does not support task-augmented execution`);
+      }
+      if (taskRequest && longRunning) {
+        const job = startToolJob(client, target, jobArgs, execute, {
+          origin: 'task',
+          ttlMs: taskRequest.era === 'legacy' ? taskRequest.ttlMs : undefined,
+        });
+        logger.info(`Tool ${target} runs as task ${job.id}`);
+        if (taskRequest.era === 'legacy' && !options.perRequest) notifyLegacyTaskStatus(server, job);
+        return returnTaskResult(createTaskResult(job, taskRequest.era));
+      }
 
       // MCP progress notifications: if the client passed a progressToken and this
       // is a long-running tool, emit periodic heartbeats so the UI shows activity.
       // Purely additive — when no token is sent the path below behaves as before.
       const progressToken = ctx.mcpReq._meta?.progressToken;
-      const trackProgress = progressToken !== undefined && LONG_RUNNING_TOOLS.has(name);
+      const trackProgress = progressToken !== undefined && longRunning;
       let heartbeat: ReturnType<typeof setInterval> | undefined;
       if (trackProgress) {
         let pct = 0;
@@ -226,7 +261,11 @@ export function createServer(options: CreateServerOptions = {}): Server {
 
       let result: unknown;
       try {
-        result = await executeTool(client, name, toolArgs);
+        // Long-running tools return a job id for `async: true`, or once they run past the auto-async
+        // threshold. Anything that finishes in time returns exactly what it always did.
+        result = longRunning
+          ? await runLongRunningTool(client, target, jobArgs, execute, asyncFlag === true)
+          : await executeTool(client, name, toolArgs);
       } finally {
         if (heartbeat) clearInterval(heartbeat);
         if (trackProgress) {
@@ -258,19 +297,10 @@ export function createServer(options: CreateServerOptions = {}): Server {
 
       // Structured output: include the raw object so capable clients get typed
       // content, while keeping the text block for backward compatibility.
-      const structured = typeof result === 'object' && result !== null && !Array.isArray(result)
-        ? { structuredContent: result as Record<string, unknown> }
-        : {};
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
-          },
-        ],
-        ...structured,
-      };
+      return toolResult(result) as { content: Array<{ type: 'text'; text: string }> };
     } catch (error) {
+      // Protocol-level errors (a task request for a tool without task support) stay JSON-RPC errors.
+      if (error instanceof ProtocolError) throw error;
       logger.error(`Tool execution error: ${name}`, error);
 
       if (error instanceof ServiceNowError) {
@@ -296,6 +326,10 @@ export function createServer(options: CreateServerOptions = {}): Server {
       };
     }
   });
+
+  // ─── Tasks (tasks/get, tasks/update, tasks/cancel, and 2025's tasks/result, tasks/list) ─────
+
+  registerTaskHandlers(server);
 
   // ─── Resources (@ mentions) ─────────────────────────────────────────────────
 

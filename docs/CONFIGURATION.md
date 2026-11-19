@@ -123,6 +123,52 @@ the REST API at `/api`, health at `/health` (and `/api/health`).
 | `RETRY_DELAY_MS` | `1000` | Base backoff between retries (exponential). |
 | `REQUEST_TIMEOUT_MS` | `30000` | Per-request timeout. |
 
+## Long-running operations
+
+Some tools can take minutes: ATF suite runs, discovery scans, CMDB reconcile, transform maps, bulk
+create and import, scheduled and PA job triggers, flows, playbooks, ML training and the ServiceNow SDK
+(`fluent_build`, `fluent_cicd` and the rest). These tools run as background jobs so a slow call never
+holds the chat open until the client gives up.
+
+- Pass `async: true` to any of them to get a `job_id` back at once.
+- Without it, the call runs as before. If it is still running after 20 seconds, it carries on as a job
+  and the call returns `{ job_id, status: "running", poll_with: "get_job" }` instead of blocking.
+  Calls that finish in time return exactly what they always did.
+- `get_job` returns the status (`running`, `completed`, `failed`, `cancelled`), progress, elapsed time
+  and, once finished, the tool result. `wait_seconds` (up to 25) waits for the end before answering.
+  `list_jobs` lists your jobs and `cancel_job` stops one.
+- Where ServiceNow runs the work in the background, the job follows ServiceNow's own status until it
+  is done: ATF suites through the CI/CD progress API, discovery through `discovery_status`, flows through
+  their flow context, and scheduled or PA jobs through the scheduler trigger. `get_job` then shows the
+  final outcome, for example passed and failed test counts.
+- `cancel_job` stops waiting at once. For ATF runs it also calls the CI/CD cancel API, and for flows
+  `sn_fd.FlowAPI.cancel` (needs `SCRIPTING_ENABLED`). Other work already running in ServiceNow may still
+  finish there, and nothing ServiceNow already did is rolled back.
+- Jobs belong to whoever started them. Behind a gateway that is the delegated user (or token) and
+  instance, and nobody else can see or cancel them. Without delegation every caller uses the server's
+  own credentials, so they share one scope.
+- Jobs live in the server's memory. Finished jobs are kept for an hour, and a restart forgets them (the
+  ServiceNow side keeps running).
+
+Clients that support MCP tasks get the same jobs as tasks, with no `async` flag needed:
+
+- The 2026-07-28 tasks extension (`io.modelcontextprotocol/tasks`), used by Claude Code. When a request
+  declares the extension, a long-running tool returns a task and the client polls `tasks/get`, which
+  carries the progress as the status message and the result once done. `tasks/cancel` cancels.
+- The 2025-11-25 tasks, used by VS Code. Long-running tools declare `execution.taskSupport: "optional"`,
+  and `tasks/get`, `tasks/result`, `tasks/list` and `tasks/cancel` are served.
+
+Progress notifications for clients that send a `progressToken` work as before.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NOWAIKIT_AUTO_ASYNC_MS` | `20000` | How long a long-running call may block before it continues as a job. `0` turns this off (calls block until done, as in 4.x). |
+| `NOWAIKIT_JOB_TTL_MS` | `3600000` | How long a finished job is kept for `get_job`. |
+| `NOWAIKIT_JOB_MAX_RUN_MS` | `7200000` | A job still running after this is stopped and marked failed. |
+| `NOWAIKIT_JOB_POLL_MS` | `5000` | How often jobs poll ServiceNow for status, and the poll interval suggested to clients. |
+| `NOWAIKIT_JOBS_MAX` | `200` | Jobs held in memory. The oldest finished jobs are dropped first. |
+| `NOWAIKIT_JOBS_PER_USER` | `20` | Running jobs allowed per user at once. |
+
 ## Delegated auth (gateways, multi-tenant, backend-managed OAuth)
 
 | Variable | Default | Description |
