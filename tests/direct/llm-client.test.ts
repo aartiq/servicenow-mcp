@@ -24,3 +24,28 @@ describe('llm-client BYOK', () => {
     await expect(listProviderModels({ provider: 'gemini' })).resolves.toEqual([]);
   });
 });
+
+describe('claude-cli provider', () => {
+  it('runs a plain text call: no tools, no MCP servers, instructions on stdin', async () => {
+    const { mkdtempSync, writeFileSync, chmodSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const dir = mkdtempSync(join(tmpdir(), 'nak-cli-'));
+    const bin = join(dir, 'fake-claude.sh');
+    writeFileSync(bin, '#!/bin/sh\nprintf "ARGS:%s|" "$@"\necho\ncat\n');
+    chmodSync(bin, 0o755);
+    const saved = process.env.NOWAIKIT_CLAUDE_BIN;
+    process.env.NOWAIKIT_CLAUDE_BIN = bin;
+    try {
+      const r = await callLlm({ provider: 'claude-cli', model: 'claude-sonnet-5-5' }, [
+        { role: 'system', content: 'SYSTEM RULES' },
+        { role: 'user', content: 'THE DATA' },
+      ]);
+      expect(r.content).toContain('ARGS:-p|ARGS:--tools|ARGS:|ARGS:--strict-mcp-config|');
+      expect(r.content).not.toContain('--append-system-prompt');
+      expect(r.content.indexOf('SYSTEM RULES')).toBeLessThan(r.content.indexOf('THE DATA'));
+    } finally {
+      if (saved === undefined) delete process.env.NOWAIKIT_CLAUDE_BIN; else process.env.NOWAIKIT_CLAUDE_BIN = saved;
+    }
+  });
+});

@@ -375,10 +375,12 @@ async function callClaudeCli(config: LlmConfig, messages: LlmMessage[]): Promise
   const bin = process.env.NOWAIKIT_CLAUDE_BIN || 'claude';
   // A plain text-in, text-out call: no built-in tools and no MCP servers, so the CLI answers from the
   // data in the prompt instead of starting an agent loop (which can stall waiting for permissions).
+  // The skill instructions go in the prompt itself, not --append-system-prompt: a long appended
+  // system prompt made headless runs hang until the timeout.
   const args = ['-p', '--tools', '', '--strict-mcp-config'];
   if (config.model) args.push('--model', config.model);
-  if (system) args.push('--append-system-prompt', system);
-  const text = await runCli(bin, args, prompt, config.timeoutMs ?? cliTimeoutMs());
+  const full = system ? `${system}\n\n---\n\n${prompt}` : prompt;
+  const text = await runCli(bin, args, full, config.timeoutMs ?? cliTimeoutMs());
   return { content: text, model: config.model || 'claude-code' };
 }
 
