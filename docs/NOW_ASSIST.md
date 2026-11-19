@@ -1,127 +1,140 @@
-# Now Assist / AI Integration Guide (Latest Release)
+# Now Assist (Otto) and AI guide
 
-This guide covers the 10 Now Assist and AI tools available when `NOW_ASSIST_ENABLED=true`. These tools use ServiceNow's latest release AI APIs.
+NowAIKit covers ServiceNow's AI platform from several angles: the Now Assist (Otto) APIs, Now Assist
+skills, AI agents in AI Agent Studio, AI Control Tower governance, Knowledge Graph, and the instance's
+own MCP servers and A2A agents (Action Fabric). This page lists the tools by area and what each one
+needs. Every tool and its parameters are in the [tool reference](TOOLS.md).
 
-## Prerequisites
+## What you need
 
-1. ServiceNow latest release instance
-2. Now Assist license activated on the instance
-3. `NOW_ASSIST_ENABLED=true` in your environment
+| Area | Needs |
+|------|-------|
+| Now Assist APIs, skills, playbooks | `NOW_ASSIST_ENABLED=true` (or `--allow-agentic`) and the matching licence on the instance |
+| AI agent reads, AI Control Tower, Knowledge Graph, Otto status | Nothing extra: these are read-only |
+| Anything that changes the instance (create skill or agent, attach tool, expose agent) | `WRITE_ENABLED=true` as well |
+| Action Fabric (`sn_mcp_*`, `sn_a2a_*`) | An OAuth sign-in with JWT tokens, see below |
 
 ```env
 NOW_ASSIST_ENABLED=true
+MCP_TOOL_PACKAGE=ai_developer   # or SN_PERSONA=ai
 ```
 
-## Available Tools
+## Now Assist APIs
 
-### Natural Language Query (NLQ)
+All of these need `NOW_ASSIST_ENABLED=true`.
 
-`nlq_query` translates plain English questions into ServiceNow queries and returns results.
+| Tool | What it does |
+|------|--------------|
+| `nlq_query` | Ask a plain-English question and get structured data back (ServiceNow NLQ API) |
+| `ai_search` | Semantic search across knowledge, catalog and incidents (AI Search) |
+| `categorize_incident` | Suggest category, assignment group and priority from similar resolved incidents |
+| `get_virtual_agent_topics` | List Virtual Agent topics |
+| `get_ms_copilot_topics` | List the Virtual Agent topics behind a Microsoft Copilot integration |
+| `get_pi_models` | List Predictive Intelligence solutions |
 
-```
-# Ask the AI assistant:
-How many P1 incidents were opened this week?
-→ Uses nlq_query internally, returns structured results
-```
+## Summaries, sentiment and drafted replies
 
-API: `POST /api/sn_nl_text_to_value/text_query`
+These use the matching Now Assist skill when the instance has it. When it doesn't, they return the
+assembled record and activity so your AI can do the work itself.
 
-### AI Search
+| Tool | What it does |
+|------|--------------|
+| `summarize_record` | Summarize an incident, case or other record |
+| `get_case_sentiment` | Customer sentiment on a CSM case |
+| `generate_case_activity_response` | Draft an agent reply for a CSM case |
+| `generate_csm_resolution_notes` | Draft CSM resolution notes |
+| `check_hr_eligibility` | Check an employee's eligibility for an HR service |
 
-`ai_search` performs semantic search across knowledge base, catalog, incidents, and other sources.
+For incident work, `investigate_incident` returns the incident, similar recent incidents, the affected
+CI and related knowledge in one call, and `ml_similar_incidents` finds past incidents to base a fix on.
 
-```
-ai_search: "how to reset VPN access" across KB and catalog
-→ Returns semantically ranked results
-```
+## Now Assist skills
 
-API: `GET /api/now/ai_search/search`
+| Tool | What it does |
+|------|--------------|
+| `list_now_assist_skills`, `get_now_assist_skill` | Read skill definitions |
+| `create_now_assist_skill` | Create a draft skill (also needs `WRITE_ENABLED`) |
+| `test_now_assist_skill` | Run a skill with test input |
 
-### Generate Summary
+## AI agents and AI Agent Studio
 
-`generate_summary` creates an AI-written summary of any record.
+| Tool | What it does |
+|------|--------------|
+| `list_ai_agents`, `get_ai_agent` | Agents (`sn_aia_agent`) with config, tools, versions and ACLs |
+| `list_agent_use_cases` | Agentic workflows (`sn_aia_usecase`) |
+| `create_ai_agent`, `create_agentic_workflow` | Create agents and workflows (`NOW_ASSIST_ENABLED` and `WRITE_ENABLED`) |
+| `list_agent_tools`, `attach_agent_tool`, `detach_agent_tool` | The tools an agent can call (attach and detach need `WRITE_ENABLED`) |
+| `list_agent_triggers` | Record, scheduled and channel triggers |
+| `get_agent_versions` | Version history |
+| `list_agent_memory` | Long-term memory entries |
+| `list_ai_agent_executions`, `get_ai_agent_execution`, `get_agent_execution_trace` | Execution plans and a step-by-step trace of a run |
+| `list_agent_evaluations`, `get_evaluation_results` | Evaluation runs and per-metric results |
+| `list_external_agents` | Third-party agents registered for A2A |
 
-```
-Summarize incident INC0001234
-→ AI generates natural language summary of the incident history, impact, and current status
-```
+## Playbooks
 
-API: `POST /api/sn_assist/skill/invoke` (summarization skill)
+| Tool | What it does |
+|------|--------------|
+| `list_playbooks` | List playbook definitions |
+| `create_playbook` | Create a playbook that chains tool calls (`NOW_ASSIST_ENABLED` and `WRITE_ENABLED`) |
+| `execute_playbook` | Run a playbook step by step, with `dry_run` support (`NOW_ASSIST_ENABLED`) |
 
-### Suggest Resolution
+## AI Control Tower, Knowledge Graph and Otto status
 
-`suggest_resolution` analyzes an incident and recommends resolution steps based on similar past incidents.
+All read-only.
 
-```
-Suggest resolution for incident INC0001234
-→ Returns recommendation with confidence score and similar incidents
-```
+| Tool | What it does |
+|------|--------------|
+| `get_otto_status` | One report of what AI is installed and switched on |
+| `list_otto_channels` | Where Otto is deployed (panel, Virtual Agent, voice) |
+| `list_ai_assets`, `get_ai_asset` | AI Control Tower inventory with governance, lifecycle and risk |
+| `list_ai_approval_requests` | AI assessment and approval requests |
+| `get_ai_usage` | AI usage counts |
+| `list_ai_modified_records` | Records changed by AI |
+| `list_kg_context_configs`, `describe_kg_schema` | Knowledge Graph configuration and schema |
 
-### Categorize Incident (Predictive Intelligence)
+## Action Fabric: the instance's MCP servers and A2A agents
 
-`categorize_incident` uses the Predictive Intelligence engine to predict category, assignment group, and priority.
+NowAIKit can act as a client to ServiceNow's own MCP servers (MCP Server Console and the out-of-box
+ITSM, ITOM, CMDB and SPM servers) and talk to ServiceNow AI agents over A2A.
 
-```
-Categorize: "Outlook won't open emails since Windows update"
-→ {category: "Email", assignment_group: "Desktop Support", priority: 3, confidence: 0.89}
-```
+| Tool | What it does |
+|------|--------------|
+| `sn_mcp_status` | Check endpoint health and whether your sign-in is ready (start here) |
+| `sn_mcp_list_servers` | MCP servers defined on the instance |
+| `sn_mcp_list_tools` | The tools a server exposes |
+| `sn_mcp_call_tool` | Call one of those tools |
+| `sn_mcp_activate_server` | Turn a server on or off and attach tools (`WRITE_ENABLED`) |
+| `sn_a2a_list_agents` | AI agents and whether each is exposed over A2A |
+| `sn_a2a_get_agent_card` | An agent's A2A card |
+| `sn_a2a_send_message`, `sn_a2a_get_task` | Talk to an agent and follow up on its task |
+| `sn_a2a_expose_agent` | Allow or block third-party access to an agent (`WRITE_ENABLED`) |
 
-API: `POST /api/sn_ml/solution/{id}/predict` (LightGBM algorithm)
+**Sign-in.** ServiceNow's MCP and A2A endpoints only accept JWT access tokens from an OAuth sign-in.
+`nowaikit setup` creates the OAuth app with the JWT token format and, where the instance has them, the
+`useraccount` and `a2aauthscope` scopes. Then `nowaikit auth login` gives you one token that works for
+the REST API, MCP and A2A. If you made the OAuth app yourself, set its **Token Format** to **JWT** and
+sign in again. Basic auth can't reach these endpoints.
 
-### Agentic Playbooks
+**A2A mode.** The A2A tools need the instance's A2A channel in synchronous mode: AI Agent Studio >
+Settings > External AI agents > Discoverability > Communication mode.
 
-`trigger_agentic_playbook` invokes a Now Assist Agentic Playbook — context-aware AI agents that can take multi-step actions.
-
-```
-trigger_agentic_playbook: playbook_sys_id="<sys_id>", context={incident_sys_id: "..."}
-```
-
-API: `POST /api/sn_assist/playbook/trigger`
-
-This is a latest release feature. Agentic Playbooks allow Now Assist to autonomously handle workflows like incident triage, change advisory, and HR case management.
-
-### Microsoft Copilot 365 Integration
-
-`get_ms_copilot_topics` lists Virtual Agent topics exposed to Microsoft Copilot 365 via the Custom Engine Agent bridge.
-
-### Virtual Agent Streaming
-
-`get_virtual_agent_stream` gets streaming Virtual Agent responses using the ServiceNow Streaming API.
-
-### Predictive Intelligence Models
-
-`get_pi_models` lists available Predictive Intelligence solutions/models on your instance.
-
-## Configuration Example
+## Configuration example
 
 ```env
-# .env for Now Assist developer
 SERVICENOW_INSTANCE_URL=https://yourinstance.service-now.com
 SERVICENOW_AUTH_METHOD=oauth
 SERVICENOW_OAUTH_CLIENT_ID=your_client_id
 SERVICENOW_OAUTH_CLIENT_SECRET=your_client_secret
-SERVICENOW_OAUTH_USERNAME=your_username
-SERVICENOW_OAUTH_PASSWORD=your_password
 
 NOW_ASSIST_ENABLED=true
 MCP_TOOL_PACKAGE=ai_developer
 ```
 
-## Latest API References
-
-| API | Endpoint | Purpose |
-|-----|----------|---------|
-| Now Assist Skills | `POST /api/sn_assist/skill/invoke` | Generative AI skills |
-| Agentic Playbooks | `POST /api/sn_assist/playbook/trigger` | Multi-step AI agents  |
-| AI Search | `GET /api/now/ai_search/search` | Semantic search |
-| Predictive Intelligence | `POST /api/sn_ml/solution/{id}/predict` | Classification / prediction |
-| NLQ | `POST /api/sn_nl_text_to_value/text_query` | Natural language queries |
-| MS Copilot Bridge | `/api/sn_assist/copilot/topics` | Copilot 365 integration  |
-| VA Streaming | `/api/sn_cs/stream` | Streaming VA responses  |
+Then run `nowaikit auth login` once, and `nowaikit doctor` to check it.
 
 ## Notes
 
-- Predictive Intelligence models must be trained on your instance before use
-- Agentic Playbooks require Now Assist Pro license on the latest release
-- AI Search indexes are updated asynchronously — newly created records may not appear immediately
-- `generate_summary` and `suggest_resolution` may be rate-limited depending on your Now Assist subscription tier
+- Predictive Intelligence solutions must be trained on your instance before they predict anything.
+- AI Search indexes update asynchronously, so new records may not show up straight away.
+- Generative tools may be rate-limited by your Now Assist subscription.

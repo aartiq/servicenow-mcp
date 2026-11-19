@@ -1,2115 +1,1069 @@
-# Tool Reference — NowAIKit v2.6.0 (Latest Release)
-
-Complete reference for all 500+ tools across all ServiceNow modules. All tools accept a `table` parameter override where applicable.
-
-## Permission Tiers
-
-| Tier | Requirement | Applies To |
-|------|-------------|------------|
-| Read | None (default) | All query/get/list tools |
-| Write | `WRITE_ENABLED=true` | create_record, update_record, delete_record, resolve, order, approve |
-| CMDB Write | `WRITE_ENABLED=true` + `CMDB_WRITE_ENABLED=true` | CI create/update/relate |
-| Scripting | `WRITE_ENABLED=true` + `SCRIPTING_ENABLED=true` | Business rules, script includes, changesets |
-| Now Assist | `NOW_ASSIST_ENABLED=true` | AI summaries, NLQ, agentic playbooks |
-| ATF | `ATF_ENABLED=true` | Run test suites and individual tests |
-
----
-
-## Core & CMDB (19 tools)
-
-### query_records
-Query records from any ServiceNow table with filtering, sorting and pagination.
-
-**Parameters**:
-- `table` (required) — Table name (e.g. `incident`, `sys_user`)
-- `query` — Encoded query string (e.g. `state=1^priority=1`)
-- `fields` — Comma-separated list of fields to return
-- `limit` — Max records to return (default: 100)
-- `offset` — Pagination offset
-
-### get_record
-Retrieve a single record by sys_id.
-
-**Parameters**:
-- `table` (required) — Table name
-- `sys_id` (required) — Record sys_id
-
-### create_record
-Create a new record in any ServiceNow table. Requires `WRITE_ENABLED=true`.
-
-**Parameters**:
-- `table` (required) — Table name (e.g. `incident`, `sys_user_preference`)
-- `fields` (required) — Key-value pairs for the new record fields
-
-### update_record
-Update an existing record in any ServiceNow table. Requires `WRITE_ENABLED=true`.
-
-**Parameters**:
-- `table` (required) — Table name
-- `sys_id` (required) — 32-character system ID of the record
-- `fields` (required) — Key-value pairs of fields to update
-
-### delete_record
-Delete a record from any ServiceNow table. Requires `WRITE_ENABLED=true`.
-
-**Parameters**:
-- `table` (required) — Table name
-- `sys_id` (required) — 32-character system ID of the record
-
-### get_table_schema
-Get field definitions and metadata for a table.
-
-**Parameters**:
-- `table` (required) — Table name
-
-### get_user
-Look up a ServiceNow user by username, email, or sys_id.
-
-**Parameters**:
-- `identifier` (required) — Username, email, or sys_id
-
-### get_group
-Look up a ServiceNow group by name or sys_id.
-
-**Parameters**:
-- `identifier` (required) — Group name or sys_id
-
-### search_cmdb_ci
-Search CMDB configuration items by name or class.
-
-**Parameters**:
-- `query` (required) — CI name or search query
-- `ci_class` — Filter by CI class (e.g. `cmdb_ci_server`)
-- `limit` — Max records (default: 25)
-
-### get_cmdb_ci
-Get full details of a CMDB configuration item.
-
-**Parameters**:
-- `sys_id` (required) — CI sys_id
-
-### list_relationships
-List relationships for a CMDB CI.
-
-**Parameters**:
-- `ci_sys_id` (required) — CI sys_id
-- `relationship_type` — Filter by relationship type
-
-### list_discovery_schedules
-List active Discovery schedules and their status.
-
-**Parameters**:
-- `active` — Filter by active status (default: true)
-- `limit` — Max records
-
-### list_mid_servers
-List MID server status and version information.
-
-**Parameters**:
-- `status` — Filter by status (`up`, `down`)
-
-### list_active_events
-List active Event Management events and alerts.
-
-**Parameters**:
-- `severity` — Filter by severity level
-- `limit` — Max records
-
-### cmdb_health_dashboard
-Get CMDB health metrics and stale CI counts.
-
-**Parameters**: None
-
-### service_mapping_summary
-Get Service Mapping application service summaries.
-
-**Parameters**:
-- `limit` — Max services to return
-
-### create_change_request
-Create a new change request record. **[Write]**
-
-**Parameters**:
-- `short_description` (required)
-- `description`
-- `type` — `normal`, `standard`, `emergency`
-- `assignment_group`
-- `risk` — `1` (High) to `4` (Low)
-
-### natural_language_search
-Search records using a plain English question.
-
-**Parameters**:
-- `query` (required) — Natural language question
-
-### natural_language_update
-Update a record using natural language instructions. **[Write]**
-
-**Parameters**:
-- `table` (required)
-- `sys_id` (required)
-- `instruction` (required) — Plain English update instruction
-
----
-
-## Incident Management (7 tools)
-
-### create_incident
-Create a new incident. **[Write]**
-
-**Parameters**:
-- `short_description` (required)
-- `urgency` — `1` (High), `2` (Medium), `3` (Low)
-- `impact` — `1`, `2`, `3`
-- `description`
-- `assignment_group`
-- `caller_id`
-
-### get_incident
-Get incident details by number or sys_id.
-
-**Parameters**:
-- `identifier` (required) — Incident number (INC0001234) or sys_id
-
-### update_incident
-Update an existing incident. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required) — Object with fields to update
-
-### resolve_incident
-Resolve an incident with resolution code and notes. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `close_code` (required) — Resolution code
-- `close_notes` (required) — Resolution notes
-
-### close_incident
-Close a resolved incident. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### add_work_note
-Add a work note (internal) to any task record. **[Write]**
-
-**Parameters**:
-- `table` (required) — e.g. `incident`
-- `sys_id` (required)
-- `note` (required)
-
-### add_comment
-Add a customer-visible comment to a task record. **[Write]**
-
-**Parameters**:
-- `table` (required)
-- `sys_id` (required)
-- `comment` (required)
-
----
-
-## Problem Management (4 tools)
-
-### create_problem
-Create a new problem record. **[Write]**
-
-**Parameters**:
-- `short_description` (required)
-- `description`
-- `assignment_group`
-
-### get_problem
-Get problem details by number or sys_id.
-
-**Parameters**:
-- `identifier` (required)
-
-### update_problem
-Update an existing problem. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### resolve_problem
-Mark a problem as resolved with fix notes. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fix_notes` (required)
-
----
-
-## Change Management (5 tools)
-
-### get_change_request
-Get change request details by number or sys_id.
-
-**Parameters**:
-- `identifier` (required)
-
-### list_change_requests
-List change requests with optional filters.
-
-**Parameters**:
-- `state` — Change state filter
-- `type` — `normal`, `standard`, `emergency`
-- `limit`
-
-### update_change_request
-Update an existing change request. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### submit_change_for_approval
-Move a change request to the approval state. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### close_change_request
-Close a change request after implementation. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `close_code`
-- `close_notes`
-
----
-
-## Task Management (4 tools)
-
-### get_task
-Get task details by number or sys_id.
-
-**Parameters**:
-- `identifier` (required)
-
-### list_my_tasks
-List tasks assigned to the current user.
-
-**Parameters**:
-- `state` — Filter by state
-- `limit`
-
-### update_task
-Update a task record. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### complete_task
-Mark a task as complete. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `close_notes`
-
----
-
-## Knowledge Base (6 tools)
-
-### list_knowledge_bases
-List available knowledge bases.
-
-**Parameters**:
-- `active` — Filter by active (default: true)
-
-### search_knowledge
-Search knowledge articles across all bases.
-
-**Parameters**:
-- `query` (required) — Search text
-- `kb_sys_id` — Limit to specific knowledge base
-- `limit`
-
-### get_knowledge_article
-Get full knowledge article content.
-
-**Parameters**:
-- `sys_id` (required)
-
-### create_knowledge_article
-Create a new knowledge article. **[Write]**
-
-**Parameters**:
-- `short_description` (required) — Article title
-- `text` (required) — Article body (HTML)
-- `kb_knowledge_base` — Knowledge base sys_id
-- `category`
-
-### update_knowledge_article
-Update an existing knowledge article. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### publish_knowledge_article
-Publish a draft knowledge article. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-
----
-
-## Service Catalog, Approvals & SLA (10 tools)
-
-### list_catalog_items
-List service catalog items.
-
-**Parameters**:
-- `category` — Filter by category
-- `limit`
-
-### search_catalog
-Search for catalog items by name or description.
-
-**Parameters**:
-- `query` (required)
-- `limit`
-
-### get_catalog_item
-Get full details of a catalog item including variables.
-
-**Parameters**:
-- `sys_id` (required)
-
-### order_catalog_item
-Place an order for a catalog item. **[Write]**
-
-**Parameters**:
-- `sys_id` (required) — Catalog item sys_id
-- `quantity` — Default: 1
-- `variables` — Key/value pairs for item variables
-
-### get_my_approvals
-List pending approval requests for the current user.
-
-**Parameters**:
-- `limit`
-
-### list_approvals
-List all approval requests with optional filters.
-
-**Parameters**:
-- `state` — `requested`, `approved`, `rejected`
-- `limit`
-
-### approve_request
-Approve a pending approval request. **[Write]**
-
-**Parameters**:
-- `sys_id` (required) — Approval record sys_id
-- `comments`
-
-### reject_request
-Reject a pending approval request. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `comments`
-
-### get_sla_details
-Get SLA information for a task record.
-
-**Parameters**:
-- `task_sys_id` (required)
-
-### list_active_slas
-List active SLA records approaching breach.
-
-**Parameters**:
-- `table` — Task table (default: `incident`)
-- `limit`
-
----
-
-## User & Group Management (8 tools)
-
-### list_users
-List ServiceNow users with optional filters.
-
-**Parameters**:
-- `query` — Encoded query
-- `active` — Filter by active (default: true)
-- `limit`
-
-### create_user
-Create a new user. **[Write]**
-
-**Parameters**:
-- `user_name` (required)
-- `first_name`, `last_name`, `email`, `title`, `department`
-
-### update_user
-Update user record fields. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_groups
-List user groups.
-
-**Parameters**:
-- `query`
-- `limit`
-
-### create_group
-Create a new user group. **[Write]**
-
-**Parameters**:
-- `name` (required)
-- `description`
-- `manager`
-
-### update_group
-Update a user group. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### add_user_to_group
-Add a user to a group. **[Write]**
-
-**Parameters**:
-- `user_sys_id` (required)
-- `group_sys_id` (required)
-
-### remove_user_from_group
-Remove a user from a group. **[Write]**
-
-**Parameters**:
-- `user_sys_id` (required)
-- `group_sys_id` (required)
-
----
-
-## Reporting & Analytics (13 tools)
-
-### list_reports
-List saved reports in ServiceNow.
-
-**Parameters**:
-- `query` — Filter by name or category
-- `limit`
-
-### get_report
-Get a report definition by sys_id or name.
-
-**Parameters**:
-- `identifier` (required)
-
-### run_aggregate_query
-Run an aggregate (GROUP BY + COUNT/SUM) query.
-
-**Parameters**:
-- `table` (required)
-- `group_by` (required) — Field to group by
-- `query` — Filter query
-- `aggregate` — `COUNT`, `SUM`, `AVG` (default: `COUNT`)
-
-### trend_query
-Query record counts over time periods (monthly buckets).
-
-**Parameters**:
-- `table` (required)
-- `date_field` (required) — Date field to bucket by
-- `group_by` — Secondary grouping field
-- `query` — Base filter
-- `periods` — Number of months to include (default: 6)
-
-### get_performance_analytics
-Get Performance Analytics widget data (ServiceNow PA API).
-
-**Parameters**:
-- `widget_sys_id` (required) — PA widget sys_id
-- `time_range` — e.g. `last_30_days`
-
-### export_report_data
-Export records as structured data for a given query.
-
-**Parameters**:
-- `table` (required)
-- `query`
-- `fields` — Comma-separated list
-- `format` — `json` (default)
-
-### get_sys_log
-Retrieve system log entries.
-
-**Parameters**:
-- `level` — `error`, `warning`, `info`
-- `source`
-- `limit`
-
-### list_scheduled_jobs
-List scheduled jobs (sys_trigger records).
-
-**Parameters**:
-- `active` — Filter by active
-- `limit`
-
-### get_scheduled_job
-Get details of a specific scheduled job. **[Read]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### create_scheduled_job
-Create a new scheduled script job. **[Write]**
-
-**Parameters**:
-- `name` (required)
-- `script` (required) — JavaScript to execute
-- `run_type` — `daily`, `weekly`, `monthly`, `periodically`, `once`
-- `run_time` — Time to run (HH:MM:SS)
-- `active`
-
-### update_scheduled_job
-Update a scheduled job's script or schedule. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### trigger_scheduled_job
-Trigger a scheduled job to run immediately. **[Write]**
-
-**Parameters**:
-- `sys_id` (required) — Scheduled job sys_id
-
-### list_job_run_history
-List execution history for a scheduled job.
-
-**Parameters**:
-- `job_sys_id` — Filter by job sys_id
-- `limit`
-
----
-
-## ATF Testing (9 tools) — Requires `ATF_ENABLED=true`
-
-### list_atf_suites
-List Automated Test Framework test suites.
-
-**Parameters**:
-- `active` — Filter by active
-- `query`
-- `limit`
-
-### get_atf_suite
-Get ATF test suite details.
-
-**Parameters**:
-- `identifier` (required) — sys_id or name
-
-### run_atf_suite
-Execute a test suite and return the result sys_id. **[ATF_ENABLED]**
-
-**Parameters**:
-- `sys_id` (required) — Suite sys_id
-
-### list_atf_tests
-List ATF test cases.
-
-**Parameters**:
-- `suite_sys_id` — Filter by suite
-- `active`
-- `limit`
-
-### get_atf_test
-Get ATF test case details.
-
-**Parameters**:
-- `sys_id` (required)
-
-### run_atf_test
-Execute a single ATF test. **[ATF_ENABLED]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### get_atf_suite_result
-Get results of an ATF suite run.
-
-**Parameters**:
-- `result_sys_id` (required)
-
-### list_atf_test_results
-List individual test results within a suite run.
-
-**Parameters**:
-- `suite_result_sys_id`
-- `limit`
-
-### get_atf_failure_insight
-**Latest release**: Get Failure Insight report showing metadata changes between the last successful and failed run — surfaces role changes and field value changes that caused test failures.
-
-**Parameters**:
-- `result_sys_id` (required)
-
----
-
-## Now Assist / AI (10 tools) — Requires `NOW_ASSIST_ENABLED=true`
-
-### nlq_query
-Send a natural language question and get structured query results.
-
-**Parameters**:
-- `question` (required) — Plain English question
-- `table` — Scope to a specific table
-
-### ai_search
-Semantic AI search across knowledge, catalog, and records (ServiceNow AI Search API).
-
-**Parameters**:
-- `query` (required)
-- `sources` — Array: `kb`, `catalog`, `incident`, etc.
-- `limit`
-
-### generate_summary
-Generate an AI summary of any record using Now Assist. **[NOW_ASSIST_ENABLED]**
-
-**Parameters**:
-- `table` (required)
-- `sys_id` (required)
-
-### suggest_resolution
-Get AI-powered resolution suggestions based on similar past incidents. **[NOW_ASSIST_ENABLED]**
-
-**Parameters**:
-- `incident_sys_id` (required)
-
-### categorize_incident
-Predict incident category, assignment group, and priority using Predictive Intelligence. **[NOW_ASSIST_ENABLED]**
-
-**Parameters**:
-- `short_description` (required)
-- `description`
-
-### get_pi_models
-List available Predictive Intelligence models.
-
-**Parameters**: None
-
-### get_virtual_agent_topics
-List Virtual Agent topics.
-
-**Parameters**:
-- `active`
-- `category`
-- `limit`
-
-### trigger_agentic_playbook
-**Latest release**: Invoke a Now Assist Agentic Playbook. **[NOW_ASSIST_ENABLED]**
-
-**Parameters**:
-- `playbook_sys_id` (required)
-- `context` — Key/value context object
-
-### get_ms_copilot_topics
-**Latest release**: List topics exposed to Microsoft Copilot 365.
-
-**Parameters**: None
-
-### generate_work_notes
-Generate AI-drafted work notes for a record based on its current context. **[NOW_ASSIST_ENABLED]**
-
-**Parameters**:
-- `table` (required) — Table name
-- `sys_id` (required) — Record sys_id
-- `context` — Additional context to include in the draft
-
----
-
-## Scripting (27 tools) — Requires `SCRIPTING_ENABLED=true`
-
-All scripting tools require `WRITE_ENABLED=true` + `SCRIPTING_ENABLED=true`.
-
-### list_business_rules
-List business rule definitions.
-
-**Parameters**:
-- `table` — Filter by target table
-- `active`
-- `limit`
-
-### get_business_rule
-Get full business rule record including script body.
-
-**Parameters**:
-- `sys_id` (required)
-
-### create_business_rule
-Create a new business rule. **[Scripting]**
-
-**Parameters**:
-- `name` (required)
-- `table` (required)
-- `when` (required) — `before`, `after`, `async`, `display`
-- `script` (required)
-- `condition`
-- `active`
-
-### update_business_rule
-Update a business rule. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_script_includes
-List script includes.
-
-**Parameters**:
-- `query`
-- `active`
-- `limit`
-
-### get_script_include
-Get full script include record with script body.
-
-**Parameters**:
-- `identifier` (required) — sys_id or API name
-
-### create_script_include
-Create a new script include. **[Scripting]**
-
-**Parameters**:
-- `name` (required)
-- `script` (required)
-- `api_name`
-- `access` — `public` or `package_private`
-
-### update_script_include
-Update a script include. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_client_scripts
-List client scripts.
-
-**Parameters**:
-- `table`
-- `type` — `onLoad`, `onChange`, `onSubmit`, `onCellEdit`
-- `active`
-- `limit`
-
-### get_client_script
-Get client script details and body.
-
-**Parameters**:
-- `sys_id` (required)
-
-### create_client_script
-Create a new client script. **[Scripting]**
-
-**Parameters**:
-- `name` (required)
-- `table` (required)
-- `type` (required)
-- `script` (required)
-- `condition`
-
-### update_client_script
-Update a client script. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_changesets
-List update sets (changesets).
-
-**Parameters**:
-- `state` — `in progress`, `complete`, `ignore`
-- `limit`
-
-### get_changeset
-Get changeset details.
-
-**Parameters**:
-- `identifier` (required) — sys_id or name
-
-### commit_changeset
-Commit a changeset. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### publish_changeset
-Publish a changeset to the target instance. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_ui_policies
-List UI policies. **[Scripting]**
-
-**Parameters**:
-- `table` — Filter by target table
-- `active`
-- `limit`
-
-### get_ui_policy
-Get UI policy details and actions. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### create_ui_policy
-Create a new UI policy. **[Scripting]**
-
-**Parameters**:
-- `short_description` (required)
-- `table` (required)
-- `conditions` — JSON condition string
-- `active`
-
-### list_ui_actions
-List UI actions (buttons, context menu items). **[Scripting]**
-
-**Parameters**:
-- `table` — Filter by target table
-- `active`
-- `limit`
-
-### get_ui_action
-Get UI action details and script. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### create_ui_action
-Create a new UI action. **[Scripting]**
-
-**Parameters**:
-- `name` (required)
-- `table` (required)
-- `script` (required)
-- `action_name`
-- `active`
-
-### update_ui_action
-Update a UI action script or properties. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_acls
-List Access Control List rules. **[Scripting]**
-
-**Parameters**:
-- `table` — Filter by target table
-- `operation` — `read`, `write`, `create`, `delete`
-- `active`
-- `limit`
-
-### get_acl
-Get ACL rule details and condition scripts. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### create_acl
-Create a new ACL rule. **[Scripting]**
-
-**Parameters**:
-- `name` (required) — `table.operation` format (e.g. `incident.write`)
-- `operation` (required) — `read`, `write`, `create`, `delete`
-- `active`
-- `condition` — Condition script
-- `script` — Advanced condition script
-
-### update_acl
-Update an existing ACL rule. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
----
-
-## Agile / Scrum (9 tools)
-
-Table names use the `AGILE_TABLE_PREFIX` env var (default: `rm_`).
-
-### create_story
-Create an agile user story. **[Write]**
-
-**Parameters**:
-- `short_description` (required)
-- `description`
-- `story_points`
-- `sprint`
-- `epic`
-
-### update_story
-Update a user story. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_stories
-List user stories with optional filters.
-
-**Parameters**:
-- `sprint`
-- `epic`
-- `state`
-- `limit`
-
-### create_epic
-Create an epic. **[Write]**
-
-**Parameters**:
-- `short_description` (required)
-- `description`
-
-### update_epic
-Update an epic. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_epics
-List epics.
-
-**Parameters**:
-- `state`
-- `limit`
-
-### create_scrum_task
-Create a scrum task. **[Write]**
-
-**Parameters**:
-- `short_description` (required)
-- `story_sys_id`
-- `assigned_to`
-- `hours_remaining`
-
-### update_scrum_task
-Update a scrum task. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_scrum_tasks
-List scrum tasks.
-
-**Parameters**:
-- `story_sys_id`
-- `assigned_to`
-- `limit`
-
----
-
-## HR Service Delivery (12 tools)
-
-### create_hr_case
-Create a new HR case. **[Write]**
-
-**Parameters**:
-- `short_description` (required)
-- `hr_service` — HR service sys_id
-- `opened_for` — Subject person sys_id
-- `description`
-
-### get_hr_case
-Get HR case details by number or sys_id.
-
-**Parameters**:
-- `identifier` (required)
-
-### update_hr_case
-Update an HR case. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_hr_cases
-List HR cases with optional filters.
-
-**Parameters**:
-- `state` — Case state filter
-- `hr_service`
-- `limit`
-
-### close_hr_case
-Close an HR case. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `close_notes`
-
-### list_hr_services
-List available HR services.
-
-**Parameters**:
-- `active` — Filter by active (default: true)
-- `limit`
-
-### get_hr_service
-Get HR service details.
-
-**Parameters**:
-- `sys_id` (required)
-
-### get_hr_profile
-Get HR profile for a user.
-
-**Parameters**:
-- `user_sys_id` (required)
-
-### update_hr_profile
-Update an HR profile record. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_hr_tasks
-List HR tasks associated with a case.
-
-**Parameters**:
-- `case_sys_id` — Filter by parent case
-- `limit`
-
-### create_hr_task
-Create an HR task. **[Write]**
-
-**Parameters**:
-- `short_description` (required)
-- `case_sys_id` — Parent HR case
-- `assigned_to`
-
-### get_hr_case_activity
-Get the activity log for an HR case.
-
-**Parameters**:
-- `case_sys_id` (required)
-
----
-
-## Customer Service Management (11 tools)
-
-### create_csm_case
-Create a new CSM case. **[Write]**
-
-**Parameters**:
-- `short_description` (required)
-- `account` — Account sys_id
-- `contact` — Contact sys_id
-- `description`
-- `priority`
-
-### get_csm_case
-Get CSM case details by number or sys_id.
-
-**Parameters**:
-- `identifier` (required)
-
-### update_csm_case
-Update a CSM case. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_csm_cases
-List CSM cases with optional filters.
-
-**Parameters**:
-- `account` — Filter by account
-- `state`
-- `limit`
-
-### close_csm_case
-Close a CSM case. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `close_notes`
-
-### get_csm_account
-Get CSM account details.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_csm_accounts
-List CSM accounts.
-
-**Parameters**:
-- `query`
-- `limit`
-
-### get_csm_contact
-Get CSM contact details.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_csm_contacts
-List CSM contacts.
-
-**Parameters**:
-- `account_sys_id` — Filter by account
-- `limit`
-
-### get_csm_case_sla
-Get SLA details for a CSM case.
-
-**Parameters**:
-- `case_sys_id` (required)
-
-### list_csm_products
-List products associated with CSM cases.
-
-**Parameters**:
-- `limit`
-
----
-
-## Security Operations & GRC (11 tools)
-
-### create_security_incident
-Create a security incident. **[Write]**
-
-**Parameters**:
-- `short_description` (required)
-- `severity` — `1` (Critical) to `4` (Low)
-- `category`
-- `description`
-
-### get_security_incident
-Get security incident details.
-
-**Parameters**:
-- `identifier` (required)
-
-### update_security_incident
-Update a security incident. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_security_incidents
-List security incidents.
-
-**Parameters**:
-- `state`
-- `severity`
-- `limit`
-
-### list_vulnerabilities
-List vulnerability entries.
-
-**Parameters**:
-- `state` — `open`, `in_progress`, `resolved`
-- `risk_rating`
-- `limit`
-
-### get_vulnerability
-Get vulnerability details.
-
-**Parameters**:
-- `sys_id` (required)
-
-### update_vulnerability
-Update a vulnerability record. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_grc_risks
-List GRC risk records.
-
-**Parameters**:
-- `state`
-- `limit`
-
-### get_grc_risk
-Get GRC risk details.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_grc_controls
-List GRC control records.
-
-**Parameters**:
-- `risk_sys_id` — Filter by related risk
-- `limit`
-
-### get_threat_intelligence
-Get threat intelligence entries from the ServiceNow threat feed.
-
-**Parameters**:
-- `type` — Indicator type (e.g. `IP`, `URL`)
-- `limit`
-
----
-
-## Flow Designer & Process Automation (10 tools)
-
-### list_flows
-List Flow Designer flows.
-
-**Parameters**:
-- `active`
-- `category`
-- `limit`
-
-### get_flow
-Get flow details and trigger configuration.
-
-**Parameters**:
-- `sys_id` (required)
-
-### trigger_flow
-Trigger a flow execution. **[Write]**
-
-**Parameters**:
-- `sys_id` (required) — Flow sys_id
-- `inputs` — Key/value input object
-
-### get_flow_execution
-Get the status and results of a flow execution.
-
-**Parameters**:
-- `execution_id` (required)
-
-### list_flow_executions
-List flow execution history.
-
-**Parameters**:
-- `flow_sys_id` — Filter by flow
-- `status` — `running`, `completed`, `failed`
-- `limit`
-
-### list_subflows
-List subflows.
-
-**Parameters**:
-- `active`
-- `limit`
-
-### get_subflow
-Get subflow details.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_action_instances
-List action instances in a flow execution.
-
-**Parameters**:
-- `execution_id` (required)
-
-### get_process_automation
-Get a Process Automation Designer process.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_process_automations
-List Process Automation Designer processes.
-
-**Parameters**:
-- `active`
-- `limit`
-
----
-
-## Service Portal & UI Builder (14 tools)
-
-### list_portals
-List Service Portal configurations.
-
-**Parameters**:
-- `active` — Filter by active (default: true)
-- `limit`
-
-### get_portal
-Get portal configuration and settings.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_portal_pages
-List pages in a Service Portal.
-
-**Parameters**:
-- `portal_sys_id` — Filter by portal
-- `limit`
-
-### get_portal_page
-Get portal page details and layout.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_portal_widgets
-List Service Portal widgets.
-
-**Parameters**:
-- `query`
-- `limit`
-
-### get_portal_widget
-Get widget template, CSS, client/server scripts.
-
-**Parameters**:
-- `sys_id` (required)
-
-### create_portal_widget
-Create a new Service Portal widget. **[Write]**
-
-**Parameters**:
-- `name` (required)
-- `id` (required) — Widget ID (unique slug)
-- `template` — HTML template
-- `client_script` — Angular client controller script
-- `server_script` — Server-side data script
-- `css` — Widget CSS
-
-### update_portal_widget
-Update an existing widget's code. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_widget_instances
-List widget instances placed on portal pages.
-
-**Parameters**:
-- `widget_sys_id` — Filter by widget
-- `page_sys_id` — Filter by page
-- `limit`
-
-### list_ux_apps
-List Next Experience (UI Builder) app configurations.
-
-**Parameters**:
-- `active`
-- `limit`
-
-### get_ux_app
-Get UX app details and routing.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_ux_pages
-List pages in a Next Experience app.
-
-**Parameters**:
-- `app_sys_id` — Filter by UX app
-- `limit`
-
-### list_portal_themes
-List Service Portal themes.
-
-**Parameters**:
-- `limit`
-
-### get_portal_theme
-Get portal theme CSS variables and settings.
-
-**Parameters**:
-- `sys_id` (required)
-
----
-
-## Integration & Middleware (19 tools)
-
-### list_rest_messages
-List REST Message configurations.
-
-**Parameters**:
-- `query`
-- `limit`
-
-### get_rest_message
-Get REST Message details, headers, and authentication.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_rest_message_functions
-List HTTP methods (functions) for a REST Message.
-
-**Parameters**:
-- `rest_message_sys_id` (required)
-
-### create_rest_message
-Create a new REST Message configuration. **[Write]**
-
-**Parameters**:
-- `name` (required)
-- `rest_endpoint` (required) — Base URL
-- `description`
-
-### list_transform_maps
-List Transform Maps.
-
-**Parameters**:
-- `query`
-- `limit`
-
-### get_transform_map
-Get Transform Map details and field mappings.
-
-**Parameters**:
-- `sys_id` (required)
-
-### run_transform_map
-Execute a Transform Map on an import set. **[Write]**
-
-**Parameters**:
-- `transform_map_sys_id` (required)
-- `import_set_sys_id` (required)
-
-### list_transform_field_maps
-List field mappings for a Transform Map.
-
-**Parameters**:
-- `transform_map_sys_id` (required)
-
-### list_import_sets
-List import set records.
-
-**Parameters**:
-- `query`
-- `limit`
-
-### get_import_set
-Get import set details and processing status.
-
-**Parameters**:
-- `sys_id` (required)
-
-### create_import_set_row
-Create a row in a staging import set table. **[Write]**
-
-**Parameters**:
-- `staging_table` (required) — Import set staging table name
-- `data` (required) — Key/value field data
-
-### list_data_sources
-List configured data sources for imports.
-
-**Parameters**:
-- `limit`
-
-### list_event_registry
-List registered events in the event registry.
-
-**Parameters**:
-- `query`
-- `limit`
-
-### get_event_registry_entry
-Get event registry entry details.
-
-**Parameters**:
-- `sys_id` (required)
-
-### register_event
-Register a new event in the event registry. **[Scripting]**
-
-**Parameters**:
-- `name` (required) — Fully qualified event name (e.g. `myapp.record.created`)
-- `table` (required) — Target table
-- `description`
-
-### fire_event
-Fire a ServiceNow event. **[Write]**
-
-**Parameters**:
-- `name` (required) — Event name
-- `table` (required)
-- `sys_id` (required) — Record sys_id
-- `param1` — Optional first parameter
-- `param2` — Optional second parameter
-
-### list_event_log
-List recent event log entries.
-
-**Parameters**:
-- `name` — Filter by event name
-- `limit`
-
-### list_oauth_applications
-List OAuth provider applications.
-
-**Parameters**:
-- `limit`
-
-### list_credential_aliases
-List credential alias configurations.
-
-**Parameters**:
-- `limit`
-
----
-
-## Notifications & Attachments (12 tools)
-
-### list_notifications
-List email notification configurations.
-
-**Parameters**:
-- `table` — Filter by target table
-- `active`
-- `limit`
-
-### get_notification
-Get notification details, subject, and message body.
-
-**Parameters**:
-- `sys_id` (required)
-
-### create_notification
-Create a new email notification. **[Write]**
-
-**Parameters**:
-- `name` (required)
-- `table` (required)
-- `subject` (required)
-- `message_html` — HTML email body
-- `active`
-
-### update_notification
-Update an existing notification. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### list_email_logs
-List email delivery log entries.
-
-**Parameters**:
-- `state` — `sent`, `failed`, `skipped`
-- `limit`
-
-### get_email_log
-Get email log entry details.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_attachments
-List attachments for a record.
-
-**Parameters**:
-- `table` (required)
-- `record_sys_id` (required)
-
-### get_attachment_metadata
-Get attachment metadata (name, size, content type).
-
-**Parameters**:
-- `sys_id` (required)
-
-### delete_attachment
-Delete an attachment by sys_id. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### upload_attachment
-Upload a file attachment to a record. **[Write]**
-
-**Parameters**:
-- `table` (required)
-- `record_sys_id` (required)
-- `file_name` (required)
-- `content_type` (required) — MIME type (e.g. `application/pdf`)
-- `content_base64` (required) — Base64-encoded file content
-
-### list_email_templates
-List email notification templates.
-
-**Parameters**:
-- `query`
-- `limit`
-
-### list_notification_subscriptions
-List notification subscription records.
-
-**Parameters**:
-- `user_sys_id` — Filter by user
-- `limit`
-
----
-
-## Performance Analytics & Data Quality (13 tools)
-
-### list_pa_indicators
-List Performance Analytics indicators.
-
-**Parameters**:
-- `active` — Filter by active (default: true)
-- `limit`
-
-### get_pa_indicator
-Get PA indicator details and definition.
-
-**Parameters**:
-- `sys_id` (required)
-
-### get_pa_scorecard
-Get current PA scorecard scores for an indicator.
-
-**Parameters**:
-- `indicator_sys_id` (required)
-- `limit`
-
-### get_pa_time_series
-Get time-series data for a PA indicator.
-
-**Parameters**:
-- `indicator_sys_id` (required)
-- `periods` — Number of periods (default: 12)
-
-### list_pa_breakdowns
-List PA breakdown definitions for an indicator.
-
-**Parameters**:
-- `indicator_sys_id` (required)
-
-### list_pa_dashboards
-List Performance Analytics dashboards.
-
-**Parameters**:
-- `limit`
-
-### get_pa_dashboard
-Get PA dashboard details and widget layout.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_homepages
-List ServiceNow homepage layouts.
-
-**Parameters**:
-- `limit`
-
-### list_pa_jobs
-List Performance Analytics collection jobs.
-
-**Parameters**:
-- `active`
-- `limit`
-
-### get_pa_job
-Get PA job details and run schedule.
-
-**Parameters**:
-- `sys_id` (required)
-
-### check_table_completeness
-Check field completeness for a table (samples up to 500 records and computes per-field fill rate).
-
-**Parameters**:
-- `table` (required)
-- `fields` — Comma-separated fields to check (default: all)
-- `query` — Optional filter query
-
-### get_table_record_count
-Get the total record count for a table.
-
-**Parameters**:
-- `table` (required)
-- `query` — Optional filter
-
-### compare_record_counts
-Compare record counts across two tables or two filtered views.
-
-**Parameters**:
-- `table1` (required)
-- `table2` (required)
-- `query1` — Optional filter for table1
-- `query2` — Optional filter for table2
-
----
-
-## System Properties (12 tools)
-
-### get_system_property
-Get a single system property value by name.
-
-**Parameters**:
-- `name` (required) — Property name (e.g. `glide.system.name`)
-
-### set_system_property
-Create or update a system property value. **[Write]**
-
-**Parameters**:
-- `name` (required)
-- `value` (required)
-- `description`
-- `type` — `string`, `integer`, `boolean`
-
-### list_system_properties
-List system properties with optional category or name filter.
-
-**Parameters**:
-- `category`
-- `name_like` — Partial name match
-- `limit`
-
-### delete_system_property
-Delete a system property by name. **[Write]**
-
-**Parameters**:
-- `name` (required)
-
-### search_system_properties
-Search system properties by partial name or value.
-
-**Parameters**:
-- `query` (required) — Partial name or value
-- `limit`
-
-### bulk_get_properties
-Get multiple system property values in one call.
-
-**Parameters**:
-- `names` (required) — Array of property names
-
-### bulk_set_properties
-Set multiple system property values in one call. **[Write]**
-
-**Parameters**:
-- `properties` (required) — Object mapping name → value
-
-### export_properties
-Export system properties to a JSON snapshot for backup/comparison.
-
-**Parameters**:
-- `category`
-- `name_like`
-- `limit`
-
-### import_properties
-Import system properties from a JSON snapshot. **[Write]**
-
-**Parameters**:
-- `properties` (required) — Array of `{name, value}` objects
-- `dry_run` — Validate without saving (default false)
-
-### validate_property
-Validate a property value against its declared type without saving.
-
-**Parameters**:
-- `name` (required)
-- `value` (required)
-
-### list_property_categories
-List all distinct system property categories.
-
-**Parameters**:
-- `limit`
-
-### get_property_history
-Get audit history for a system property (changes over time).
-
-**Parameters**:
-- `name` (required)
-- `limit`
-
----
-
-## Update Set Management (8 tools)
-
-### get_current_update_set
-Get all currently active (in-progress) Update Sets.
-
-### list_update_sets
-List Update Sets filtered by state.
-
-**Parameters**:
-- `state` — `in progress`, `complete`, `ignore`
-- `query`
-- `limit`
-
-### create_update_set
-Create a new Update Set and optionally switch to it. **[Scripting]**
-
-**Parameters**:
-- `name` (required)
-- `description`
-- `release`
-- `switch_to` — Switch after creation (default true)
-
-### switch_update_set
-Switch the active Update Set context. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### complete_update_set
-Mark an Update Set as complete. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### preview_update_set
-Preview all changes (sys_update_xml records) contained in an Update Set.
-
-**Parameters**:
-- `sys_id` (required)
-- `limit`
-
-### export_update_set
-Get the XML export summary for an Update Set. **[Scripting]**
-
-**Parameters**:
-- `sys_id` (required)
-
-### ensure_active_update_set
-Ensure an active Update Set exists; auto-creates one if none is in progress. **[Scripting]**
-
-**Parameters**:
-- `default_name` — Name for auto-created set (default: `AI Session Update Set YYYY-MM-DD`)
-
----
-
-## Virtual Agent (7 tools)
-
-### create_va_topic
-Create a new Virtual Agent conversation topic. **[Write]**
-
-**Parameters**:
-- `name` (required)
-- `description`
-- `category` — Category sys_id
-- `active` — Default true
-- `fulfillment_type` — `itsm_integration`, `custom`, `web_service`
-
-### update_va_topic
-Update Virtual Agent topic properties. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required) — Fields to update
-
-### get_va_topic
-Get Virtual Agent topic details including intent and trigger phrases.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_va_topics_full
-List all Virtual Agent topics with category and status details.
-
-**Parameters**:
-- `active` — Default true
-- `category` — Filter by category name
-- `query`
-- `limit`
-
-### get_va_conversation
-Get conversation history for a Virtual Agent session.
-
-**Parameters**:
-- `conversation_id` (required)
-- `limit`
-
-### list_va_conversations
-List recent Virtual Agent conversations.
-
-**Parameters**:
-- `topic_sys_id`
-- `user_sys_id`
-- `limit`
-
-### list_va_categories
-List Virtual Agent topic categories.
-
-**Parameters**:
-- `limit`
-
----
-
-## IT Asset Management / ITAM (8 tools)
-
-### list_assets
-List IT assets with optional type/status filter.
-
-**Parameters**:
-- `asset_class` — `hardware`, `software`, `consumable`
-- `status` — `in use`, `in stock`, `retired`
-- `assigned_to`
-- `query`
-- `limit`
-
-### get_asset
-Get full asset record details.
-
-**Parameters**:
-- `sys_id` (required)
-
-### create_asset
-Create a new asset record. **[Write]**
-
-**Parameters**:
-- `asset_tag` (required)
-- `model` — Model sys_id or name
-- `serial_number`
-- `assigned_to`
-- `location`
-- `status`
-
-### update_asset
-Update asset fields. **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `fields` (required)
-
-### retire_asset
-Mark an asset as retired (sets install_status to retired). **[Write]**
-
-**Parameters**:
-- `sys_id` (required)
-- `reason`
-
-### list_software_licenses
-List software license records.
-
-**Parameters**:
-- `vendor`
-- `product`
-- `limit`
-
-### get_license_compliance
-Get license compliance report showing purchased vs. in-use counts.
-
-**Parameters**:
-- `license_sys_id` — Specific license; all licenses if omitted
-- `limit`
-
-### list_asset_contracts
-List asset contracts (maintenance, support).
-
-**Parameters**:
-- `active` — Default true
-- `limit`
-
----
-
-## DevOps & Pipeline Tracking (7 tools)
-
-### list_devops_pipelines
-List DevOps pipeline configurations registered in ServiceNow.
-
-**Parameters**:
-- `active` — Default true
-- `limit`
-
-### get_devops_pipeline
-Get details of a specific DevOps pipeline.
-
-**Parameters**:
-- `sys_id` (required)
-
-### list_deployments
-List recent application deployments tracked in ServiceNow.
-
-**Parameters**:
-- `pipeline_sys_id`
-- `environment` — e.g. `prod`, `staging`
-- `state` — `success`, `failed`, `in_progress`
-- `limit`
-
-### get_deployment
-Get details and status of a specific deployment.
-
-**Parameters**:
-- `sys_id` (required)
-
-### create_devops_change
-Create a change request linked to a DevOps deployment. **[Write]**
-
-**Parameters**:
-- `short_description` (required)
-- `environment` (required)
-- `pipeline`
-- `artifact`
-- `type` — `normal`, `standard`, `emergency`
-- `assigned_to`
-- `assignment_group`
-
-### track_deployment
-Record a deployment event for audit and velocity tracking. **[Write]**
-
-**Parameters**:
-- `environment` (required)
-- `artifact_name` (required)
-- `status` (required) — `success`, `failed`, `rolled_back`
-- `pipeline`
-- `artifact_version`
-- `notes`
-
-### get_devops_insights
-Get deployment frequency, failure rate, and lead time metrics.
-
-**Parameters**:
-- `pipeline_sys_id` — All pipelines if omitted
-- `days` — Look-back window (default 30)
-
----
-
-## ServiceNow Documentation (2 tools)
-
-Search and read the official ServiceNow product documentation (servicenow.com/docs) so an AI can ground answers in current docs instead of training-data guesses. Read-only; uses the public docs site, **no instance credentials required**. Complements `fluent_explain` (live SDK docs) and `search_knowledge` (instance Knowledge Base).
-
-### search_servicenow_docs
-Full-text search over servicenow.com/docs — API references (GlideRecord, GlideSystem…), admin/developer guides, encoded-query operators, release notes. Returns ranked results with `title`, `breadcrumb`, `url`, `snippet`, and a `ref` for fetching the full page.
-
-**Parameters**:
-- `query` (required) — what to look up (e.g., "GlideRecord addEncodedQuery", "flow designer rest step")
-- `limit` — max results (default 6, max 20)
-- `product` — optional product/area to bias the search (e.g., "CMDB", "Flow Designer")
-
-### fetch_servicenow_doc
-Fetch the full readable text of a docs page. Pass the `ref` from a search result (preferred, exact) or a servicenow.com/docs URL.
-
-**Parameters**:
-- `ref` — the `ref` returned by `search_servicenow_docs` (preferred)
-- `url` — a servicenow.com/docs page URL (resolved via docs search; SSRF-guarded to ServiceNow domains)
-- `maxChars` — truncate returned text (default 9000, max 30000)
-
----
-
-## See Also
-
-- [TOOL_PACKAGES.md](TOOL_PACKAGES.md) — Role-based packages
-- [NOW_ASSIST.md](NOW_ASSIST.md) — Now Assist integration guide
-- [ATF.md](ATF.md) — ATF testing guide
-- [SCRIPTING.md](SCRIPTING.md) — Scripting management guide
-- [REPORTING.md](REPORTING.md) — Reporting and analytics guide
+# Tool reference
+
+<!-- Generated by scripts/gen-tool-docs.mjs from dist/tools-manifest.json. Do not edit by hand: run `npm run build && node scripts/gen-tool-docs.mjs`. -->
+
+NowAIKit ships **544 tools** in 62 groups. This page is generated from the built tool manifest, so it always matches the code.
+
+In lean discovery mode (`MCP_TOOL_DISCOVERY=lean`) the server also exposes `run_tool`, which runs any tool below by name after `search_tools` finds it. Role packages (`MCP_TOOL_PACKAGE`) expose a subset, see [TOOL_PACKAGES.md](TOOL_PACKAGES.md).
+
+## Permission tiers
+
+Everything is read-only until you turn a tier on. The **Tier** column below shows which switch a tool needs (blank means read-only, always available).
+
+| Tier | Turn it on with | Launch flag |
+|------|-----------------|-------------|
+| Read | nothing, always on | |
+| Write | `WRITE_ENABLED=true` | `--allow-write` |
+| CMDB write | `WRITE_ENABLED=true` + `CMDB_WRITE_ENABLED=true` | `--allow-cmdb` |
+| Scripting | `WRITE_ENABLED=true` + `SCRIPTING_ENABLED=true` (script changes only, script reads are Tier 0) | `--allow-scripting` |
+| Now Assist | `NOW_ASSIST_ENABLED=true` | `--allow-agentic` |
+| ATF | `ATF_ENABLED=true` | `--allow-atf` |
+| Fluent | `FLUENT_ENABLED=true` (local ServiceNow SDK commands) | `--allow-fluent` |
+
+Tiers are detected from each tool description, so a tool that checks its tier at run time (for example a tool with both read and write actions) may show blank here. Parameters marked `*` are required.
+
+## Groups
+
+| Group | Tools |
+|-------|------:|
+| [Tool discovery](#tool-discovery) | 1 |
+| [Core records, CMDB and instance](#core-records-cmdb-and-instance) | 26 |
+| [Schema discovery](#schema-discovery) | 1 |
+| [Governance and health](#governance-and-health) | 3 |
+| [Incident management](#incident-management) | 7 |
+| [Problem management](#problem-management) | 4 |
+| [Change management](#change-management) | 7 |
+| [Tasks and approvals](#tasks-and-approvals) | 4 |
+| [Approval routing and quotes](#approval-routing-and-quotes) | 7 |
+| [SLA and OLA](#sla-and-ola) | 5 |
+| [On-call scheduling](#on-call-scheduling) | 5 |
+| [Bundled investigations](#bundled-investigations) | 3 |
+| [Impact analysis (blast radius)](#impact-analysis-blast-radius) | 5 |
+| [Knowledge management](#knowledge-management) | 7 |
+| [Service catalog](#service-catalog) | 15 |
+| [Catalog fulfillment](#catalog-fulfillment) | 8 |
+| [Interactive forms (MCP Apps)](#interactive-forms-mcp-apps) | 3 |
+| [Users and groups](#users-and-groups) | 8 |
+| [Access administration](#access-administration) | 8 |
+| [Reporting and analytics](#reporting-and-analytics) | 18 |
+| [Charts and visualization](#charts-and-visualization) | 3 |
+| [Performance Analytics and data quality](#performance-analytics-and-data-quality) | 17 |
+| [Automated Test Framework](#automated-test-framework) | 9 |
+| [Scripting (business rules, script includes, ACLs)](#scripting-business-rules-script-includes-acls) | 27 |
+| [Update sets](#update-sets) | 8 |
+| [Local Sync (pull and push artifacts)](#local-sync-pull-and-push-artifacts) | 4 |
+| [Deployment and artifacts](#deployment-and-artifacts) | 10 |
+| [Scoped applications](#scoped-applications) | 4 |
+| [Fluent, ServiceNow SDK and batch](#fluent-servicenow-sdk-and-batch) | 16 |
+| [Flow Designer and subflows](#flow-designer-and-subflows) | 17 |
+| [Decision tables](#decision-tables) | 7 |
+| [Playbooks and orchestration](#playbooks-and-orchestration) | 3 |
+| [Integration (REST, import sets, transforms, events)](#integration-rest-import-sets-transforms-events) | 19 |
+| [Notifications, email and attachments](#notifications-email-and-attachments) | 16 |
+| [System properties](#system-properties) | 12 |
+| [Platform operations](#platform-operations) | 5 |
+| [CMDB reconciliation](#cmdb-reconciliation) | 4 |
+| [Service Mapping](#service-mapping) | 4 |
+| [Service portfolio](#service-portfolio) | 3 |
+| [Now Assist (Otto) and generative AI](#now-assist-otto-and-generative-ai) | 6 |
+| [Now Assist skills](#now-assist-skills) | 4 |
+| [AI agents and agentic workflows](#ai-agents-and-agentic-workflows) | 4 |
+| [AI agent executions](#ai-agent-executions) | 3 |
+| [AI Agent Studio](#ai-agent-studio) | 10 |
+| [AI Control Tower, Knowledge Graph and Otto status](#ai-control-tower-knowledge-graph-and-otto-status) | 9 |
+| [ServiceNow Action Fabric (instance MCP servers and A2A agents)](#servicenow-action-fabric-instance-mcp-servers-and-a2a-agents) | 10 |
+| [Machine learning and Predictive Intelligence](#machine-learning-and-predictive-intelligence) | 12 |
+| [Virtual Agent](#virtual-agent) | 7 |
+| [ServiceNow MCP parity (summaries, sentiment, HR, CSM)](#servicenow-mcp-parity-summaries-sentiment-hr-csm) | 9 |
+| [HR Service Delivery](#hr-service-delivery) | 16 |
+| [Customer Service Management](#customer-service-management) | 11 |
+| [Security Operations and GRC](#security-operations-and-grc) | 19 |
+| [GRC (risks, controls, issues)](#grc-risks-controls-issues) | 4 |
+| [IT Asset Management](#it-asset-management) | 10 |
+| [Agile development](#agile-development) | 15 |
+| [Strategic Portfolio Management](#strategic-portfolio-management) | 7 |
+| [DevOps](#devops) | 7 |
+| [Service Portal and UI Builder](#service-portal-and-ui-builder) | 16 |
+| [Workspaces and UX](#workspaces-and-ux) | 16 |
+| [Mobile](#mobile) | 10 |
+| [Surveys and assessments](#surveys-and-assessments) | 4 |
+| [ServiceNow documentation](#servicenow-documentation) | 2 |
+| **Total** | **544** |
+
+## Tool discovery
+
+1 tool.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `search_tools` |  | Search the full NowAIKit tool catalog (500+ tools) by keyword to discover the right tool without loading every definition. | `query`*, `limit` |
+
+## Core records, CMDB and instance
+
+26 tools, defined in `src/tools/core.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `query_records` |  | Query ServiceNow records with filtering, field selection, pagination, and sorting | `table`*, `query`, `fields`, `limit`, `orderBy` |
+| `get_table_schema` |  | Get the structure and field information for a ServiceNow table | `table`* |
+| `get_mandatory_fields` |  | List the fields that ServiceNow Data Policies make mandatory on a table (and when they apply). | `table`* |
+| `get_record` |  | Retrieve complete details of a specific record by sys_id | `table`*, `sys_id`*, `fields` |
+| `create_record` | Write | Create a new record in any ServiceNow table (requires WRITE_ENABLED=true). | `table`*, `fields`*, `dry_run` |
+| `update_record` | Write | Update an existing record in any ServiceNow table (requires WRITE_ENABLED=true). | `table`*, `sys_id`*, `fields`*, `dry_run` |
+| `delete_record` | Write | Delete a record from any ServiceNow table (requires WRITE_ENABLED=true). | `table`*, `sys_id`*, `dry_run` |
+| `validate_query` |  | Lint-check a ServiceNow encoded query BEFORE running it: validates javascript: expressions against the safe function allowlist, length limits, and common mistakes (e.g. | `query`* |
+| `get_user` |  | Look up user details by email or username | `user_identifier`* |
+| `get_group` |  | Find assignment group details by name or sys_id | `group_identifier`* |
+| `search_cmdb_ci` |  | Search for configuration items (CIs) in the CMDB | `query`, `limit` |
+| `get_cmdb_ci` |  | Get complete information about a specific configuration item | `ci_sys_id`*, `fields` |
+| `list_relationships` |  | Show parent and child relationships for a CI | `ci_sys_id`* |
+| `list_discovery_schedules` |  | List discovery schedules and their run status | `active_only` |
+| `list_mid_servers` |  | List MID servers and verify they are healthy | `active_only` |
+| `list_active_events` |  | Monitor critical infrastructure events | `query`, `limit` |
+| `cmdb_health_dashboard` |  | Get CMDB data quality metrics (completeness of server and network CI data) |  |
+| `service_mapping_summary` |  | View service dependencies and related CIs for impact analysis | `service_sys_id`* |
+| `natural_language_search` |  | Search ServiceNow using plain English | `query`*, `limit` |
+| `natural_language_update` | Write | Update a record using natural language (requires WRITE_ENABLED=true) | `instruction`*, `table`* |
+| `list_instances` |  | List all configured ServiceNow instances (multi-instance / multi-customer support) |  |
+| `switch_instance` |  | Switch the active ServiceNow instance for this session | `name`* |
+| `get_current_instance` |  | Get the currently active ServiceNow instance name and URL |  |
+| `create_ci_relationship` |  | [Write] Create a relationship between two CMDB Configuration Items | `parent`*, `child`*, `type`* |
+| `cmdb_impact_analysis` |  | Analyze the downstream impact of a Configuration Item change or outage | `ci_sys_id`*, `depth` |
+| `run_discovery_scan` |  | [Write] Trigger a ServiceNow Discovery scan for network/infrastructure | `schedule_id`*, `mid_server` |
+
+## Schema discovery
+
+1 tool, defined in `src/tools/discovery.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `discover_table` |  | Discover a ServiceNow table schema and register dynamic CRUD tools for it. | `table`*, `operations` |
+
+## Governance and health
+
+3 tools, defined in `src/tools/governance.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `bulk_create_records` | Write | Create many records in one table in a single call, tracking every created sys_id and returning a rollback_token. | `table`*, `records`*, `rollback_on_error`, `dry_run` |
+| `rollback_changes` | Write | Delete a set of previously-created records, e.g. | `changes`* |
+| `compare_instances` |  | Compare two configured ServiceNow instances: record counts for a table (with optional query) and/or a specific system property value. | `instance_a`*, `instance_b`*, `table`, `query`, `property` |
+
+## Incident management
+
+7 tools, defined in `src/tools/incident.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_incident` | Write | Create a new incident record (requires WRITE_ENABLED=true) | `short_description`*, `urgency`, `impact`, `priority`, `description`, `assignment_group`, `caller_id`, `category`, `subcategory` |
+| `get_incident` |  | Get full details of an incident by number (e.g. | `number_or_sysid`* |
+| `update_incident` | Write | Update fields on an existing incident (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `resolve_incident` | Write | Resolve an incident with resolution code and notes (requires WRITE_ENABLED=true) | `sys_id`*, `resolution_code`*, `resolution_notes`* |
+| `close_incident` | Write | Close a resolved incident (requires WRITE_ENABLED=true) | `sys_id`* |
+| `add_work_note` | Write | Add an internal work note to any ITSM record (requires WRITE_ENABLED=true) | `table`*, `sys_id`*, `note`* |
+| `add_comment` | Write | Add a customer-visible comment to any ITSM record (requires WRITE_ENABLED=true) | `table`*, `sys_id`*, `comment`* |
+
+## Problem management
+
+4 tools, defined in `src/tools/problem.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_problem` | Write | Create a new problem record (requires WRITE_ENABLED=true) | `short_description`*, `description`, `assignment_group`, `priority` |
+| `get_problem` |  | Get full details of a problem by number (PRB...) or sys_id | `number_or_sysid`* |
+| `update_problem` | Write | Update fields on an existing problem (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `resolve_problem` | Write | Resolve a problem with root cause and resolution notes (requires WRITE_ENABLED=true) | `sys_id`*, `root_cause`*, `resolution_notes`* |
+
+## Change management
+
+7 tools, defined in `src/tools/change.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_change_request` | Write | Create a new change request (requires WRITE_ENABLED=true) | `short_description`*, `description`, `type`*, `category`, `risk`, `impact`, `priority`, `assignment_group`, `assigned_to`, `start_date`, `end_date`, `implementation_plan`, `backout_plan`, `test_plan`, `cmdb_ci` |
+| `get_change_request` |  | Get full details of a change request by number (CHG...) or sys_id | `number_or_sysid`* |
+| `update_change_request` | Write | Update fields on a change request (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_change_requests` |  | List change requests with optional filtering by state or query | `query`, `state`, `limit` |
+| `submit_change_for_approval` | Write | Move a change request to "Requested" state for approval (requires WRITE_ENABLED=true) | `sys_id`* |
+| `close_change_request` | Write | Close a change request with close code and notes (requires WRITE_ENABLED=true) | `sys_id`*, `close_code`*, `close_notes`* |
+| `schedule_cab_meeting` |  | [Write] Schedule a Change Advisory Board (CAB) meeting | `change_id`*, `date`*, `duration_minutes`, `attendees` |
+
+## Tasks and approvals
+
+4 tools, defined in `src/tools/task.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `get_task` |  | Get details of any task record by number or sys_id | `number_or_sysid`* |
+| `update_task` | Write | Update fields on a task record (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_my_tasks` |  | List tasks assigned to the currently configured user | `limit` |
+| `complete_task` | Write | Mark a task as complete (requires WRITE_ENABLED=true) | `sys_id`*, `close_notes` |
+
+## Approval routing and quotes
+
+7 tools, defined in `src/tools/approvals-extra.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `get_quote` |  | Get a CPQ/sales quote record by number or sys_id (tries known quote tables) | `number`, `sys_id`, `table` |
+| `list_quotes` |  | List CPQ/sales quotes with optional filters (state, account) | `table`, `state`, `account`, `limit` |
+| `get_approval_history` |  | Get the approval progression/history for any record (sysapproval_approver rows, ordered) | `record`*, `limit` |
+| `preview_approval_routing` |  | Preview the planned approver path for a record before/after submission (existing sysapproval_approver rows + matching approval rules) | `record`*, `table` |
+| `add_adhoc_approver` | Write | Add an ad-hoc approver to an in-flight approval on a record (inserts a sysapproval_approver row). | `record`*, `approver`*, `source_table` |
+| `recall_approval_request` | Write | Recall/withdraw approval requests on a record by cancelling pending approver rows (state to cancelled/no_longer_required). | `record`* |
+| `submit_for_approval` | Write | Submit any record for approval by setting its approval field to "requested" (generic, not just change). | `table`*, `sys_id`*, `approval_field` |
+
+## SLA and OLA
+
+5 tools, defined in `src/tools/sla.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_sla_definitions` |  | List SLA/OLA definitions (contract_sla), optionally filtered by name, table, or active status | `query`, `table`, `active`, `limit` |
+| `create_sla_definition` | Write | Create an SLA/OLA definition (contract_sla). | `name`*, `collection`*, `duration_type`, `duration`, `start_condition`, `stop_condition`, `schedule`, `type`, `fields` |
+| `update_sla_definition` | Write | Update an SLA/OLA definition (contract_sla). | `sys_id`*, `fields`* |
+| `get_task_sla` |  | Get live SLA instances (task_sla) for a task, percent complete, breach status, stage, planned end | `task`, `task_number`, `active_only` |
+| `list_breached_slas` |  | List SLA instances that have breached or are at risk within a window (task_sla) | `breached`, `min_percentage`, `sla_table`, `limit` |
+
+## On-call scheduling
+
+5 tools, defined in `src/tools/oncall.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `get_on_call_now` |  | Find who is on call for a group right now. | `group`* |
+| `list_rotas` |  | List on-call rotations (cmn_rota), optionally filtered by group or name | `group`, `query`, `limit` |
+| `create_rota_schedule` | Write | Create an on-call rotation (cmn_rota) for a group. | `name`*, `group`*, `time_zone`, `fields` |
+| `add_roster_member` | Write | Add a member to an on-call roster (cmn_rota_member). | `roster`*, `member`*, `order`, `fields` |
+| `create_on_call_override` | Write | Create an on-call coverage override for a date range (cmn_rota_override). | `roster`*, `member`*, `start`*, `end`*, `fields` |
+
+## Bundled investigations
+
+3 tools, defined in `src/tools/bundles.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `investigate_incident` |  | One-call incident investigation. | `number_or_sysid`* |
+| `change_readiness` |  | One-call change readiness check. | `number_or_sysid`* |
+| `service_health` |  | One-call service health snapshot. | `name_or_sysid`* |
+
+## Impact analysis (blast radius)
+
+5 tools, defined in `src/tools/impact-analysis.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_table_config` |  | List every configuration artifact on a table, business rules, client scripts, UI policies, ACLs, UI actions, data policies, and dictionary fields, with per-type counts. | `table`*, `limit` |
+| `find_field_references` |  | Find where a table field is used, its dictionary entry plus any scripts (business rules, script includes, client scripts, UI actions, widgets) that mention the field name. | `table`*, `field`*, `limit` |
+| `find_script_references` |  | Find what references a Script Include or named artifact, scans script-bearing config tables for textual use of the name. | `name`*, `limit` |
+| `find_update_sets` |  | List the update sets that contain changes to an artifact (by name), so you know what is in-flight or already captured for promotion before you touch it. | `name`*, `limit` |
+| `find_property_usage` |  | Find scripts that read a system property (sys_properties) by name, plus the property record itself. | `name`*, `limit` |
+
+## Knowledge management
+
+7 tools, defined in `src/tools/knowledge.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_knowledge_bases` |  | List all knowledge bases available in the instance | `limit` |
+| `search_knowledge` |  | Search knowledge base articles by keyword | `query`*, `limit`, `knowledge_base` |
+| `get_knowledge_article` |  | Get the full content of a knowledge article by number (KB...) or sys_id | `number_or_sysid`* |
+| `create_knowledge_article` | Write | Create a new knowledge article (requires WRITE_ENABLED=true) | `short_description`*, `text`*, `knowledge_base_sys_id`*, `category` |
+| `update_knowledge_article` | Write | Update a knowledge article (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `publish_knowledge_article` | Write | Publish a draft knowledge article (requires WRITE_ENABLED=true) | `sys_id`* |
+| `retire_knowledge_article` |  | [Write] Retire a knowledge article (mark as outdated) | `article_id`* |
+
+## Service catalog
+
+15 tools, defined in `src/tools/catalog.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_catalog_items` |  | List available service catalog items | `category`, `limit` |
+| `search_catalog` |  | Search the service catalog for items matching a keyword | `query`*, `limit` |
+| `get_catalog_item` |  | Get full details of a catalog item including its variables | `sys_id_or_name`* |
+| `create_catalog_item` | Write | Create a new service catalog item (requires WRITE_ENABLED=true) | `name`*, `short_description`*, `description`, `category`, `price`, `delivery_time`, `active`, `roles` |
+| `update_catalog_item` | Write | Update an existing catalog item (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `order_catalog_item` | Write | Order a service catalog item (requires WRITE_ENABLED=true) | `sys_id`*, `quantity`, `variables` |
+| `create_approval_rule` | Write | Create an approval rule that automatically generates approval requests when a record matches given conditions (requires WRITE_ENABLED=true). | `name`*, `table`*, `approver_type`*, `approver`*, `condition`, `active`, `order` |
+| `get_my_approvals` |  | List approvals pending for the currently configured user | `state` |
+| `list_approvals` |  | List approval requests with optional filters | `query`, `state`, `limit` |
+| `approve_request` | Write | Approve a pending approval request (requires WRITE_ENABLED=true) | `sys_id`*, `comments` |
+| `reject_request` | Write | Reject a pending approval request (requires WRITE_ENABLED=true) | `sys_id`*, `comments`* |
+| `get_sla_details` |  | Get SLA breach status for a specific task or incident | `task_sys_id`* |
+| `list_active_slas` |  | List active SLA records with optional filters | `query`, `limit` |
+| `create_catalog_variable` |  | [Write] Add a form variable to a service catalog item | `cat_item_id`*, `name`*, `question_text`*, `type`*, `order`, `mandatory` |
+| `create_catalog_ui_policy` |  | [Write] Create a UI policy for a catalog item form | `cat_item_id`*, `short_description`*, `conditions`, `reverse_if_false` |
+
+## Catalog fulfillment
+
+8 tools, defined in `src/tools/catalog-fulfillment.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `get_request_item` |  | Get a requested item (RITM) with its variables, by number or sys_id | `number`, `sys_id` |
+| `update_request_item` | Write | Update the state/stage or fields of a requested item (sc_req_item). | `sys_id`*, `state`, `stage`, `fields` |
+| `list_catalog_tasks` |  | List catalog fulfillment tasks (SCTASK), optionally by request item, assignment group, or state | `request_item`, `assignment_group`, `active`, `limit` |
+| `complete_catalog_task` | Write | Close a catalog fulfillment task (sc_task) as complete. | `sys_id`*, `close_notes`, `state` |
+| `list_catalog_categories` |  | List catalog categories (sc_category), optionally filtered by catalog or title | `catalog`, `query`, `limit` |
+| `create_catalog_category` | Write | Create a catalog category (sc_category). | `title`*, `catalog`, `description`, `parent`, `fields` |
+| `create_user_criteria` | Write | Create a user criteria record (user_criteria) for catalog entitlement/audience. | `name`*, `roles`, `groups`, `users`, `match_all`, `fields` |
+| `assign_user_criteria` | Write | Attach a user criteria to a catalog item as available-for (sc_cat_item_user_criteria_mtom). | `catalog_item`*, `user_criteria`* |
+
+## Interactive forms (MCP Apps)
+
+3 tools, defined in `src/tools/apps.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `open_catalog_form` |  | Open a Service Catalog item as an interactive request form inside the chat (Claude, ChatGPT, VS Code and other MCP Apps hosts). | `item`* |
+| `open_record_form` |  | Open an interactive form to create or edit a ServiceNow record (incident, change_request, problem, any table) inside the chat. | `table`*, `sys_id`, `fields`, `values` |
+| `open_approvals` |  | Show the current user's pending approvals as an interactive list with Approve and Reject buttons inside the chat. | `limit` |
+
+## Users and groups
+
+8 tools, defined in `src/tools/user.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_users` |  | List users with optional search filter | `query`, `limit` |
+| `create_user` | Write | Create a new user account (requires WRITE_ENABLED=true) | `user_name`*, `email`*, `first_name`*, `last_name`*, `title`, `department` |
+| `update_user` | Write | Update a user account (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_groups` |  | List groups with optional search filter | `query`, `limit` |
+| `create_group` | Write | Create a new assignment group (requires WRITE_ENABLED=true) | `name`*, `description`, `manager` |
+| `update_group` | Write | Update a group (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `add_user_to_group` | Write | Add a user to a group (requires WRITE_ENABLED=true) | `user_sys_id`*, `group_sys_id`* |
+| `remove_user_from_group` | Write | Remove a user from a group (requires WRITE_ENABLED=true) | `member_sys_id`* |
+
+## Access administration
+
+8 tools, defined in `src/tools/access-admin.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_user_roles` |  | List roles granted to a user (sys_user_has_role), including inherited flag | `user`* |
+| `grant_role` | Write | Grant a role to a user (sys_user_has_role). | `user`*, `role`* |
+| `revoke_role` | Write | Revoke a directly-granted role from a user. | `user`*, `role`* |
+| `create_role` | Write | Create a new role (sys_user_role). | `name`*, `description`, `fields` |
+| `deactivate_user` | Write | Deactivate (offboard) a user by setting active=false. | `user`* |
+| `create_delegation` | Write | Create an approval/coverage delegation (sys_user_delegate). | `user`*, `delegate`*, `starts`, `ends`, `approvals`, `assignments` |
+| `list_group_members` |  | List the members of a group (sys_user_grmember) | `group`*, `limit` |
+| `get_user_entitlements` |  | Summarize what a user can access: their roles, groups, and active status | `user`* |
+
+## Reporting and analytics
+
+18 tools, defined in `src/tools/reporting.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_reports` |  | List saved reports in the instance (latest release: /api/now/reporting) | `search`, `category`, `limit` |
+| `get_report` |  | Get the definition and metadata of a saved report | `sys_id_or_name`* |
+| `run_aggregate_query` |  | Run a grouped aggregate (COUNT, SUM, AVG) query on any table (latest release: /api/now/stats/{table}) | `table`*, `group_by`*, `aggregate`, `query`, `limit` |
+| `trend_query` |  | Get time-bucketed trend data for a table (useful for monthly/weekly trend charts) | `table`*, `date_field`*, `group_by`*, `query`, `periods` |
+| `get_performance_analytics` |  | Read Performance Analytics scorecard/indicator data (requires PA plugin; GET /api/now/pa/scorecards). | `indicator_sys_id`, `widget_sys_id`, `from`, `to` |
+| `export_report_data` |  | Export raw table data as structured JSON for use in external reports | `table`*, `query`, `fields`, `limit` |
+| `get_sys_log` |  | Retrieve system log entries for debugging or auditing. | `query`, `app_scope`, `limit` |
+| `list_scheduled_jobs` |  | List scheduled jobs and their run schedules | `active`, `query`, `limit` |
+| `get_scheduled_job` |  | Get full details of a scheduled job by sys_id or name | `sys_id_or_name`* |
+| `create_scheduled_job` | Write | Create a new scheduled script execution job (requires WRITE_ENABLED=true) | `name`*, `script`*, `run_type`*, `run_time`, `run_period`, `active` |
+| `update_scheduled_job` | Write | Update a scheduled job (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `trigger_scheduled_job` | Write | Immediately execute a scheduled job on-demand (requires WRITE_ENABLED=true) | `sys_id`* |
+| `create_report` | Write | Create a new saved report on any table (requires WRITE_ENABLED=true) | `title`*, `table`*, `type`*, `field`, `query`, `aggregate`, `group_by`, `roles` |
+| `update_report` | Write | Update an existing saved report definition (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_job_run_history` |  | List recent run history for scheduled jobs (success/failure log) | `job_sys_id`, `status`, `limit` |
+| `create_scheduled_report` |  | [Write] Schedule a report for recurring email delivery | `report_id`*, `frequency`*, `recipients`*, `day_of_week`, `day_of_month`, `format` |
+| `create_kpi` |  | [Write] Create a Key Performance Indicator from ServiceNow data | `name`*, `table`*, `field`, `aggregate`*, `conditions`, `unit` |
+| `generate_report` |  | Generate a branded PDF or PPTX report from capability analysis results. | `content`, `sections`, `format`*, `title`*, `capability` |
+
+## Charts and visualization
+
+3 tools, defined in `src/tools/visualization.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `visualize_aggregate` |  | Build a real-time chart of ServiceNow records grouped by a field (e.g. | `table`*, `group_by`*, `query`, `chart_type`, `title`, `limit` |
+| `aggregate_report` |  | Server-side aggregate REPORT grouped by a field, in ONE query with no 1000-row truncation. | `table`*, `group_by`*, `query`, `avg_fields`, `sum_fields`, `min_fields`, `max_fields`, `title`, `limit` |
+| `visualize_trend` |  | Build a real-time trend line of ServiceNow record counts over time (e.g. | `table`*, `date_field`, `interval`, `query`, `title` |
+
+## Performance Analytics and data quality
+
+17 tools, defined in `src/tools/performance.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_pa_indicators` |  | List Performance Analytics (PA) indicators (KPIs) available in the instance | `query`, `category`, `active`, `limit` |
+| `get_pa_indicator` |  | Get details of a specific Performance Analytics indicator including its formula | `sys_id_or_name`* |
+| `get_pa_scorecard` |  | Get current scorecard data for a PA indicator, returns current value, target, trend direction | `indicator_sys_id`*, `breakdown_sys_id`, `period`, `include_scores` |
+| `get_pa_time_series` |  | Get historical time-series data for a PA indicator to identify trends | `indicator_sys_id`*, `start_date`, `end_date`, `limit` |
+| `list_pa_breakdowns` |  | List PA breakdowns (dimensions) available for segmenting indicator data | `query`, `limit` |
+| `list_pa_dashboards` |  | List Performance Analytics dashboards | `query`, `limit` |
+| `get_pa_dashboard` |  | Get details of a PA dashboard including its widgets/tabs | `sys_id_or_name`* |
+| `list_homepages` |  | List homepage dashboards (CMS content pages used as homepages) | `query`, `limit` |
+| `list_pa_jobs` |  | List Performance Analytics data collection jobs and their schedules | `active`, `query`, `limit` |
+| `get_pa_job` |  | Get details of a Performance Analytics collection job | `sys_id`* |
+| `create_dashboard` | Write | Create a new Performance Analytics dashboard (requires WRITE_ENABLED=true) | `name`*, `description`, `roles`, `active` |
+| `update_dashboard` | Write | Update an existing PA dashboard (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `create_pa_indicator` | Write | Create a Performance Analytics (PA) indicator / KPI on `pa_indicators` (requires WRITE_ENABLED=true). | `name`*, `description`, `facts_table`, `aggregate`, `field`, `conditions`, `unit`, `direction`, `active` |
+| `create_pa_breakdown` | Write | Create a Performance Analytics (PA) breakdown on `pa_breakdowns` (requires WRITE_ENABLED=true). | `name`*, `description`, `related_field`, `active` |
+| `check_table_completeness` |  | Analyze data quality and field completeness for a ServiceNow table, returns percentage of non-empty values per field | `table`*, `fields`*, `query`, `sample_size` |
+| `get_table_record_count` |  | Get total record count for a ServiceNow table with optional filters | `table`*, `query` |
+| `compare_record_counts` |  | Compare record counts across multiple ServiceNow tables or time periods, useful for capacity planning | `tables`*, `query` |
+
+## Automated Test Framework
+
+9 tools, defined in `src/tools/atf.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_atf_suites` |  | List ATF test suites in the instance | `active`, `query`, `limit` |
+| `get_atf_suite` |  | Get details of a test suite including test count | `sys_id_or_name`* |
+| `run_atf_suite` | ATF | Execute an ATF test suite (requires ATF_ENABLED=true) | `sys_id`* |
+| `list_atf_tests` |  | List ATF test cases, optionally filtered by suite | `suite_sys_id`, `active`, `limit` |
+| `get_atf_test` |  | Get details of a specific test case | `sys_id`* |
+| `run_atf_test` | ATF | Execute a single ATF test (requires ATF_ENABLED=true) | `sys_id`* |
+| `get_atf_suite_result` |  | Get the results of a test suite run | `result_sys_id`* |
+| `list_atf_test_results` |  | List individual test results within a suite run | `suite_result_sys_id`, `limit` |
+| `get_atf_failure_insight` |  | Get ATF Failure Insight data, metadata changes between last successful and failed run (role changes, field value changes) | `result_sys_id`* |
+
+## Scripting (business rules, script includes, ACLs)
+
+27 tools, defined in `src/tools/script.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_business_rules` | Scripting | List business rules (requires SCRIPTING_ENABLED=true) | `table`, `active`, `limit` |
+| `get_business_rule` | Scripting | Get full details and script body of a business rule (requires SCRIPTING_ENABLED=true) | `sys_id`* |
+| `create_business_rule` | Scripting | Create a new business rule (requires SCRIPTING_ENABLED=true). | `name`*, `table`*, `when`*, `script`*, `condition`, `active`, `order` |
+| `update_business_rule` | Scripting | Update a business rule (requires SCRIPTING_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_script_includes` | Scripting | List script includes (requires SCRIPTING_ENABLED=true) | `query`, `active`, `limit` |
+| `get_script_include` | Scripting | Get full script body of a script include (requires SCRIPTING_ENABLED=true) | `sys_id_or_name`* |
+| `create_script_include` | Scripting | Create a new script include (requires SCRIPTING_ENABLED=true) | `name`*, `script`*, `api_name`, `access`, `active`, `client_callable`, `scope` |
+| `update_script_include` | Scripting | Update a script include (requires SCRIPTING_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_client_scripts` | Scripting | List client scripts (requires SCRIPTING_ENABLED=true) | `table`, `type`, `active`, `limit` |
+| `get_client_script` | Scripting | Get full details and script body of a client script (requires SCRIPTING_ENABLED=true) | `sys_id`* |
+| `list_changesets` | Scripting | List update sets (changesets) (requires SCRIPTING_ENABLED=true) | `state`, `limit` |
+| `get_changeset` | Scripting | Get details of an update set (requires SCRIPTING_ENABLED=true) | `sys_id_or_name`* |
+| `commit_changeset` | Scripting | Commit an update set (requires SCRIPTING_ENABLED=true) | `sys_id`* |
+| `publish_changeset` | Scripting | Publish/export an update set to XML for deployment (requires SCRIPTING_ENABLED=true) | `sys_id`* |
+| `create_client_script` | Scripting | Create a new client script (onLoad, onChange, onSubmit, onCellEdit) (requires SCRIPTING_ENABLED=true) | `name`*, `table`*, `type`*, `script`*, `field_name`, `active`, `global` |
+| `update_client_script` | Scripting | Update an existing client script (requires SCRIPTING_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_ui_policies` | Scripting | List UI Policies for a table (field visibility, mandatory, read-only rules) (requires SCRIPTING_ENABLED=true) | `table`, `active`, `limit` |
+| `get_ui_policy` | Scripting | Get full details and conditions of a UI Policy (requires SCRIPTING_ENABLED=true) | `sys_id`* |
+| `create_ui_policy` | Scripting | Create a new UI Policy to control field behavior dynamically (requires SCRIPTING_ENABLED=true) | `short_description`*, `table`*, `conditions`, `script`, `active`, `run_scripts` |
+| `list_ui_actions` | Scripting | List UI Actions (buttons, context menus, related links) for a table (requires SCRIPTING_ENABLED=true) | `table`, `type`, `active`, `limit` |
+| `get_ui_action` | Scripting | Get full details and script of a UI Action (requires SCRIPTING_ENABLED=true) | `sys_id`* |
+| `create_ui_action` | Scripting | Create a new UI Action (button or link) on a form (requires SCRIPTING_ENABLED=true) | `name`*, `table`*, `action_name`*, `script`, `type`, `condition`, `active`, `form_button`, `list_button` |
+| `update_ui_action` | Scripting | Update an existing UI Action (requires SCRIPTING_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_acls` | Scripting | List Access Control rules (ACLs), who can read/write/create/delete records (requires SCRIPTING_ENABLED=true) | `table`, `operation`, `active`, `limit` |
+| `get_acl` | Scripting | Get full details of an ACL rule including its script and role requirements (requires SCRIPTING_ENABLED=true) | `sys_id`* |
+| `create_acl` | Scripting | Create a new ACL rule to control access to a table or field (requires SCRIPTING_ENABLED=true) | `name`*, `type`, `operation`*, `admin_overrides`, `active`, `script`, `roles`, `description` |
+| `update_acl` | Scripting | Update an existing ACL rule (requires SCRIPTING_ENABLED=true) | `sys_id`*, `fields`* |
+
+## Update sets
+
+8 tools, defined in `src/tools/updateset.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `get_current_update_set` |  | Get the currently active Update Set for the session |  |
+| `list_update_sets` |  | List Update Sets by state (in progress, complete, ignore) | `state`, `query`, `limit` |
+| `create_update_set` |  | Create a new Update Set and optionally switch to it. | `name`*, `description`, `release`, `switch_to` |
+| `switch_update_set` |  | Switch the active Update Set context to a specified Update Set. | `sys_id`* |
+| `complete_update_set` |  | Mark an Update Set as complete (ready for migration). | `sys_id`* |
+| `preview_update_set` |  | Preview all changes contained in an Update Set | `sys_id`*, `limit` |
+| `export_update_set` |  | Get the XML export payload for an Update Set (as used in migration). | `sys_id`* |
+| `ensure_active_update_set` |  | Ensure an active Update Set exists; create one automatically if none is in progress. | `default_name` |
+
+## Local Sync (pull and push artifacts)
+
+4 tools, defined in `src/tools/local-sync.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_supported_artifacts` |  | Local sync: list the artifact types (tables) that support pull/push to local files and which fields sync for each. |  |
+| `pull_artifact` |  | Local sync: fetch an artifact's editable fields (e.g. | `table`*, `sys_id`* |
+| `push_artifact` | Write | Local sync: write edited fields back to an artifact (requires WRITE_ENABLED=true). | `table`*, `sys_id`*, `fields`, `expected_updated_on` |
+| `sync_status` |  | Local sync: compare an artifact's current instance content against your local/edited content field-by-field. | `table`*, `sys_id`*, `fields` |
+
+## Deployment and artifacts
+
+10 tools, defined in `src/tools/deployment.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `find_artifact` |  | Search for platform artifacts by name, type, or scope (business rules, scripts, widgets, etc.) | `name`*, `type`, `scope`, `limit` |
+| `validate_artifact` |  | Validate an artifact for best practices, security issues, and performance concerns | `table`*, `sys_id`* |
+| `clone_artifact` |  | Clone a platform artifact to a new name/scope. | `table`*, `sys_id`*, `new_name`*, `target_scope` |
+| `validate_deployment` |  | Pre-validate an update set or app before deployment, check for conflicts and missing dependencies | `update_set_sys_id`, `app_sys_id` |
+| `rollback_deployment` |  | Rollback a deployment by reverting an update set. | `update_set_sys_id`*, `reason` |
+| `list_deployment_history` |  | List deployment history, committed update sets and app installs over time | `days`, `limit` |
+| `create_solution_package` |  | Create a solution package from selected update sets for distribution. | `name`*, `description`, `update_sets`* |
+| `execute_background_script` |  | Execute a background script on the instance (server-side JavaScript). | `script`*, `scope` |
+| `import_cmdb_data` |  | Import CI data into CMDB via import set. | `table`*, `data`* |
+| `analyze_data_quality` |  | Analyse data quality for a table, completeness, duplicates, stale records | `table`*, `required_fields`, `days_stale` |
+
+## Scoped applications
+
+4 tools, defined in `src/tools/app-studio.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_scoped_apps` |  | List scoped applications (custom apps) installed in the instance | `query`, `active`, `limit` |
+| `get_scoped_app` |  | Get full details of a scoped application by sys_id or scope name | `id`* |
+| `create_scoped_app` | Write | Create a new scoped application in App Studio (requires WRITE_ENABLED=true). | `name`*, `scope`, `version`, `short_description`, `description`, `vendor`, `active`, `logo` |
+| `update_scoped_app` | Write | Update an existing scoped application (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+
+## Fluent, ServiceNow SDK and batch
+
+16 tools, defined in `src/tools/fluent.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `fluent_query` |  | GlideQuery-style fluent query builder. | `table`*, `where`, `orWhere`, `select`, `aggregate`, `aggregateField`, `groupBy`, `orderBy`, `limit`, `displayValue` |
+| `batch_request` |  | Execute multiple ServiceNow REST API operations in a single HTTP call. | `operations`* |
+| `execute_script` | Write | Execute a server-side script on the ServiceNow instance (Background Script). | `script`*, `scope` |
+| `fluent_sdk_query` |  | Run `now-sdk query <table>`: a read-only Table API query through the ServiceNow SDK CLI using its saved credentials (no browser). | `table`*, `query`, `fields`, `limit`, `offset`, `display_value`, `auth` |
+| `fluent_version` |  | Report the installed `@servicenow/sdk` (now-sdk) version and whether it meets the version NowAIKit tracks features against (currently 4.14.2). |  |
+| `fluent_explain` |  | Live ServiceNow SDK documentation from `now-sdk explain`: current Fluent API signatures, guides and examples (about 300 topics), not training-data guesses. | `topic`, `list`, `peek`, `range` |
+| `fluent_init` | Fluent | Create a new Fluent (now-sdk) application, apply a template to an existing one, or convert a legacy scoped app into Fluent source (from = app sys_id on the instance, or a local folder). | `name`, `package_name`, `scope`, `template`, `from`, `directory`, `auth` |
+| `fluent_build` | Fluent | Compile a Fluent (now-sdk) project into installable app files. | `directory`, `frozen_keys`, `source_map`, `error_on_conflict` |
+| `fluent_validate` | Fluent | Check that a Fluent (now-sdk) project compiles cleanly without installing it: runs `now-sdk build --frozenKeys --errorOnConflict`, so type errors, unknown properties, stale keys and sys_id conflicts all fail. | `directory` |
+| `fluent_install` | Fluent | Install or update a built Fluent app on the instance (`now-sdk install`). | `directory`, `info`, `reinstall`, `skip_flow_activation`, `demo_data`, `auth` |
+| `fluent_download` | Fluent | Download an application's metadata from the instance into a local folder (`now-sdk download`). | `target`*, `directory`, `incremental` |
+| `fluent_transform` | Fluent | Convert XML records from the instance (by table) or from local XML files into Fluent source code (`now-sdk transform`). | `tables`, `from`, `force`, `directory`, `auth` |
+| `fluent_dependencies` | Fluent | Download the dependencies declared in now.config.json plus TypeScript type definitions (Script Include types, glide.*.d.ts, ChoiceSets). | `directory`, `add`, `sys_ids`, `scope`, `type_defs_only`, `fluent_only`, `auth` |
+| `fluent_pack` | Fluent | Zip a built Fluent app into an installable artifact (`now-sdk pack`). | `directory`, `skip_package_inventory` |
+| `fluent_exec` | Fluent | Run a server-side script on the instance through the SDK (`now-sdk exec`, 4.14+). | `script`*, `reason`*, `scope`, `record_for_rollback`, `server_logs`, `directory`, `auth` |
+| `fluent_cicd` | Fluent | Run ServiceNow CI/CD operations via the SDK (`now-sdk cicd`): install an app version from the app repository, publish an app to it, roll an app back, or run an ATF test or test suite (optionally on the ATF Cloud Runner). | `action`*, `appSysId`, `scope`, `appVersion`, `testSuiteName`, `testSuiteSysId`, `testName`, `testSysId`, `runInCloud`, `browserName`, `directory`, `auth` |
+
+## Flow Designer and subflows
+
+17 tools, defined in `src/tools/flow.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_flows` |  | List Flow Designer flows with optional filter by name, category, or active status | `query`, `active`, `category`, `limit` |
+| `get_flow` |  | Get full details of a Flow Designer flow including its actions and trigger | `name_or_sysid`* |
+| `trigger_flow` | Write | Trigger a Flow Designer flow with optional input parameters (requires WRITE_ENABLED=true) | `flow_sys_id`*, `inputs` |
+| `get_flow_execution` |  | Get the status and details of a specific flow execution | `execution_sysid`* |
+| `list_flow_executions` |  | List recent executions of a flow with status (completed, error, running) | `flow_sys_id`*, `status`, `limit` |
+| `list_subflows` |  | List available subflows that can be reused across flows | `query`, `active`, `limit` |
+| `get_subflow` |  | Get full details of a subflow including its inputs, outputs, and actions | `name_or_sysid`* |
+| `list_action_instances` |  | List Flow Designer action instances. | `flow_id`, `query`, `category`, `limit` |
+| `get_process_automation` |  | Get details of a Process Automation Designer playbook or process | `name_or_sysid`* |
+| `list_process_automations` |  | List Process Automation Designer playbooks and processes | `query`, `active`, `limit` |
+| `create_flow` |  | Create a new Flow Designer flow. | `name`*, `description`, `trigger_type`, `trigger_table`, `scope` |
+| `create_subflow` |  | Create a new reusable subflow. | `name`*, `description`, `inputs`, `scope` |
+| `create_flow_action` |  | Create a custom Flow Designer action. | `name`*, `description`, `inputs`, `outputs`, `script` |
+| `publish_flow` |  | Publish (activate) a draft flow or subflow. | `flow_sys_id`*, `type` |
+| `update_flow` |  | Update a flow or subflow's METADATA only (activate/deactivate, name, description, run-as). | `flow_sys_id`*, `type`, `active`, `name`, `description`, `run_as` |
+| `test_flow` |  | Execute a flow in test mode with sample inputs. | `flow_sys_id`*, `test_inputs` |
+| `get_flow_error_log` |  | Get detailed error logs for failed flow executions | `flow_sys_id`*, `days`, `limit` |
+
+## Decision tables
+
+7 tools, defined in `src/tools/decision.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_decision_tables` |  | List Decision Builder decision tables (sys_decision), optionally filtered by name or active status | `query`, `active`, `limit` |
+| `get_decision_table` |  | Get a decision table with its inputs and answer rows, by name or sys_id | `name_or_sysid`* |
+| `list_decision_inputs` |  | List the inputs of a decision table | `decision_sys_id`* |
+| `list_decision_answers` |  | List the answer/result rows of a decision table | `decision_sys_id`*, `limit` |
+| `create_decision_table` | Write | Create a Decision Builder decision table (sys_decision). | `name`*, `description`, `active`, `fields` |
+| `create_decision_input` | Write | Add an input to a decision table (sys_decision_input). | `decision_sys_id`*, `name`*, `type`, `order`, `fields` |
+| `publish_decision_table` | Write | Publish a Decision Builder decision table, sets sys_decision.status to "published". | `decision_sys_id`* |
+
+## Playbooks and orchestration
+
+3 tools, defined in `src/tools/orchestration.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_playbook` | Now Assist | Create a playbook definition with ordered steps that chain tool calls (requires NOW_ASSIST_ENABLED + WRITE_ENABLED) | `name`*, `description`*, `steps`* |
+| `execute_playbook` | Now Assist | Execute a playbook step by step, passing results forward through context (requires NOW_ASSIST_ENABLED). | `playbook`*, `context`, `dry_run` |
+| `list_playbooks` |  | List stored playbook definitions from sys_hub_action_type_definition | `limit` |
+
+## Integration (REST, import sets, transforms, events)
+
+19 tools, defined in `src/tools/integration.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_rest_messages` |  | List outbound REST Message configurations (integrations with external APIs) | `query`, `limit` |
+| `get_rest_message` |  | Get full configuration of an outbound REST Message including its endpoints | `sys_id_or_name`* |
+| `list_rest_message_functions` |  | List HTTP methods (functions) defined within a REST Message | `rest_message_sys_id`*, `limit` |
+| `create_rest_message` | Write | Create a new outbound REST Message definition (requires WRITE_ENABLED=true) | `name`*, `endpoint`*, `description`, `use_mutual_auth`, `authentication_type` |
+| `list_transform_maps` |  | List Transform Maps used for importing data into ServiceNow tables | `query`, `target_table`, `limit` |
+| `get_transform_map` |  | Get details of a Transform Map including its field mappings | `sys_id_or_name`* |
+| `run_transform_map` | Write | Execute a Transform Map on an Import Set to load data (requires WRITE_ENABLED=true) | `transform_map_sys_id`*, `import_set_sys_id`* |
+| `list_transform_field_maps` |  | List field-level mappings within a Transform Map | `transform_map_sys_id`*, `limit` |
+| `list_import_sets` |  | List Import Sets with optional filter by state or staging table | `state`, `query`, `limit` |
+| `get_import_set` |  | Get details of a specific Import Set including row count and transform status | `sys_id`* |
+| `create_import_set_row` | Write | Insert a row into an Import Set staging table for later transformation (requires WRITE_ENABLED=true) | `staging_table`*, `data`* |
+| `list_data_sources` |  | List Import Set data source definitions (file/JDBC/REST loaders) | `query`, `type`, `limit` |
+| `list_event_registry` |  | List registered event definitions in the ServiceNow event registry | `query`, `limit` |
+| `get_event_registry_entry` |  | Get details of a specific registered event definition | `name_or_sysid`* |
+| `register_event` | Scripting | Register a new custom event in the event registry (requires SCRIPTING_ENABLED=true) | `name`*, `description`, `table`* |
+| `fire_event` | Write | Fire a custom ServiceNow event for a specific record (requires WRITE_ENABLED=true) | `event_name`*, `table`*, `record_sys_id`*, `parm1`, `parm2` |
+| `list_event_log` |  | List recent event log entries (fired events and their processing status) | `event_name`, `state`, `limit` |
+| `list_oauth_applications` |  | List OAuth application registry entries (client applications that can authenticate) | `query`, `limit` |
+| `list_credential_aliases` |  | List connection and credential aliases used by integrations | `query`, `type`, `limit` |
+
+## Notifications, email and attachments
+
+16 tools, defined in `src/tools/notification.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_notifications` |  | List email notification definitions (sysevent_email_action) | `query`, `table`, `event`, `active`, `limit` |
+| `get_notification` |  | Get full details of an email notification definition including template and conditions | `sys_id_or_name`* |
+| `create_notification` | Write | Create a new email notification definition (requires WRITE_ENABLED=true) | `name`*, `table`*, `event`, `subject`, `message_html`, `recipients`, `active`, `condition` |
+| `update_notification` | Write | Update an existing email notification (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_email_logs` |  | List outbound email log entries to track sent/failed emails | `state`, `recipient`, `subject`, `limit` |
+| `get_email_log` |  | Get full details of an email log entry including body and headers | `sys_id`* |
+| `list_attachments` |  | List attachments associated with a specific record | `table`*, `record_sys_id`*, `limit` |
+| `get_attachment_metadata` |  | Get metadata (name, type, size) of a specific attachment by its sys_id | `attachment_sys_id`* |
+| `read_attachment` |  | Read an existing ServiceNow attachment and return its text content, server-side. | `attachment_sys_id`*, `max_chars` |
+| `copy_attachment` | Write | Copy an existing ServiceNow attachment onto another record, entirely server-side (requires WRITE_ENABLED=true). | `attachment_sys_id`*, `target_table`*, `target_record_sys_id`*, `file_name` |
+| `delete_attachment` | Write | Delete an attachment from a record (requires WRITE_ENABLED=true) | `attachment_sys_id`* |
+| `upload_attachment` | Write | Attach a file to a ServiceNow record (requires WRITE_ENABLED=true). | `table`*, `record_sys_id`*, `file_name`, `file_path`, `content_type`, `source_url`, `source_auth_header`, `content_base64` |
+| `list_email_templates` |  | List email notification templates used by notifications | `query`, `limit` |
+| `list_notification_subscriptions` |  | List user subscriptions to notifications (who has opted in/out) | `user_sys_id`, `notification_sys_id`, `limit` |
+| `send_emergency_broadcast` |  | [Write] Send emergency broadcast notification to users or groups | `subject`*, `body`*, `recipients`*, `channels` |
+| `schedule_notification` |  | [Write] Schedule a notification for future delivery | `notification_id`*, `schedule`*, `active` |
+
+## System properties
+
+12 tools, defined in `src/tools/sys-properties.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `get_system_property` |  | Get a ServiceNow system property value and metadata by name | `name`* |
+| `set_system_property` |  | Create or update a ServiceNow system property value. | `name`*, `value`*, `description`, `type` |
+| `list_system_properties` |  | List system properties with optional filtering | `query`, `category`, `type`, `limit` |
+| `delete_system_property` |  | Delete a system property by name. | `name`* |
+| `search_system_properties` |  | Search system properties by name, value, or description | `search`*, `limit` |
+| `bulk_get_properties` |  | Retrieve multiple system property values in a single call | `names`* |
+| `bulk_set_properties` |  | Create or update multiple system properties in a single operation. | `properties`* |
+| `export_properties` |  | Export system properties matching a query to a JSON object (useful for environment snapshots) | `category`, `query` |
+| `import_properties` |  | Import (create or update) system properties from a JSON object. | `properties`*, `dry_run` |
+| `validate_property` |  | Validate a property value against its declared type constraints without saving | `name`*, `value`* |
+| `list_property_categories` |  | List all unique property categories with their record counts |  |
+| `get_property_history` |  | Get audit history of changes to a system property | `name`*, `limit` |
+
+## Platform operations
+
+5 tools, defined in `src/tools/platform-ops.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_scan_suites` |  | List Instance Scan suites (scan_suite) available to run | `query`, `limit` |
+| `get_instance_scan_findings` |  | List Instance Scan findings (scan_finding), best-practice violations, optionally by check or suite result | `check`, `suite_result`, `table`, `limit` |
+| `get_ecc_queue` |  | Inspect the ECC queue (ecc_queue), MID server probes/sensors, by state, agent, or topic | `state`, `queue`, `agent`, `topic`, `limit` |
+| `resubmit_ecc_probe` | Write | Re-queue an ECC probe/sensor by setting its state back to ready (ecc_queue). | `sys_id`* |
+| `run_fix_script` | Scripting | Execute a fix script (sys_script_fix) by name or sys_id on the server. | `name`, `sys_id` |
+
+## CMDB reconciliation
+
+4 tools, defined in `src/tools/cmdb-reconciliation.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `cmdb_find_duplicates` |  | Find duplicate CIs by matching on specified fields (in-memory grouping) | `ci_class`, `match_fields`, `limit` |
+| `cmdb_find_orphans` |  | Find CIs with no relationships in cmdb_rel_ci | `ci_class`, `limit` |
+| `cmdb_find_stale` |  | Find CIs not updated within a given number of days that are still operational | `ci_class`, `days_threshold`, `limit` |
+| `cmdb_reconcile` | CMDB write | Act on duplicate, stale, or orphan CIs, merge, retire, or remove (requires CMDB_WRITE_ENABLED). | `action`*, `targets`*, `dry_run` |
+
+## Service Mapping
+
+4 tools, defined in `src/tools/service-mapping.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_application_services` |  | List discovered application services (cmdb_ci_service_auto), optionally by name or operational status. | `query`, `operational_status`, `limit` |
+| `cmdb_services_for_ci` |  | Reverse lookup: which application services contain a given CI/server (svc_ci_assoc). | `ci`, `ci_name`, `limit` |
+| `cmdb_find_unmapped_cis` |  | Find operational CIs that have relationships but belong to no application service (mapping gaps). | `ci_class`, `limit` |
+| `suggest_ci_class` |  | Suggest the correct CMDB CI class for a keyword before creating a CI (cmdb_class_info). | `keyword`*, `limit` |
+
+## Service portfolio
+
+3 tools, defined in `src/tools/service-portfolio.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_business_service` | Write | Create a business service (cmdb_ci_service). | `name`*, `owned_by`, `support_group`, `fields` |
+| `create_service_offering` | Write | Create a service offering under a business service (service_offering). | `name`*, `parent`, `support_group`, `fields` |
+| `list_service_offerings` |  | List service offerings (service_offering), optionally by parent business service | `parent`, `query`, `limit` |
+
+## Now Assist (Otto) and generative AI
+
+6 tools, defined in `src/tools/now-assist.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `nlq_query` |  | Ask a natural language question and get structured ServiceNow data (ServiceNow NLQ API) | `question`*, `table`, `limit` |
+| `ai_search` |  | Semantic AI-powered search across KB, catalog, incidents (ServiceNow AI Search) | `query`*, `sources`, `search_app`, `limit` |
+| `categorize_incident` |  | Suggest category, assignment group, and priority for an incident by analysing similar resolved incidents (Table API). | `short_description`*, `description` |
+| `get_virtual_agent_topics` |  | List Virtual Agent topics available in the instance (sys_cs_topic) | `active`, `category`, `limit` |
+| `get_ms_copilot_topics` |  | List the Virtual Agent topics (sys_cs_topic) that back a Microsoft Copilot integration. | `limit` |
+| `get_pi_models` |  | List available Predictive Intelligence solutions (classification/similarity models) |  |
+
+## Now Assist skills
+
+4 tools, defined in `src/tools/now-assist-skills.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_now_assist_skill` | Now Assist | Create a draft Now Assist skill: a OneExtend capability (type skill, holding the input/output schema and prompt template in its metadata) plus its sn_nowassist_skill_config registration. | `name`*, `description`*, `input_schema`*, `output_schema`*, `prompt_template`*, `model`, `skill_family`, `active` |
+| `list_now_assist_skills` | Now Assist | List Now Assist skill definitions (requires NOW_ASSIST_ENABLED) | `active`, `limit`, `query` |
+| `get_now_assist_skill` | Now Assist | Get a single Now Assist skill definition by sys_id (requires NOW_ASSIST_ENABLED) | `sys_id`* |
+| `test_now_assist_skill` | Now Assist | Invoke a Now Assist skill with test input to verify behavior (requires NOW_ASSIST_ENABLED) | `skill_sys_id`*, `test_input`* |
+
+## AI agents and agentic workflows
+
+4 tools, defined in `src/tools/ai-agents.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_ai_agent` | Now Assist | Create an AI agent definition with optional auto-generated ACLs (requires NOW_ASSIST_ENABLED + WRITE_ENABLED) | `name`*, `description`*, `capabilities`*, `auto_generate_acls`, `role`, `instructions` |
+| `list_ai_agents` |  | List AI agent definitions (AI Agent Studio, sn_aia_agent) with their active flag from sn_aia_agent_config | `active`, `limit` |
+| `get_ai_agent` |  | Get an AI agent definition with its config, tools, versions and execute ACLs | `sys_id`* |
+| `create_agentic_workflow` | Now Assist | Create an agentic workflow linked to an AI agent (requires NOW_ASSIST_ENABLED + WRITE_ENABLED) | `name`*, `description`*, `agent_sys_id`*, `steps`*, `trigger_conditions`, `execution_mode` |
+
+## AI agent executions
+
+3 tools, defined in `src/tools/ai-agent-exec.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_ai_agent_executions` |  | List recent Now Assist AI Agent execution plans (sn_aia_execution_plan) | `status`, `query`, `limit` |
+| `get_ai_agent_execution` |  | Get an AI Agent execution plan with its steps/tool calls (sn_aia_execution_plan + sn_aia_execution_task) | `sys_id`* |
+| `list_agent_use_cases` |  | List AI Agent Studio use cases (sn_aia_usecase) and their configuration | `query`, `limit` |
+
+## AI Agent Studio
+
+10 tools, defined in `src/tools/agent-studio.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_agent_tools` |  | List the tools attached to an Otto (Now Assist) AI agent in AI Agent Studio: flow actions, subflows, scripts, topics, skills, MCP tools, etc. | `agent`, `tool`, `active`, `limit` |
+| `attach_agent_tool` | Write | Attach an existing tool (sn_aia_tool) to an Otto / Now Assist AI agent by creating a sn_aia_agent_tool_m2m link. | `agent_sys_id`*, `tool_sys_id`*, `name`, `description`, `execution_mode`, `max_auto_executions`, `display_output`, `inputs`, `active` |
+| `detach_agent_tool` | Write | Detach a tool from an Otto / Now Assist AI agent: deletes the sn_aia_agent_tool_m2m link (or only deactivates it with deactivate_only). | `link_sys_id`, `agent_sys_id`, `tool_sys_id`, `deactivate_only` |
+| `list_agent_triggers` |  | List Otto / Now Assist AI agent triggers (sn_aia_trigger_configuration): record-based, scheduled and channel triggers that start agentic workflows, with their target table, condition, run-as user and linked use cases/... | `usecase`, `target_table`, `active`, `query`, `limit` |
+| `get_agent_versions` |  | Get the version history of an Otto / Now Assist AI agent or agentic workflow (sn_aia_version): version number, name, state (Draft/Published), instructions and condition. | `target_id`*, `target_table`, `state`, `include_instructions`, `limit` |
+| `list_agent_memory` |  | List Otto / Now Assist AI agent long-term memory entries (sn_aia_memory): semantic and episodic memories stored per user, with category, relevance score and source record. | `user`, `type`, `category`, `active`, `limit` |
+| `get_agent_execution_trace` |  | Get an ordered timeline for one Otto / Now Assist AI agent run: the execution plan (sn_aia_execution_plan) plus its tasks (sn_aia_execution_task), conversation messages (sn_aia_message) and tool calls with request/res... | `execution_plan_sys_id`*, `include_payloads`, `limit` |
+| `list_agent_evaluations` |  | List Otto / Now Assist evaluation runs (sys_one_extend_batch_run) for AI agents and skills: status, evaluation type (agentic_ai, conversational_ai), run type, dataset and strategy. | `evaluation_type`, `status`, `usecase_id`, `run_type`, `include_strategies`, `limit` |
+| `get_evaluation_results` |  | Get the results of one Otto / Now Assist evaluation run: the run (sys_one_extend_batch_run), per-metric results with a pass/fail summary (sys_one_extend_eval_metric_result), per-record results (sys_one_extend_batch_re... | `batch_run_sys_id`*, `include_records`, `limit` |
+| `list_external_agents` |  | List external (third-party) AI agents registered for Otto / Now Assist A2A (Agent2Agent) use: providers (sn_aia_external_agent_provider), protocols, discovery configs, agent cards and skills, connection configurations... | `limit` |
+
+## AI Control Tower, Knowledge Graph and Otto status
+
+9 tools, defined in `src/tools/ai-governance.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_ai_assets` |  | List AI assets from the AI Control Tower inventory (alm_ai_digital_asset and its model / prompt / dataset / system / MCP classes), with governance status, risk and lifecycle phase (sn_ai_governance_asset_governance_de... | `asset_class`, `name`, `install_status`, `governance_status`, `risk_score`, `lifecycle_phase`, `limit` |
+| `get_ai_asset` |  | Get one AI Control Tower asset (alm_ai_digital_asset) with its governance details, lifecycle phase, risk, and any assessment / approval requests and tasks. | `sys_id`* |
+| `list_ai_approval_requests` |  | List AI Control Tower assessment / approval requests (sn_ai_governance_assessment_request) and optionally their review tasks (sn_ai_governance_assessment_task) with reviewer and state. | `state`, `active`, `asset`, `include_tasks`, `limit` |
+| `get_ai_usage` |  | Report AI usage for Otto (Now Assist) and other AI: AI Control Tower inventory/billing counts (sn_ai_governance_ai_inventory_usage, daily snapshots) and Generative AI assist consumption (sys_gen_ai_usage_log), over a... | `source`, `from`, `to`, `group_by` |
+| `list_ai_modified_records` |  | List records that were changed by AI (Otto / Now Assist, AI agents) using the platform AI record activity log (sys_ai_record_activity): table, record and which fields AI updated. | `table`, `from`, `to`, `summary`, `limit` |
+| `list_kg_context_configs` |  | List Knowledge Graph configuration used by Otto (Now Assist) and AI agents for grounding: graphs (sys_meta_graph), context configs (sn_kg_context_config), related-data connector maps (sn_kg_related_data_map) and use c... | `include_configuration`, `limit` |
+| `describe_kg_schema` |  | Describe one Knowledge Graph schema (sys_meta_graph) used by Otto / Now Assist: its nodes (tables, labels, properties) and edges (relationships). | `graph`*, `include_properties` |
+| `list_otto_channels` |  | List where Otto (Now Assist) is deployed: assistant deployments (sys_now_assist_deployment: Otto panel, Virtual Agent, voice), their channels (sys_now_assist_deployment_channel) and configuration attributes such as wh... | `active`, `include_attributes` |
+| `get_otto_status` |  | One report of what AI is available on this instance: installed Otto / Now Assist, Generative AI Controller, AI Agents, MCP server/client, Knowledge Graph and AI Control Tower apps with versions (sys_scope), key proper... |  |
+
+## ServiceNow Action Fabric (instance MCP servers and A2A agents)
+
+10 tools, defined in `src/tools/action-fabric.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `sn_mcp_status` |  | Check whether this instance's own MCP servers (ServiceNow MCP Server Console, Action Fabric) are usable from here: endpoint health, OAuth/JWT readiness of the current connection, and each server's status and tool coun... |  |
+| `sn_mcp_list_servers` |  | List the ServiceNow MCP servers defined on the instance (MCP Server Console registry, including out-of-box ITSM, ITOM, CMDB and SPM servers when installed), with status, endpoint URL and attached tools. | `status` |
+| `sn_mcp_list_tools` |  | List the tools a ServiceNow MCP server exposes (live tools/list over MCP, with input schemas and annotations). | `server`* |
+| `sn_mcp_call_tool` | Write | Call a tool on one of the instance's own MCP servers (Now Assist / Otto skills, subflows, actions, Knowledge Graph, scripted REST tools). | `server`*, `tool`*, `arguments` |
+| `sn_mcp_activate_server` | Write | Activate or deactivate a ServiceNow MCP server, and optionally attach tool definitions to it by name (admin setup helper for MCP Server Console). | `server`*, `status`, `add_tools` |
+| `sn_a2a_list_agents` |  | List ServiceNow AI agents (Otto / AI Agent Studio) and whether each is exposed to external callers over A2A, with its agent card URL. | `exposed_only`, `search`, `limit` |
+| `sn_a2a_get_agent_card` |  | Fetch the A2A agent card of a ServiceNow AI agent (skills, capabilities, supported protocol versions). | `agent`* |
+| `sn_a2a_send_message` | Write | Send a message to a ServiceNow AI agent over A2A and return its reply (or the task when it needs more input or runs async). | `agent`*, `message`*, `context_id`, `task_id`, `wait_seconds` |
+| `sn_a2a_get_task` |  | Get the status and result of an A2A task started with sn_a2a_send_message. | `agent`*, `task_id`* |
+| `sn_a2a_expose_agent` | Write | Turn third-party (A2A) access on or off for a ServiceNow AI agent ("Allow third party to access this AI agent"). | `agent`*, `exposed` |
+
+## Machine learning and Predictive Intelligence
+
+12 tools, defined in `src/tools/ml.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `ml_predict_change_risk` |  | Predict the risk level of a change request using historical ML analysis | `change_sys_id`, `type`, `category` |
+| `ml_detect_anomalies` |  | Run anomaly detection on operational metrics (alert volume, incident trends, etc.) | `table`*, `field`*, `days`, `threshold` |
+| `ml_forecast_incidents` |  | Forecast incident volume for the next N days based on historical trends | `days_ahead`, `category`, `priority` |
+| `ml_train_incident_classifier` |  | Trigger training of the incident classification ML solution. | `solution_name` |
+| `ml_train_change_risk` |  | Trigger training of the change risk prediction ML model. | `solution_name` |
+| `ml_train_anomaly_detector` |  | Trigger training of an anomaly detection model for a specific table/field. | `table`*, `field`* |
+| `ml_evaluate_model` |  | Get accuracy, training status, and metrics for a trained ML solution | `model_sys_id`* |
+| `ml_model_training_history` |  | Get training run history and accuracy trends for an ML solution over time | `model_sys_id`*, `days` |
+| `ml_virtual_agent_nlu` |  | Analyse Virtual Agent NLU performance, conversation completion rates and fallback metrics | `topic_sys_id`, `days` |
+| `ml_process_optimization` |  | Identify process bottlenecks using analysis of task durations and reassignment patterns | `table`*, `days` |
+| `ml_similar_incidents` |  | Find similar past incidents using keyword-based matching. | `incident_sys_id`, `short_description`, `limit` |
+| `ml_auto_categorize` |  | Auto-categorize a record based on its description by analysing resolved records of the same table. | `short_description`*, `description`, `table` |
+
+## Virtual Agent
+
+7 tools, defined in `src/tools/va.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_va_topic` |  | Create a new Virtual Agent conversation topic. | `name`*, `description`, `category`, `active`, `fulfillment_type` |
+| `update_va_topic` |  | Update a Virtual Agent topic properties. | `sys_id`*, `fields`* |
+| `get_va_topic` |  | Get Virtual Agent topic details including intent and trigger phrases | `sys_id`* |
+| `list_va_topics_full` |  | List all Virtual Agent topics with category and status details | `active`, `category`, `query`, `limit` |
+| `get_va_conversation` |  | Get conversation history for a Virtual Agent session | `conversation_id`*, `limit` |
+| `list_va_conversations` |  | List recent Virtual Agent conversations | `topic_sys_id`, `user_sys_id`, `limit` |
+| `list_va_categories` |  | List Virtual Agent topic categories | `limit` |
+
+## ServiceNow MCP parity (summaries, sentiment, HR, CSM)
+
+9 tools, defined in `src/tools/sn-parity.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_csm_case_tasks` |  | List the tasks on a CSM case (sn_customerservice_task). | `case`*, `active`, `limit` |
+| `advance_hr_case` | Write | Advance an HR case to its next state/stage (sn_hr_core_case). | `case`*, `state`, `work_notes` |
+| `search_hr_knowledge` |  | Search HR-scoped knowledge articles (kb_knowledge in HR knowledge bases). | `query`*, `kb`, `limit` |
+| `mcp_health_check` |  | Health check: confirm the instance is reachable and the configured credentials resolve to a valid user. |  |
+| `summarize_record` |  | Summarize a record (incident/case/etc.) using the Now Assist summarization skill when available, otherwise return the assembled record + activity for the caller to summarize. | `table`*, `record`* |
+| `get_case_sentiment` |  | Assess customer sentiment on a CSM case via the Now Assist sentiment skill when available, else return the case + customer comments for sentiment analysis. | `case`*, `table` |
+| `generate_case_activity_response` |  | Draft an agent reply for a CSM case activity stream via the Now Assist activity-response skill when available, else return the case context to draft from. | `case`*, `table`, `instruction` |
+| `generate_csm_resolution_notes` |  | Generate CSM resolution notes via the Now Assist resolution-notes skill when available, else return the case + work notes to summarize. | `case`*, `table` |
+| `check_hr_eligibility` |  | Check an employee's eligibility for an HR service/policy via the Policy Based HR Case Evaluator skill when available, else return the employee + service context. | `user`*, `hr_service`* |
+
+## HR Service Delivery
+
+16 tools, defined in `src/tools/hrsd.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_hr_case` | Write | Create a new HR Service Delivery case (requires WRITE_ENABLED=true) | `short_description`*, `hr_service`*, `subject_person`, `description`, `assignment_group`, `priority` |
+| `get_hr_case` |  | Get full details of an HR case by number (e.g. | `number_or_sysid`* |
+| `update_hr_case` | Write | Update fields on an existing HR case (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_hr_cases` |  | List HR cases with optional filters (status, subject person, service) | `state`, `subject_person`, `hr_service`, `limit`, `query` |
+| `close_hr_case` | Write | Close an HR case with resolution notes (requires WRITE_ENABLED=true) | `sys_id`*, `close_notes`*, `close_code` |
+| `list_hr_services` |  | List available HR services (Onboarding, Offboarding, Benefits, Payroll, etc.) | `active`, `query`, `limit` |
+| `get_hr_service` |  | Get details of a specific HR service including its tasks and SLAs | `sys_id_or_name`* |
+| `get_hr_profile` |  | Get the HR profile for a user (employment details, department, manager) | `user_identifier`* |
+| `update_hr_profile` | Write | Update HR profile fields for a user (requires WRITE_ENABLED=true) | `user_sys_id`*, `fields`* |
+| `list_hr_tasks` |  | List HR tasks associated with an HR case | `hr_case_sysid`*, `state` |
+| `create_hr_task` | Write | Create a task within an HR case (requires WRITE_ENABLED=true) | `hr_case_sysid`*, `short_description`*, `assigned_to`, `due_date` |
+| `get_hr_case_activity` |  | Get the full activity log and journal entries for an HR case | `hr_case_sysid`* |
+| `create_onboarding_case` |  | Create an employee onboarding case with all standard tasks. | `employee_sys_id`*, `start_date`*, `department`, `manager`, `location`, `job_title` |
+| `create_offboarding_case` |  | Create an employee offboarding case with exit tasks. | `employee_sys_id`*, `last_day`*, `reason`, `manager` |
+| `get_hr_lifecycle_events` |  | Get HR lifecycle events for an employee (promotions, transfers, leaves) | `employee_sys_id`*, `event_type`, `limit` |
+| `list_hr_document_templates` |  | List available HR document templates (offer letters, contracts, policies) | `category`, `active`, `limit` |
+
+## Customer Service Management
+
+11 tools, defined in `src/tools/csm.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_csm_case` | Write | Create a new Customer Service case (requires WRITE_ENABLED=true) | `short_description`*, `account`, `contact`, `category`, `subcategory`, `priority`, `description`, `product`, `assignment_group` |
+| `get_csm_case` |  | Get full details of a CSM case by number (e.g. | `number_or_sysid`* |
+| `update_csm_case` | Write | Update fields on an existing CSM case (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_csm_cases` |  | List CSM cases with optional filters (account, contact, state, priority) | `account`, `contact`, `state`, `priority`, `limit`, `query` |
+| `close_csm_case` | Write | Close a CSM case with resolution details (requires WRITE_ENABLED=true) | `sys_id`*, `resolution_code`, `resolution_notes`* |
+| `get_csm_account` |  | Get details of a customer account including contacts and open cases count | `name_or_sysid`* |
+| `list_csm_accounts` |  | List customer accounts with optional search filter | `query`, `active`, `limit` |
+| `get_csm_contact` |  | Get details of a customer contact (name, account, phone, email) | `name_or_sysid`* |
+| `list_csm_contacts` |  | List contacts for an account or search across all contacts | `account_sysid`, `query`, `limit` |
+| `get_csm_case_sla` |  | Get SLA details and remaining time for a CSM case | `case_sysid`* |
+| `list_csm_products` |  | List products and services available in the CSM catalog | `query`, `limit` |
+
+## Security Operations and GRC
+
+19 tools, defined in `src/tools/security.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_security_incident` | Write | Create a Security Operations incident (requires WRITE_ENABLED=true) | `short_description`*, `category`*, `subcategory`, `severity`, `description`, `affected_cis`, `assignment_group` |
+| `get_security_incident` |  | Get full details of a security incident by number or sys_id | `number_or_sysid`* |
+| `update_security_incident` | Write | Update a security incident record (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_security_incidents` |  | List security incidents with filters (severity, state, category) | `state`, `severity`, `category`, `limit`, `query` |
+| `list_vulnerabilities` |  | List vulnerability entries from the Vulnerability Response module | `state`, `severity`, `ci_sysid`, `limit`, `query` |
+| `get_vulnerability` |  | Get details of a specific vulnerability entry including CVSS score and affected CIs | `number_or_sysid`* |
+| `update_vulnerability` | Write | Update a vulnerability entry (state, risk acceptance notes, remediation date) (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_grc_risks` |  | List GRC (Governance, Risk, Compliance) risk entries | `state`, `category`, `limit` |
+| `get_grc_risk` |  | Get details of a GRC risk including impact, likelihood, and controls | `number_or_sysid`* |
+| `list_grc_controls` |  | List GRC controls with optional filter by risk or policy | `risk_sysid`, `state`, `limit` |
+| `get_threat_intelligence` |  | Query threat intelligence data, IOCs, threat actors, and campaigns | `query`*, `type`, `limit` |
+| `list_security_playbooks` |  | List available security response playbooks | `active`, `category`, `limit` |
+| `run_security_playbook` |  | Execute a security response playbook against an incident. | `playbook_sys_id`*, `incident_sys_id`*, `parameters` |
+| `get_security_dashboard` |  | Get security posture dashboard, open incidents by severity, vulnerability counts, mean time to resolve | `days` |
+| `scan_vulnerabilities` |  | Trigger a vulnerability scan for specified CIs or groups. | `ci_sys_ids`, `group`, `scan_type` |
+| `create_grc_risk` |  | Create a new GRC risk entry. | `name`*, `category`*, `description`, `impact`, `likelihood`, `owner` |
+| `list_compliance_policies` |  | List GRC compliance policies and their current status | `state`, `limit` |
+| `get_compliance_assessment` |  | Get compliance assessment results for a policy or control | `policy_sys_id`, `control_sys_id` |
+| `list_audit_results` |  | List audit results and findings | `state`, `severity`, `limit` |
+
+## GRC (risks, controls, issues)
+
+4 tools, defined in `src/tools/grc-extra.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_grc_issues` |  | List GRC issues/findings (sn_grc_issue), optionally by state or owner | `state`, `owner`, `query`, `limit` |
+| `create_grc_issue` | Write | Raise a GRC issue/finding (sn_grc_issue). | `short_description`*, `description`, `source`, `fields` |
+| `create_grc_control` | Write | Author a compliance control (sn_compliance_control). | `name`*, `description`, `profile`, `fields` |
+| `run_control_test` | Write | Create/attest a control test (sn_compliance_control_test). | `control`*, `result`, `notes`, `fields` |
+
+## IT Asset Management
+
+10 tools, defined in `src/tools/itam.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_assets` |  | List IT assets with optional filtering by state, class, or assigned user | `asset_class`, `state`, `assigned_to`, `location`, `query`, `limit` |
+| `get_asset` |  | Get full details of an IT asset including financial and lifecycle data | `sys_id`* |
+| `create_asset` |  | Create a new IT asset record. | `display_name`*, `asset_tag`, `model_category`, `model`, `serial_number`, `assigned_to`, `location`, `cost`, `cost_center`, `purchase_date` |
+| `update_asset` |  | Update an IT asset record. | `sys_id`*, `fields`* |
+| `retire_asset` |  | Retire an IT asset (mark as disposed/retired). | `sys_id`*, `disposal_reason`, `disposal_date` |
+| `list_software_licenses` |  | List software license records with compliance status | `query`, `limit` |
+| `get_license_compliance` |  | Get license compliance summary, purchased vs. | `license_sys_id` |
+| `list_asset_contracts` |  | List asset maintenance and support contracts | `asset_sys_id`, `active`, `limit` |
+| `track_asset_lifecycle` |  | Track asset lifecycle events and stage transitions | `asset_id`*, `new_stage`*, `notes` |
+| `get_license_optimization` |  | Analyze software license usage and recommend optimizations | `software_name`, `threshold_pct` |
+
+## Agile development
+
+15 tools, defined in `src/tools/agile.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_story` | Write | Create a new agile story/user story (requires WRITE_ENABLED=true) | `short_description`*, `story_points`, `sprint`, `epic`, `description`, `assigned_to` |
+| `update_story` | Write | Update an agile story (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_stories` |  | List agile stories with optional sprint or state filter | `sprint`, `state`, `limit` |
+| `create_epic` | Write | Create a new epic (requires WRITE_ENABLED=true) | `short_description`*, `description`, `project` |
+| `update_epic` | Write | Update an epic (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_epics` |  | List epics with optional project or state filter | `project`, `state`, `limit` |
+| `create_scrum_task` | Write | Create a scrum task (sub-task of a story) (requires WRITE_ENABLED=true) | `short_description`*, `story_sys_id`, `assigned_to` |
+| `update_scrum_task` | Write | Update a scrum task (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_scrum_tasks` |  | List scrum tasks, optionally filtered by story | `story_sys_id`, `assigned_to`, `limit` |
+| `create_story_dependency` | Write | Link one agile story as dependent on another (m2m_story_dependencies). | `story`*, `dependent_story`* |
+| `list_story_dependencies` |  | List dependency links for a story (m2m_story_dependencies). | `story`*, `limit` |
+| `delete_story_dependency` | Write | Remove a story dependency link by its m2m_story_dependencies sys_id. | `sys_id`* |
+| `create_project` | Write | Create a SPM project (pm_project). | `short_description`*, `description`, `state`, `priority`, `fields` |
+| `update_project` | Write | Update a SPM project (pm_project). | `sys_id`*, `fields`* |
+| `list_projects` |  | List SPM projects (pm_project). | `query`, `limit` |
+
+## Strategic Portfolio Management
+
+7 tools, defined in `src/tools/spm.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_portfolios` |  | List Strategic Portfolio Management portfolios (pm_portfolio). | `query`, `limit`, `fields` |
+| `get_portfolio` |  | Get a portfolio (pm_portfolio) by sys_id, with the projects linked to it. | `sys_id`* |
+| `list_programs` |  | List SPM programs (pm_program). | `query`, `limit`, `fields` |
+| `list_demands` |  | List SPM demands (dmn_demand), the intake pipeline that feeds projects. | `query`, `limit`, `fields` |
+| `create_demand` | Write | Create an SPM demand (dmn_demand). | `short_description`*, `description`, `fields` |
+| `list_goals` |  | List SPM goals (sn_gf_goal), the strategic goals portfolios and programs align to. | `query`, `limit`, `fields` |
+| `list_project_tasks` |  | List project tasks (pm_project_task), optionally scoped to a parent project. | `project_sys_id`, `query`, `limit` |
+
+## DevOps
+
+7 tools, defined in `src/tools/devops.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_devops_pipelines` |  | List DevOps pipeline configurations registered in ServiceNow | `active`, `limit` |
+| `get_devops_pipeline` |  | Get details of a specific DevOps pipeline | `sys_id`* |
+| `list_deployments` |  | List recent application deployments tracked in ServiceNow | `pipeline_sys_id`, `environment`, `state`, `limit` |
+| `get_deployment` |  | Get details and status of a specific deployment | `sys_id`* |
+| `create_devops_change` |  | Create a change request linked to a DevOps deployment for change governance. | `short_description`*, `pipeline`, `environment`*, `artifact`, `type`, `assigned_to`, `assignment_group` |
+| `track_deployment` |  | Record a deployment event in ServiceNow (a DevOps task execution, linked to the pipeline deploy step and environment when they exist) for audit and velocity tracking. | `pipeline`, `environment`*, `artifact_name`*, `artifact_version`, `status`*, `notes`, `execution_url` |
+| `get_devops_insights` |  | Get deployment frequency, failure rate, and lead time metrics for a pipeline | `pipeline_sys_id`, `days` |
+
+## Service Portal and UI Builder
+
+16 tools, defined in `src/tools/portal.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_portals` |  | List all Service Portal configurations available in the instance | `query`, `limit` |
+| `create_portal` | Write | Create a new Service Portal configuration (requires WRITE_ENABLED=true) | `title`*, `url_suffix`*, `default_homepage`, `theme`, `logo`, `description` |
+| `create_portal_page` | Write | Create a new page inside a Service Portal (requires WRITE_ENABLED=true) | `title`*, `id`*, `portal_sys_id`*, `description` |
+| `get_portal` |  | Get full configuration details of a Service Portal by sys_id or URL suffix | `id`* |
+| `list_portal_pages` |  | List pages that belong to a Service Portal | `portal_sys_id`*, `query`, `limit` |
+| `get_portal_page` |  | Get details of a specific Service Portal page including its layout | `sys_id`* |
+| `list_portal_widgets` |  | List Service Portal widgets with optional search by name or category | `query`, `limit` |
+| `get_portal_widget` |  | Get full source code (HTML, CSS, client/server scripts) of a Service Portal widget | `id_or_sysid`* |
+| `create_portal_widget` | Write | Create a new Service Portal widget with template, CSS, and scripts (requires WRITE_ENABLED=true) | `name`*, `id`*, `template`, `css`, `client_script`, `server_script`, `option_schema`, `demo_data` |
+| `update_portal_widget` | Write | Update an existing Service Portal widget's source code (requires WRITE_ENABLED=true) | `sys_id`*, `fields`* |
+| `list_widget_instances` |  | List instances of a specific widget placed on portal pages | `widget_sys_id`*, `limit` |
+| `list_ux_apps` |  | List Next Experience (UI Builder) applications | `query`, `limit` |
+| `get_ux_app` |  | Get configuration details of a Next Experience application | `sys_id_or_name`* |
+| `list_ux_pages` |  | List pages within a Next Experience (UI Builder) application | `app_sys_id`*, `query`, `limit` |
+| `list_portal_themes` |  | List Service Portal themes (color palettes, CSS variables) | `limit` |
+| `get_portal_theme` |  | Get full details of a Service Portal theme including CSS variables | `sys_id`* |
+
+## Workspaces and UX
+
+16 tools, defined in `src/tools/workspace.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_uib_pages` |  | List UI Builder pages and their route configurations | `limit`, `app` |
+| `get_uib_page` |  | Get details of a specific UI Builder page including layout and child elements | `sys_id`* |
+| `create_uib_page` |  | Create a new UI Builder page with route registration. | `title`*, `path`*, `app`, `layout` |
+| `update_uib_page` |  | Update an existing UI Builder page. | `sys_id`*, `title`, `path`, `layout` |
+| `delete_uib_page` |  | Delete a UI Builder page. | `sys_id`* |
+| `list_uib_components` |  | List available UI Builder components (macroponents) in the instance | `limit`, `scope` |
+| `create_uib_component` |  | Create a custom UI Builder component (macroponent). | `name`*, `label`*, `description`, `category` |
+| `update_uib_component` |  | Update a UI Builder component. | `sys_id`*, `label`, `description` |
+| `list_uib_data_brokers` |  | List UI Builder data brokers (data sources for pages) | `page_sys_id`, `limit` |
+| `create_uib_data_broker` |  | Create a UI Builder data broker to feed data to a page. | `name`*, `table`*, `query`, `page` |
+| `list_workspaces` |  | List all configurable agent workspaces | `active`, `limit` |
+| `get_workspace` |  | Get details of a configurable agent workspace including tabs and lists | `sys_id`* |
+| `create_workspace` |  | Create a new configurable workspace config (sys_aw_master_config) with a default list for its primary table. | `name`*, `description`, `table`*, `icon`, `url`, `navigation_type`, `columns` |
+| `configure_workspace_list` |  | Add or update a list view in an agent workspace. | `workspace_sys_id`*, `table`*, `title`*, `query`, `columns`, `category`, `order` |
+| `create_ux_app_route` |  | Register a new route (URL path) in a UX app. | `app_sys_id`*, `path`*, `page_sys_id`*, `title` |
+| `create_ux_experience` |  | Create a new UX Experience (app shell) configuration. | `name`*, `app_sys_id`*, `landing_page` |
+
+## Mobile
+
+10 tools, defined in `src/tools/mobile.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `list_mobile_app_configs` |  | List ServiceNow mobile app configurations | `active`, `limit` |
+| `get_mobile_app_config` |  | Get details of a specific mobile app configuration | `sys_id`* |
+| `create_mobile_app_config` |  | Create a new mobile app configuration. | `name`*, `description`, `branding_color`, `navigation`, `type` |
+| `list_mobile_applets` |  | List mobile applets (mini-apps within the mobile experience) | `app_config`, `limit` |
+| `create_mobile_applet` |  | Create a mobile applet in a mobile app. | `name`*, `table`*, `icon`, `app_config`, `query`, `description` |
+| `list_mobile_layouts` |  | List mobile layout configurations | `limit` |
+| `create_mobile_layout` |  | Create a mobile layout for a specific view. | `name`*, `table`*, `type`, `template`, `description` |
+| `configure_offline_sync` |  | Configure which tables/records are available offline in mobile. | `table`*, `query`, `max_records` |
+| `send_push_notification` |  | Send a push notification to mobile app users. | `user`, `group`, `title`*, `body`*, `action_url` |
+| `get_mobile_analytics` |  | Get mobile app usage analytics, sessions, active users, popular applets | `days` |
+
+## Surveys and assessments
+
+4 tools, defined in `src/tools/survey.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `create_survey` | Write | Create a survey/assessment definition (asmt_metric_type). | `name`*, `description`, `type`, `fields` |
+| `send_survey` | Write | Issue a survey/assessment instance to a user (asmt_assessment_instance). | `metric_type`*, `user`*, `trigger_id`, `trigger_table`, `fields` |
+| `get_survey_results` |  | Get responses/scores for a survey instance or definition (asmt_assessment_instance_question) | `instance`, `metric_type`, `limit` |
+| `list_assessments` |  | List survey/assessment instances (asmt_assessment_instance) by state or user | `state`, `user`, `metric_type`, `limit` |
+
+## ServiceNow documentation
+
+2 tools, defined in `src/tools/docs.ts`.
+
+| Tool | Tier | What it does | Parameters |
+|------|------|--------------|------------|
+| `search_servicenow_docs` |  | Search the official ServiceNow product documentation (servicenow.com/docs), API references (GlideRecord, GlideSystem, GlideAjax…), admin & developer guides, encoded-query operators, release notes. | `query`*, `limit`, `product` |
+| `fetch_servicenow_doc` |  | Fetch the full readable text of a specific ServiceNow documentation page. | `ref`, `url`, `maxChars` |

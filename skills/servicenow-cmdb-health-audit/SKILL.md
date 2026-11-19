@@ -1,6 +1,6 @@
 ---
 name: servicenow-cmdb-health-audit
-description: Audit ServiceNow CMDB health using NowAIKit MCP tools — find duplicate, orphaned, and stale CIs, score completeness, and propose remediation. Use when the user asks to check CMDB health, data quality, CSDM conformance, or clean up the CMDB.
+description: Audit ServiceNow CMDB health using NowAIKit MCP tools. Find duplicate, orphaned, and stale CIs, score completeness, and propose remediation. Use when the user asks to check CMDB health, data quality, CSDM conformance, or clean up the CMDB.
 ---
 
 # ServiceNow CMDB Health Audit

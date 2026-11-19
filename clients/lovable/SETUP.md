@@ -1,24 +1,23 @@
-# Lovable + nowaikit Setup Guide
+# Lovable and NowAIKit setup guide
 
 Connect your ServiceNow instance to apps you build in [Lovable](https://lovable.dev), [Bolt](https://bolt.new), [v0](https://v0.dev), or [Replit](https://replit.com).
 
 ## Two Integration Modes
 
-### Mode 1 — nowaikit as data source for built apps (HTTP proxy)
+### Mode 1: NowAIKit as a data source for built apps (HTTP proxy)
 
 Your Lovable app calls nowaikit's local HTTP API instead of ServiceNow directly. This keeps your credentials safe (no browser exposure) and eliminates CORS issues.
 
 #### Step 1: Start the HTTP server
 
 ```bash
-# Install nowaikit
-git clone https://github.com/aartiq/nowaikit.git && cd nowaikit
-npm install && npm run build
-cp .env.example .env  # fill in your ServiceNow credentials
+# Install NowAIKit and connect it to ServiceNow
+npm install -g nowaikit
+nowaikit setup
 
 # Start the HTTP API server
-node dist/http-server.js
-# Listening on http://127.0.0.1:3100
+nowaikit serve
+# Listening on http://127.0.0.1:3000
 ```
 
 #### Step 2: Set an API key (optional but recommended)
@@ -26,7 +25,7 @@ node dist/http-server.js
 ```bash
 # Add to .env:
 NOWAIKIT_API_KEY=my-secret-key
-HTTP_PORT=3100
+PORT=3000
 ```
 
 #### Step 3: Call from your Lovable app
@@ -35,17 +34,17 @@ In your Lovable app's code, call the nowaikit proxy:
 
 ```typescript
 // lib/servicenow.ts
-const NOWAIKIT_URL = import.meta.env.VITE_NOWAIKIT_URL || 'http://localhost:3100';
+const NOWAIKIT_URL = import.meta.env.VITE_NOWAIKIT_URL || 'http://localhost:3000';
 const NOWAIKIT_KEY = import.meta.env.VITE_NOWAIKIT_KEY || '';
 
-export async function callTool<T>(tool: string, params: Record<string, unknown> = {}): Promise<T> {
+export async function callTool<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
   const res = await fetch(`${NOWAIKIT_URL}/api/tool`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(NOWAIKIT_KEY ? { Authorization: `Bearer ${NOWAIKIT_KEY}` } : {}),
     },
-    body: JSON.stringify({ tool, params }),
+    body: JSON.stringify({ name, arguments: args }),
   });
   const data = await res.json() as { result?: T; error?: string };
   if (!res.ok || data.error) throw new Error(data.error || 'Tool call failed');
@@ -53,22 +52,22 @@ export async function callTool<T>(tool: string, params: Record<string, unknown> 
 }
 
 // Usage:
-const incidents = await callTool('list_incidents', { limit: 10, state: 'open' });
+const incidents = await callTool('query_records', { table: 'incident', query: 'active=true', limit: 10 });
 ```
 
 #### Available API endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/health` | Health check + instance info |
+| `GET` | `/health` | Health check, version and tool count |
 | `GET` | `/api/tools` | List all 500+ available tools |
-| `POST` | `/api/tool` | Call a tool: `{ "tool": "list_incidents", "params": {} }` |
+| `POST` | `/api/tool` | Call a tool: `{ "name": "query_records", "arguments": { "table": "incident" } }` |
 | `GET` | `/api/resources` | List @ mention resources |
 | `GET` | `/api/resource?uri=servicenow://my-incidents` | Read a resource |
 
 ---
 
-### Mode 2 — nowaikit as MCP server inside the builder (build-time)
+### Mode 2: NowAIKit as an MCP server inside the builder (build-time)
 
 If Lovable/Replit exposes MCP server configuration, add nowaikit so the AI assistant has real ServiceNow schema awareness while generating your app code.
 
@@ -77,7 +76,7 @@ The AI can then:
 - Look up real records for realistic UI states
 - Validate generated API calls against your live instance
 
-Follow the [Claude Desktop setup](../claude-desktop/SETUP.md) or [Cursor setup](../cursor/SETUP.md) — the same MCP config format works in any compatible builder.
+Follow the [Claude Desktop setup](../claude-desktop/SETUP.md) or [Cursor setup](../cursor/SETUP.md). The same MCP config format works in any compatible builder.
 
 ---
 
@@ -103,7 +102,7 @@ serve(async (req: Request) => {
     });
   }
 
-  const body = await req.json() as { tool: string; params?: Record<string, unknown> };
+  const body = await req.json() as { name: string; arguments?: Record<string, unknown> };
 
   const upstream = await fetch(`${NOWAIKIT_URL}/api/tool`, {
     method: 'POST',
@@ -130,7 +129,7 @@ Deploy to Supabase Edge Functions and set the `NOWAIKIT_URL` and `NOWAIKIT_API_K
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HTTP_PORT` | Port for the HTTP server | `3100` |
-| `HTTP_HOST` | Host to bind (use `0.0.0.0` for network access) | `127.0.0.1` |
-| `NOWAIKIT_API_KEY` | Bearer token required on all API requests | (none — no auth) |
+| `PORT` (or `HTTP_PORT`) | Port for the HTTP server | `3000` |
+| `HOST` | Host to bind (use `0.0.0.0` for network access) | `127.0.0.1` with `nowaikit serve` |
+| `NOWAIKIT_API_KEY` | Bearer token required on all API requests | (none, no auth) |
 | `CORS_ORIGIN` | Allowed CORS origin | `*` |

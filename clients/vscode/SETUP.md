@@ -11,17 +11,16 @@ Configure the ServiceNow MCP server with VS Code using GitHub Copilot or Claude 
 
 ## Step 1: Create the MCP Config
 
-Copy the config file to your workspace `.vscode/` directory:
+Create `.vscode/mcp.json` in your workspace (or run `nowaikit setup`, which writes the config to your
+VS Code user profile for you):
 
 ```bash
 mkdir -p .vscode
-
-# Basic Auth
-cp /path/to/nowaikit/clients/vscode/.vscode/mcp.basic.json .vscode/mcp.json
-
-# OR: OAuth
-cp /path/to/nowaikit/clients/vscode/.vscode/mcp.oauth.json .vscode/mcp.json
+touch .vscode/mcp.json
 ```
+
+The examples below run from a clone of the repository. With the npm package, use `"command": "npx"` and
+`"args": ["-y", "nowaikit"]` instead.
 
 ## Step 2: Edit the Config
 

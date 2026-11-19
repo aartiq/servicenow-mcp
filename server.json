@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.aartiq/nowaikit",
   "title": "ServiceNow MCP Server (NowAIKit)",
-  "description": "ServiceNow MCP server: 500+ tools for Claude, ChatGPT, Copilot & any AI. Read-only by default.",
+  "description": "ServiceNow MCP: 500+ tools and in-chat forms for Claude, ChatGPT and Copilot. Read-only by default.",
   "version": "4.20.0",
   "websiteUrl": "https://servicenow-mcp.com",
   "repository": {
@@ -25,8 +25,8 @@
         },
         {
           "name": "SERVICENOW_AUTH_METHOD",
-          "description": "Authentication method: 'basic' or 'oauth'",
-          "required": true
+          "description": "Authentication method: 'basic' (default) or 'oauth'",
+          "required": false
         },
         {
           "name": "SERVICENOW_BASIC_USERNAME",
@@ -37,12 +37,20 @@
           "description": "ServiceNow password (for basic auth)"
         },
         {
+          "name": "SERVICENOW_OAUTH_CLIENT_ID",
+          "description": "OAuth application client ID (for oauth auth)"
+        },
+        {
+          "name": "SERVICENOW_OAUTH_CLIENT_SECRET",
+          "description": "OAuth application client secret (for oauth auth)"
+        },
+        {
           "name": "WRITE_ENABLED",
           "description": "Enable write operations (true/false, default: false)"
         },
         {
           "name": "SCRIPTING_ENABLED",
-          "description": "Enable scripting operations (true/false, default: false)"
+          "description": "Enable script changes such as business rules and changesets (true/false, default: false; script reads are always available)"
         },
         {
           "name": "CMDB_WRITE_ENABLED",
@@ -50,7 +58,7 @@
         },
         {
           "name": "NOW_ASSIST_ENABLED",
-          "description": "Enable Now Assist AI features (true/false, default: false)"
+          "description": "Enable Now Assist (Otto) generative AI tools (true/false, default: false)"
         },
         {
           "name": "ATF_ENABLED",
@@ -58,7 +66,7 @@
         },
         {
           "name": "MCP_TOOL_PACKAGE",
-          "description": "Role-based tool package: full, service_desk, platform_developer, etc."
+          "description": "Role-based tool package: full (default), service_desk, change_coordinator, knowledge_author, catalog_builder, system_administrator, platform_developer, itom_engineer, agile_manager, ai_developer, portal_developer, integration_engineer, devops_engineer, itam_analyst"
         },
         {
           "name": "TRANSPORT",
@@ -75,6 +83,18 @@
         {
           "name": "FLUENT_ENABLED",
           "description": "Enable Fluent SDK tools (true/false, default: false)"
+        },
+        {
+          "name": "MCP_TOOL_DISCOVERY",
+          "description": "Tool discovery mode: lean (small core plus search_tools), core, or unset for every tool"
+        },
+        {
+          "name": "SN_INSTANCES_CONFIG",
+          "description": "Path to an instances.json file for multi-instance setups"
+        },
+        {
+          "name": "NOWAIKIT_MCP_APPS",
+          "description": "Interactive forms (MCP Apps) in supporting clients: unset for auto, false to turn off"
         }
       ]
     }

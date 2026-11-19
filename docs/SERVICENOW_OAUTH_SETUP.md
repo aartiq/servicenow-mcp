@@ -353,5 +353,5 @@ For a backend that manages OAuth centrally and passes a token per request, see
 
 ---
 
-**Last Updated**: September 2026
-**ServiceNow Versions Tested**: Xanadu, Yokohama, Zurich (latest three releases)
+**Last Updated**: November 2026
+**ServiceNow releases**: Brazil (current GA), Australia, Zurich

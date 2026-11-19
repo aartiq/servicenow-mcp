@@ -2,7 +2,7 @@
 
 Cross-platform [Agent Skills](https://www.anthropic.com/news/skills) that orchestrate the NowAIKit MCP tools for common ServiceNow workflows. Each skill is a folder with a `SKILL.md` (YAML frontmatter `name` + `description` for progressive disclosure, then concise instructions).
 
-They work with any agent runtime that supports the Agent Skills format — **Claude Code, Cursor, OpenAI Codex, GitHub Copilot, Windsurf** — alongside the NowAIKit MCP server.
+They work with any agent runtime that supports the Agent Skills format (**Claude Code, Cursor, OpenAI Codex, GitHub Copilot, Windsurf**) alongside the NowAIKit MCP server.
 
 ## Skills
 

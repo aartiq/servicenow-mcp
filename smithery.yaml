@@ -1,5 +1,5 @@
 # Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
-# ServiceNow MCP Server (NowAIKit) — stdio, runs the published npm package.
+# ServiceNow MCP Server (NowAIKit): stdio, runs the published npm package.
 
 startCommand:
   type: stdio
@@ -39,7 +39,8 @@ startCommand:
       toolPackage:
         type: string
         default: full
-        description: Role-based tool package (full, service_desk, change_coordinator, platform_developer, system_administrator, itom_engineer, agile_manager, ai_developer)
+        enum: [full, service_desk, change_coordinator, knowledge_author, catalog_builder, system_administrator, platform_developer, itom_engineer, agile_manager, ai_developer, portal_developer, integration_engineer, devops_engineer, itam_analyst]
+        description: Role-based tool package. full (default) exposes every tool, the others expose a focused role subset
       writeEnabled:
         type: boolean
         default: false

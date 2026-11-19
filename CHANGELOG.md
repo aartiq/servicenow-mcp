@@ -6,6 +6,100 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ---
 
+## [5.0.0] - 2026-11-19
+
+NowAIKit 5.0 adds interactive forms inside the chat, works alongside ServiceNow's own MCP servers and
+AI agents, and fixes the tools that pointed at the wrong tables. Every documented v4 setting keeps
+working, see Compatibility below.
+
+### Added
+- **Interactive forms (MCP Apps).** In clients that render MCP Apps (Claude, ChatGPT, VS Code):
+  - `open_catalog_form` opens a catalog item as a real request form, with its variables, variable sets,
+    reference lookups and catalog UI policies.
+  - `open_record_form` opens a create or edit form for any table, following the table's form layout,
+    with choice lists and dependent choices.
+  - `open_approvals` lists your pending approvals with Approve and Reject buttons.
+  Clients without MCP Apps get the same data as text. `NOWAIKIT_MCP_APPS=false` turns the forms off.
+  The form tools are available in every discovery mode and package.
+- **ServiceNow Action Fabric.** Use the instance's own MCP servers (MCP Server Console and the
+  out-of-box ITSM, ITOM, CMDB and SPM servers) with `sn_mcp_status`, `sn_mcp_list_servers`,
+  `sn_mcp_list_tools`, `sn_mcp_call_tool` and `sn_mcp_activate_server`, and ServiceNow AI agents over
+  A2A with `sn_a2a_list_agents`, `sn_a2a_get_agent_card`, `sn_a2a_send_message`, `sn_a2a_get_task` and
+  `sn_a2a_expose_agent`. These need an OAuth sign-in with JWT tokens. A2A also needs the instance's A2A
+  channel in synchronous mode (AI Agent Studio > Settings > External AI agents > Discoverability >
+  Communication mode). `NOWAIKIT_SN_MCP_TOKEN` overrides the token if you need to.
+- **AI Agent Studio tools:** `list_agent_tools`, `attach_agent_tool`, `detach_agent_tool`,
+  `list_agent_triggers`, `get_agent_versions`, `list_agent_memory`, `get_agent_execution_trace`,
+  `list_agent_evaluations`, `get_evaluation_results` and `list_external_agents`.
+- **AI Control Tower, Knowledge Graph and Otto status tools (read-only):** `list_ai_assets`,
+  `get_ai_asset`, `list_ai_approval_requests`, `get_ai_usage`, `list_ai_modified_records`,
+  `list_kg_context_configs`, `describe_kg_schema`, `list_otto_channels` and `get_otto_status`.
+- **ServiceNow SDK 4.14.2 coverage:** new `fluent_install`, `fluent_download`, `fluent_transform`,
+  `fluent_dependencies`, `fluent_pack` and `fluent_exec`, and `fluent_cicd` gains rollback and test.
+- **`nowaikit doctor`** checks Node, your NowAIKit version, instance reachability (it spots hibernating
+  developer instances), login, roles, ServiceNow release, permission tiers, configured AI clients and
+  the ServiceNow SDK, with a fix for each problem. `--instance <name>` and `--json` are supported.
+- **`nowaikit serve`** runs the HTTP server (Streamable HTTP MCP at `/mcp`, REST API at `/api`,
+  dashboard at `/`), and **`nowaikit mcp`** runs the stdio server explicitly.
+- **Launch flags** for MCP client configs: `--allow-write`, `--allow-cmdb`, `--allow-scripting`,
+  `--allow-atf`, `--allow-agentic`, `--allow-fluent`, `--allow-all`, `--read-only`, `--lean`,
+  `--persona`, `--package`, `--discovery`, `--instance`, `--transport` and `--port`.
+- **`SN_PERSONA`** picks a role package by short name: `developer`, `admin`, `itsm`, `change`,
+  `knowledge`, `catalog`, `itom`, `agile`, `ai`, `portal`, `integration`, `devops`, `itam` or `full`.
+- `upload_attachment` accepts a local `file_path`, so large files never pass through the model. On by
+  default for the local stdio server and off in HTTP mode (`NOWAIKIT_LOCAL_FILES`,
+  `NOWAIKIT_UPLOAD_DIRS`, `NOWAIKIT_UPLOAD_MAX_MB`). Secrets and credential folders are always blocked.
+- Resource templates `servicenow://ci:{name}` and `servicenow://kb:{title}` are listed through
+  `resources/templates/list`.
+- `/api/health` answers alongside `/health`.
+- `scripts/gen-tool-docs.mjs` generates `docs/TOOLS.md` from the built manifest, so the tool reference
+  always matches the code (544 tools).
+
+### Changed
+- `nowaikit setup` creates the OAuth app with the JWT token format and, where the instance has them, the
+  `useraccount` and `a2aauthscope` scopes. One sign-in now covers the REST API, ServiceNow's MCP servers
+  and A2A agents.
+- Browser sign-in falls back to loopback ports 8766 and 8767 when 8765 is busy, and apps created by the
+  wizard register all three redirect URLs.
+- HTTP and SSE mode create one MCP server per session, so many clients can share one server.
+- Lean discovery: `search_tools` adds the tools it finds to the session's tool list and sends
+  `tools/list_changed`, and search understands everyday words such as ticket, rfc, kb, ci, ritm and otto.
+- Reading scripts (business rules, script includes, client scripts, UI policies and actions, ACLs,
+  changesets) no longer needs `SCRIPTING_ENABLED`. Only changes do.
+- Tools that write but were labelled read-only now carry the right MCP annotations, including
+  `grant_role`, `revoke_role`, `deactivate_user`, `recall_approval_request`, `push_artifact` and
+  `test_flow`, so clients ask before running them.
+- The query allowlist accepts every `gs.beginningOf*` and `gs.endOf*` date helper (for example
+  `beginningOfThisWeek`) and the `*Ago` family.
+- Docs: new tool reference, configuration reference with every variable, rewritten Now Assist guide,
+  corrected client setup, installation and role package counts.
+
+### Fixed
+- AI agent tools read `sn_aia_agent` and `sn_aia_usecase`, the tables AI Agent Studio actually uses.
+- About 40 tools pointed at the wrong tables and now use the right ones, across subflows, ATF results,
+  workspaces, mobile, Now Assist skills, Performance Analytics jobs, Virtual Agent, DevOps and more.
+- The `fluent_*` tools pass the right flags to the ServiceNow SDK for init, build and validate.
+- `.env` files now apply to instance loading. They were read too late before, so instance settings in
+  `.env` could be missed.
+- `SN_DEFAULT_INSTANCE` is honoured for instances loaded from a config file.
+- `@my-incidents` returns only the incidents assigned to the signed-in user.
+- Resource reads honour per-user delegated auth.
+
+### Compatibility
+- Every documented v4 configuration keeps working. Canonical `SERVICENOW_*` variables, `MCP_TOOL_PACKAGE`,
+  `MCP_TOOL_DISCOVERY`, `SN_INSTANCES_CONFIG` and `SN_INSTANCE_<NAME>_*` behave as before.
+- The names some older docs used now work too: `SN_INSTANCE_URL`, `SN_USERNAME`, `SN_PASSWORD`,
+  `SN_OAUTH_CLIENT_ID`, `SN_OAUTH_CLIENT_SECRET`, `SN_AUTH_METHOD`, `SN_PERSONA` and `HTTP_PORT`. When
+  both an old and a canonical name are set, the canonical name wins.
+- No tools were removed or renamed.
+- Existing OAuth apps with opaque tokens keep working for every NowAIKit tool. Only the Action Fabric
+  tools need JWT; switch the app's Token Format to JWT and run `nowaikit auth login` again.
+- Requires Node.js 20 or newer, as before.
+
+<!-- TODO(5.0): MCP spec 2026-07-28 support. Add a bullet under Added if it lands in this release, otherwise delete this comment. -->
+
+---
+
 ## [4.21.0] - 2026-09-23
 
 ### Added

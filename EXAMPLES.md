@@ -179,44 +179,44 @@ Type `@` in Claude Desktop or Cursor to pull live data into your AI context.
 
 ## HTTP API Examples
 
-Start the server: `npm run serve` (or `node dist/http-server.js`)
+Start the server: `nowaikit serve` (or `TRANSPORT=http npx -y nowaikit`)
 
-Open `http://localhost:3100` for the visual dashboard.
+Open `http://localhost:3000` for the visual dashboard.
 
 ### List all available tools
 ```bash
-curl http://localhost:3100/api/tools | jq '.tools[].name'
+curl http://localhost:3000/api/tools | jq '.tools[].name'
 ```
 
 ### Call a tool
 ```bash
-curl -X POST http://localhost:3100/api/tool \
+curl -X POST http://localhost:3000/api/tool \
   -H "Content-Type: application/json" \
-  -d '{ "tool": "list_incidents", "params": { "limit": 5, "query": "priority=1^active=true" } }'
+  -d '{ "name": "query_records", "arguments": { "table": "incident", "limit": 5, "query": "priority=1^active=true" } }'
 ```
 
 ### With API key authentication
 ```bash
-curl -X POST http://localhost:3100/api/tool \
+curl -X POST http://localhost:3000/api/tool \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer my-secret-key" \
-  -d '{ "tool": "get_incident", "params": { "number_or_sysid": "INC0010001" } }'
+  -d '{ "name": "get_incident", "arguments": { "number_or_sysid": "INC0010001" } }'
 ```
 
 ### From a Lovable / Bolt / v0 app (TypeScript)
 ```typescript
 // lib/servicenow.ts
-const BASE = import.meta.env.VITE_NOWAIKIT_URL || 'http://localhost:3100';
+const BASE = import.meta.env.VITE_NOWAIKIT_URL || 'http://localhost:3000';
 const KEY  = import.meta.env.VITE_NOWAIKIT_KEY  || '';
 
-export async function callSN<T>(tool: string, params = {}): Promise<T> {
+export async function callSN<T>(name: string, args = {}): Promise<T> {
   const res = await fetch(`${BASE}/api/tool`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(KEY ? { Authorization: `Bearer ${KEY}` } : {}),
     },
-    body: JSON.stringify({ tool, params }),
+    body: JSON.stringify({ name, arguments: args }),
   });
   const { result, error } = await res.json() as { result?: T; error?: string };
   if (error) throw new Error(error);
@@ -224,22 +224,22 @@ export async function callSN<T>(tool: string, params = {}): Promise<T> {
 }
 
 // Usage in a React component:
-const incidents = await callSN('list_incidents', { limit: 10 });
+const incidents = await callSN('query_records', { table: 'incident', limit: 10 });
 const change    = await callSN('get_change_request', { number_or_sysid: 'CHG0001234' });
 const schema    = await callSN('get_table_schema',   { table: 'incident' });
 ```
 
 ### Route to a named instance (multi-instance)
 ```bash
-curl -X POST http://localhost:3100/api/tool \
+curl -X POST http://localhost:3000/api/tool \
   -H "Content-Type: application/json" \
-  -d '{ "tool": "list_incidents", "params": { "limit": 5 }, "instance": "prod" }'
+  -d '{ "name": "query_records", "arguments": { "table": "incident", "limit": 5 }, "instance": "prod" }'
 ```
 
 ### Health check (no auth required)
 ```bash
-curl http://localhost:3100/api/health
-# → { "status": "ok", "instance": "prod", "toolCount": 400, "ssoEnabled": false, ... }
+curl http://localhost:3000/health
+# { "status": "ok", "name": "nowaikit", "version": "...", "transport": "http", "tools_count": 545, ... }
 ```
 
 ---
@@ -379,12 +379,11 @@ nowaikit instances remove dev
 | **Now Assist / AI** | | | | |
 | nlq_query | NowAssist | Natural language query | AI | query |
 | ai_search | NowAssist | AI semantic search | AI | query, limit |
-| generate_summary | NowAssist | Generate record summary | AI | table, sys_id |
-| suggest_resolution | NowAssist | AI resolution suggestion | AI | incident_sys_id |
+| summarize_record | NowAssist | Summarize a record (Now Assist skill when available) | No | table, record |
+| investigate_incident | Bundle | Incident, similar incidents, CI and knowledge in one call | No | number_or_sysid |
 | categorize_incident | NowAssist | AI categorization | AI | description |
 | get_virtual_agent_topics | NowAssist | List VA topics | No | — |
-| trigger_agentic_playbook | NowAssist | Run agentic playbook | AI | playbook_name |
-| generate_work_notes | NowAssist | AI-generated work notes | AI | task_sys_id |
+| execute_playbook | NowAssist | Run a playbook step by step | AI | playbook, context, dry_run |
 | get_pi_models | NowAssist | List PI AI models | AI | — |
 | **Scripting (SCRIPTING_ENABLED=true)** | | | | |
 | list_business_rules | Script | List business rules | No | table, active |
@@ -432,12 +431,12 @@ nowaikit instances remove dev
 | close_hr_case | HRSD | Close HR case | **Yes** | sys_id, close_notes |
 | list_hr_services | HRSD | List available HR services | No | — |
 | **CSM** | | | | |
-| create_customer_case | CSM | Create customer case | **Yes** | short_description |
-| get_customer_case | CSM | Get customer case | No | number_or_sysid |
-| update_customer_case | CSM | Update customer case | **Yes** | sys_id, fields |
-| list_customer_cases | CSM | List customer cases | No | query, state |
-| list_accounts | CSM | List CSM accounts | No | query |
-| list_contacts | CSM | List contacts | No | query, account_sys_id |
+| create_csm_case | CSM | Create customer case | **Yes** | short_description |
+| get_csm_case | CSM | Get customer case | No | number_or_sysid |
+| update_csm_case | CSM | Update customer case | **Yes** | sys_id, fields |
+| list_csm_cases | CSM | List customer cases | No | query, state |
+| list_csm_accounts | CSM | List CSM accounts | No | query |
+| list_csm_contacts | CSM | List contacts | No | query, account_sys_id |
 | **Security Operations & GRC** | | | | |
 | create_security_incident | Security | Create SecOps incident | **Yes** | short_description, category |
 | get_security_incident | Security | Get SecOps incident | No | number_or_sysid |
@@ -550,12 +549,11 @@ Add to your MCP client (e.g., Claude Desktop config):
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://dev12345.service-now.com",
         "SERVICENOW_AUTH_METHOD": "oauth",
-        "SERVICENOW_CLIENT_ID": "your_client_id",
-        "SERVICENOW_CLIENT_SECRET": "your_client_secret",
-        "SERVICENOW_USERNAME": "admin",
-        "SERVICENOW_PASSWORD": "password",
-        "WRITE_ENABLED": "false",
-        "LOG_LEVEL": "info"
+        "SERVICENOW_OAUTH_CLIENT_ID": "your_client_id",
+        "SERVICENOW_OAUTH_CLIENT_SECRET": "your_client_secret",
+        "SERVICENOW_OAUTH_USERNAME": "admin",
+        "SERVICENOW_OAUTH_PASSWORD": "password",
+        "WRITE_ENABLED": "false"
       }
     }
   }
@@ -2519,14 +2517,14 @@ The client includes automatic retry with exponential backoff, but be mindful of:
 
 ### Example 58: Now Assist — AI-Powered Incident Resolution
 
-**Step 1 — Generate a summary of a complex incident:**
+**Step 1: Summarize a complex incident:**
 ```json
-{ "tool": "generate_summary", "arguments": { "table": "incident", "sys_id": "inc001abc" } }
+{ "tool": "summarize_record", "arguments": { "table": "incident", "record": "INC0010001" } }
 ```
 
-**Step 2 — Get AI-suggested resolution:**
+**Step 2: Pull similar incidents, the affected CI and related knowledge to base a fix on:**
 ```json
-{ "tool": "suggest_resolution", "arguments": { "incident_sys_id": "inc001abc" } }
+{ "tool": "investigate_incident", "arguments": { "number_or_sysid": "INC0010001" } }
 ```
 
 **Step 3 — Auto-categorise a new incident:**
@@ -2732,20 +2730,24 @@ Switch to the production instance and show me the top 5 open P1 incidents.
 
 ---
 
-### Example 68: Agentic Playbook — Trigger AI Workflow
+### Example 68: Playbook, run a multi-step AI workflow
 
-**Use Case:** Launch a Now Assist Agentic Playbook for automated incident remediation.
+**Use Case:** Run a playbook (an ordered list of tool calls) for incident remediation. Try it with `dry_run` first.
 
 **Tool Call:**
 ```json
 {
-  "tool": "trigger_agentic_playbook",
+  "tool": "execute_playbook",
   "arguments": {
-    "playbook_name": "Incident Auto-Remediation",
-    "context": {
-      "incident_sys_id": "inc001abc",
-      "severity": "high"
-    }
+    "playbook": {
+      "name": "Incident Auto-Remediation",
+      "steps": [
+        { "tool_name": "investigate_incident", "args_template": { "number_or_sysid": "{{context.incident}}" } },
+        { "tool_name": "add_work_note", "args_template": { "table": "incident", "sys_id": "{{context.incident_sys_id}}", "note": "Auto-triage started" } }
+      ]
+    },
+    "context": { "incident": "INC0010001", "incident_sys_id": "inc001abc" },
+    "dry_run": true
   }
 }
 ```
@@ -2816,7 +2818,7 @@ Show me all change requests opened last week that are pending CAB approval for t
 
 ### 4. Chain Tools for Richer Context
 
-The most powerful use cases combine multiple tools. Always use `get_cmdb_ci` and `list_relationships` before a change, and `generate_summary` before an incident update.
+The most powerful use cases combine multiple tools. Always use `get_cmdb_ci` and `list_relationships` before a change, and `summarize_record` before an incident update.
 
 ### 5. OAuth 2.0 for Production
 
@@ -2843,7 +2845,7 @@ For complex filters, pass an encoded ServiceNow query string directly:
 
 - Review [SECURITY.md](SECURITY.md) for security best practices
 - Check [CONTRIBUTING.md](CONTRIBUTING.md) to extend functionality
-- See [docs/TOOLS.md](docs/TOOLS.md) for the full tool reference (270+ tools)
+- See [docs/TOOLS.md](docs/TOOLS.md) for the full tool reference (500+ tools)
 
 ---
 
@@ -3214,17 +3216,17 @@ For complex filters, pass an encoded ServiceNow query string directly:
 
 ---
 
-### Example 94: Generate Work Notes Summary
+### Example 94: Summarize Work Notes
 
-**Use Case:** Before escalating an incident, generate a concise summary of all work notes.
+**Use Case:** Before escalating an incident, get a concise summary of the record and its work notes.
 
 **Tool Call:**
 ```json
 {
-  "tool": "generate_work_notes",
+  "tool": "summarize_record",
   "arguments": {
     "table": "incident",
-    "sys_id": "inc001abc"
+    "record": "INC0010001"
   }
 }
 ```

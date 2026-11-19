@@ -97,7 +97,7 @@ def run_agent(user_message: str) -> str:
 
     while True:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.6-terra",
             messages=messages,
             tools=openai_tools,
             tool_choice="auto",
