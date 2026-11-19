@@ -7,6 +7,63 @@ import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
 import { requireWrite } from '../utils/permissions.js';
 
+// PA stores aggregate and direction as integer choices.
+const PA_AGGREGATES: Record<string, string> = {
+  count: '1', sum: '2', average: '3', avg: '3', minimum: '4', min: '4', maximum: '5', max: '5', count_distinct: '6',
+};
+const PA_DIRECTIONS: Record<string, string> = { none: '1', minimize: '2', maximize: '3' };
+
+function paChoice(map: Record<string, string>, value: any, label: string): string {
+  const v = String(value).trim();
+  if (/^\d+$/.test(v)) return v;
+  const mapped = map[v.toLowerCase().replace(/[\s-]+/g, '_')];
+  if (!mapped) throw new ServiceNowError(`Unknown ${label} "${value}". Use one of: ${Object.keys(map).join(', ')}`, 'INVALID_REQUEST');
+  return mapped;
+}
+
+/**
+ * Resolve the indicator source (pa_cubes) for a facts table: an indicator links to its
+ * table through an indicator source, not a table name. Reuses an existing source for the
+ * table, otherwise creates one.
+ */
+export async function resolveIndicatorSource(
+  client: ServiceNowClient,
+  factsTable: string,
+): Promise<{ sys_id: string; created: boolean }> {
+  if (/^[0-9a-f]{32}$/i.test(factsTable)) return { sys_id: factsTable, created: false };
+  const found = await client.queryRecords({ table: 'pa_cubes', query: `facts_table=${factsTable}^conditionsISEMPTY`, limit: 1, fields: 'sys_id' });
+  if (found.count > 0) return { sys_id: String((found.records[0] as any).sys_id), created: false };
+  const created = await client.createRecord('pa_cubes', { name: `${factsTable} (NowAIKit)`, facts_table: factsTable, frequency: '10' });
+  return { sys_id: String(created.sys_id), created: true };
+}
+
+/** Build a pa_indicators payload (automated indicator) from friendly inputs. */
+export async function buildPaIndicatorPayload(
+  client: ServiceNowClient,
+  args: Record<string, any>,
+): Promise<{ data: Record<string, any>; indicatorSource?: { sys_id: string; created: boolean } }> {
+  const data: Record<string, any> = { name: args.name, type: '1', frequency: '10' };
+  if (args.description) data.description = args.description;
+  data.aggregate = paChoice(PA_AGGREGATES, args.aggregate || 'count', 'aggregate');
+  if (args.field) data.field = args.field;
+  if (args.conditions) data.conditions = args.conditions;
+  if (args.direction) data.direction = paChoice(PA_DIRECTIONS, args.direction, 'direction');
+  if (args.unit) {
+    if (/^[0-9a-f]{32}$/i.test(args.unit)) data.unit = args.unit;
+    else {
+      const u = await client.queryRecords({ table: 'pa_units', query: `name=${args.unit}`, limit: 1, fields: 'sys_id' });
+      if (u.count > 0) data.unit = (u.records[0] as any).sys_id;
+    }
+  }
+  let indicatorSource: { sys_id: string; created: boolean } | undefined;
+  const source = args.indicator_source || args.facts_table;
+  if (source) {
+    indicatorSource = await resolveIndicatorSource(client, source);
+    data.cube = indicatorSource.sys_id;
+  }
+  return { data, indicatorSource };
+}
+
 export function getPerformanceToolDefinitions() {
   return [
     // ── PA Indicators ────────────────────────────────────────────────────────
@@ -161,6 +218,7 @@ export function getPerformanceToolDefinitions() {
             description: 'Comma-separated roles that can view this dashboard (leave blank for all)',
           },
           active: { type: 'boolean', description: 'Activate the dashboard immediately (default: true)' },
+          owner: { type: 'string', description: 'Owner user sys_id (default: the calling user)' },
         },
         required: ['name'],
       },
@@ -191,7 +249,8 @@ export function getPerformanceToolDefinitions() {
         properties: {
           name: { type: 'string', description: 'Indicator name (e.g. "Open P1 incidents")' },
           description: { type: 'string', description: 'What the indicator measures' },
-          facts_table: { type: 'string', description: 'Source/facts table the indicator counts (e.g. "incident")' },
+          facts_table: { type: 'string', description: 'Source/facts table the indicator counts (e.g. "incident"); an indicator source for it is reused or created' },
+          indicator_source: { type: 'string', description: 'Optional indicator source (pa_cubes) sys_id; overrides facts_table' },
           aggregate: { type: 'string', description: 'Aggregation function', enum: ['count', 'sum', 'average', 'maximum', 'minimum'] },
           field: { type: 'string', description: 'Field to aggregate (required for sum/average/max/min; ignored for count)' },
           conditions: { type: 'string', description: 'Encoded query on the facts table (e.g. "active=true^priority=1")' },
@@ -213,6 +272,7 @@ export function getPerformanceToolDefinitions() {
           name: { type: 'string', description: 'Breakdown name (e.g. "By Assignment group")' },
           description: { type: 'string', description: 'What this breakdown slices by' },
           related_field: { type: 'string', description: 'Optional dotted field path the breakdown maps to (e.g. "assignment_group")' },
+          breakdown_source: { type: 'string', description: 'Optional breakdown source (pa_dimensions) sys_id' },
           active: { type: 'boolean', description: 'Activate immediately (default: true)' },
         },
         required: ['name'],
@@ -486,6 +546,12 @@ export async function executePerformanceToolCall(
       };
       if (args.description) data.description = args.description;
       if (args.roles) data.roles = args.roles;
+      // owner is mandatory on pa_dashboards: default to the calling user.
+      if (args.owner) data.owner = args.owner;
+      else {
+        const me = await client.getCurrentUser().catch(() => ({} as any));
+        if (me.user_sys_id) data.owner = me.user_sys_id;
+      }
       const result = await client.createRecord('pa_dashboards', data);
       return { ...result, summary: `Created dashboard "${args.name}"` };
     }
@@ -499,23 +565,21 @@ export async function executePerformanceToolCall(
     case 'create_pa_indicator': {
       requireWrite();
       if (!args.name) throw new ServiceNowError('name is required', 'INVALID_REQUEST');
-      const data: Record<string, any> = { name: args.name, active: args.active !== false };
-      if (args.description) data.description = args.description;
-      if (args.facts_table) data.facts_table = args.facts_table;
-      if (args.aggregate) data.aggregate = args.aggregate;
-      if (args.field) data.field = args.field;
-      if (args.conditions) data.conditions = args.conditions;
-      if (args.unit) data.unit = args.unit;
-      if (args.direction) data.direction = args.direction;
+      const { data, indicatorSource } = await buildPaIndicatorPayload(client, args);
       const result = await client.createRecord('pa_indicators', data);
-      return { ...result, summary: `Created PA indicator "${args.name}". Run a PA data-collection job to populate scores.` };
+      return {
+        ...result,
+        ...(indicatorSource ? { indicator_source: indicatorSource.sys_id, indicator_source_created: indicatorSource.created } : {}),
+        summary: `Created PA indicator "${args.name}". Run a PA data-collection job to populate scores.`,
+      };
     }
     case 'create_pa_breakdown': {
       requireWrite();
       if (!args.name) throw new ServiceNowError('name is required', 'INVALID_REQUEST');
-      const data: Record<string, any> = { name: args.name, active: args.active !== false };
+      const data: Record<string, any> = { name: args.name, type: '1' };
       if (args.description) data.description = args.description;
-      if (args.related_field) data.related_field = args.related_field;
+      if (args.related_field) data.field = args.related_field;
+      if (args.breakdown_source) data.dimension = args.breakdown_source;
       const result = await client.createRecord('pa_breakdowns', data);
       return { ...result, summary: `Created PA breakdown "${args.name}". Configure its breakdown source/elements in the PA UI if required.` };
     }

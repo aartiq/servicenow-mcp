@@ -70,6 +70,7 @@ export function getDecisionToolDefinitions() {
           name: { type: 'string', description: 'Decision table name' },
           description: { type: 'string', description: 'Description of what the decision returns' },
           active: { type: 'boolean', description: 'Whether the decision table is active (default true)' },
+          answer_table: { type: 'string', description: 'Table whose records are the answers (e.g. sys_user_group); needed before the decision can be used' },
           fields: { type: 'object', description: 'Additional sys_decision field values to set' },
         },
         required: ['name'],
@@ -149,16 +150,22 @@ export async function executeDecisionToolCall(
     case 'create_decision_table': {
       requireWrite();
       if (!args.name) throw new ServiceNowError('name is required', 'INVALID_REQUEST');
-      const payload = { name: args.name, description: args.description ?? '', active: args.active === false ? 'false' : 'true', ...(args.fields ?? {}) };
+      const payload = { name: args.name, label: args.name, description: args.description ?? '', active: args.active === false ? 'false' : 'true', ...(args.answer_table ? { answer_table: args.answer_table } : {}), ...(args.fields ?? {}) };
       const result = await client.createRecord('sys_decision', payload);
-      return { ...result, summary: `Created decision table "${args.name}"` };
+      return {
+        ...result,
+        summary: `Created decision table "${args.name}"`,
+        ...(args.answer_table || args.fields?.answer_table ? {} : { note: 'No answer_table set: choose the answer table (update the record or Decision Builder) before adding rows.' }),
+      };
     }
     case 'create_decision_input': {
       requireWrite();
       if (!args.decision_sys_id) throw new ServiceNowError('decision_sys_id is required', 'INVALID_REQUEST');
       if (!args.name) throw new ServiceNowError('name is required', 'INVALID_REQUEST');
-      const payload: Record<string, any> = { model: args.decision_sys_id, name: args.name, ...(args.fields ?? {}) };
-      if (args.type !== undefined) payload.type = args.type;
+      // sys_decision_input extends var_dictionary: the column is "element", the display name "label",
+      // and the data type "internal_type" (there are no name/type columns).
+      const element = String(args.name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'input';
+      const payload: Record<string, any> = { model: args.decision_sys_id, element, label: args.name, column_label: args.name, internal_type: args.type ?? 'string', ...(args.fields ?? {}) };
       if (args.order !== undefined) payload.order = args.order;
       const result = await client.createRecord('sys_decision_input', payload);
       return { ...result, summary: `Added input "${args.name}" to decision ${args.decision_sys_id}` };

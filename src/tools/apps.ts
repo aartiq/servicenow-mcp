@@ -337,6 +337,7 @@ export async function executeAppsToolCall(client: ServiceNowClient, name: string
       for (const n of names) {
         const d = byElement[n];
         if (!d) continue;
+        if (!sysId && n === 'number') continue; // ServiceNow assigns the number on insert
         const f = recordFieldFromDictionary(d, choices[n] || []);
         if (f) fields.push(f);
       }

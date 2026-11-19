@@ -194,7 +194,7 @@ export async function executeCsmToolCall(
       requireWrite();
       if (!args.sys_id || !args.resolution_notes) throw new ServiceNowError('sys_id and resolution_notes are required', 'INVALID_REQUEST');
       const result = await client.updateRecord('sn_customerservice_case', args.sys_id, {
-        state: 'closed',
+        state: '3', // Closed (sn_customerservice_case.state is an integer choice)
         close_notes: args.resolution_notes,
         ...(args.resolution_code ? { close_code: args.resolution_code } : {}),
       });

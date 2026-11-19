@@ -187,12 +187,23 @@ export async function executeApprovalsExtraToolCall(
       const payload: Record<string, any> = { sysapproval: args.record, approver: args.approver, state: 'requested' };
       if (args.source_table) payload.source_table = args.source_table;
       const result = await client.createRecord('sysapproval_approver', payload);
+      // Field-level write ACLs (OOB: sysapproval only on change_request on insert) can silently drop the
+      // reference fields, leaving an orphan approval row. Detect that, remove it and say why.
+      const refVal = (v: any) => (v && typeof v === 'object' ? v.value : v);
+      if (!refVal((result as any).sysapproval) || !refVal((result as any).approver)) {
+        const orphan = refVal((result as any).sys_id);
+        if (orphan) await client.deleteRecord('sysapproval_approver', String(orphan)).catch(() => undefined);
+        throw new ServiceNowError(
+          `ServiceNow accepted the approval row but dropped its record/approver reference (field-level ACL on sysapproval_approver; OOB only change requests accept ad-hoc approvers over REST). The empty row was removed. Add the approver from the record's form or a flow instead.`,
+          'INSUFFICIENT_PRIVILEGES',
+        );
+      }
       return { ...result, summary: `Added ad-hoc approver ${args.approver} to record ${args.record}` };
     }
     case 'recall_approval_request': {
       requireWrite();
       if (!args.record) throw new ServiceNowError('record is required', 'INVALID_REQUEST');
-      const pending = await client.queryRecords({ table: 'sysapproval_approver', query: `sysapproval=${args.record}^stateIN requested,not requested`, fields: 'sys_id', limit: 100 });
+      const pending = await client.queryRecords({ table: 'sysapproval_approver', query: `sysapproval=${args.record}^stateINrequested,not requested`, fields: 'sys_id', limit: 100 });
       let cancelled = 0;
       for (const r of pending.records as any[]) {
         await client.updateRecord('sysapproval_approver', r.sys_id, { state: 'cancelled' }).then(() => cancelled++).catch(() => {});

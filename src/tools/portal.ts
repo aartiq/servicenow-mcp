@@ -240,10 +240,10 @@ export async function executePortalToolCall(
         title: args.title,
         url_suffix: args.url_suffix,
       };
-      if (args.default_homepage) data.default_homepage = args.default_homepage;
+      // sp_portal's homepage column is "homepage"; it has no description column.
+      if (args.default_homepage) data.homepage = args.default_homepage;
       if (args.theme) data.theme = args.theme;
       if (args.logo) data.logo = args.logo;
-      if (args.description) data.description = args.description;
       const result = await client.createRecord('sp_portal', data);
       return { ...result, summary: `Created portal "${args.title}" at /${args.url_suffix}` };
     }
@@ -251,14 +251,17 @@ export async function executePortalToolCall(
       requireWrite();
       if (!args.title || !args.id || !args.portal_sys_id)
         throw new ServiceNowError('title, id, and portal_sys_id are required', 'INVALID_REQUEST');
+      // Service Portal pages (sp_page) are shared across portals: there is no portal column. The page is
+      // served by any portal at /<url_suffix>?id=<page id>, so the portal is only validated and used for the URL.
+      const portal = await client.getRecord('sp_portal', args.portal_sys_id, 'url_suffix');
       const data: Record<string, any> = {
         title: args.title,
         id: args.id,
-        sp_portal: args.portal_sys_id,
       };
-      if (args.description) data.description = args.description;
+      if (args.description) data.short_description = args.description;
       const result = await client.createRecord('sp_page', data);
-      return { ...result, summary: `Created portal page "${args.title}" (id: ${args.id})` };
+      const suffix = (portal as any).url_suffix;
+      return { ...result, url: suffix ? `/${suffix}?id=${args.id}` : undefined, summary: `Created portal page "${args.title}" (id: ${args.id})` };
     }
     case 'list_portals': {
       const parts: string[] = [];

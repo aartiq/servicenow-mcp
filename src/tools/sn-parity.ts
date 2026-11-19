@@ -190,8 +190,13 @@ export async function executeSnParityToolCall(
         payload.state = args.state;
       } else {
         const cur = await client.getRecord('sn_hr_core_case', caseId);
-        const curState = parseInt(String((cur as any).state?.value ?? (cur as any).state ?? '1'), 10);
-        payload.state = String(isNaN(curState) ? 1 : curState + 1);
+        // HR case states are not sequential numbers: Draft(1) > Ready(10) > Work in Progress(18) > Closed Complete(3);
+        // Awaiting Acceptance(20)/Awaiting Approval(11)/Suspended(24) resume to Work in Progress.
+        const NEXT: Record<string, string> = { '1': '10', '10': '18', '20': '18', '11': '18', '24': '18', '18': '3' };
+        const curState = String((cur as any).state?.value ?? (cur as any).state ?? '1');
+        const next = NEXT[curState];
+        if (!next) throw new ServiceNowError(`HR case ${args.case} is in state ${curState}, which has no next stage (closed or cancelled). Pass state explicitly to override.`, 'INVALID_STATE');
+        payload.state = next;
       }
       if (args.work_notes) payload.work_notes = args.work_notes;
       const result = await client.updateRecord('sn_hr_core_case', caseId, payload);

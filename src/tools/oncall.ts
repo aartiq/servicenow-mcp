@@ -68,7 +68,7 @@ export function getOnCallToolDefinitions() {
     },
     {
       name: 'create_on_call_override',
-      description: 'Create an on-call coverage override for a date range (cmn_rota_override). Requires WRITE_ENABLED=true',
+      description: 'Create an on-call coverage override for a date range (a roster schedule entry, roster_schedule_span). Requires WRITE_ENABLED=true',
       inputSchema: {
         type: 'object',
         properties: {
@@ -76,12 +76,37 @@ export function getOnCallToolDefinitions() {
           member: { type: 'string', description: 'sys_id of the covering user/member' },
           start: { type: 'string', description: 'Override start (YYYY-MM-DD HH:MM:SS)' },
           end: { type: 'string', description: 'Override end (YYYY-MM-DD HH:MM:SS)' },
+          name: { type: 'string', description: 'Optional override entry name' },
           fields: { type: 'object', description: 'Additional field values' },
         },
         required: ['roster', 'member', 'start', 'end'],
       },
     },
   ];
+}
+
+/** cmn_rota_member.member and override spans reference sys_user; accept a sys_user_grmember sys_id too. */
+async function resolveMemberUser(client: ServiceNowClient, member: string): Promise<string> {
+  if (!/^[0-9a-f]{32}$/i.test(member)) {
+    const u = await client.queryRecords({ table: 'sys_user', query: `user_name=${member}`, limit: 1, fields: 'sys_id' });
+    if (u.count === 0) throw new ServiceNowError(`User not found: ${member}`, 'NOT_FOUND');
+    return (u.records[0] as any).sys_id;
+  }
+  const u = await client.queryRecords({ table: 'sys_user', query: `sys_id=${member}`, limit: 1, fields: 'sys_id' });
+  if (u.count > 0) return member;
+  const gm = await client.queryRecords({ table: 'sys_user_grmember', query: `sys_id=${member}`, limit: 1, fields: 'user' });
+  if (gm.count > 0) {
+    const ref = (gm.records[0] as any).user;
+    return typeof ref === 'object' ? ref.value : ref;
+  }
+  throw new ServiceNowError(`Member not found as a user or group member: ${member}`, 'NOT_FOUND');
+}
+
+/** "YYYY-MM-DD HH:MM:SS" (or ISO) -> schedule_date_time "YYYYMMDDTHHMMSS". */
+function toScheduleDateTime(v: string): string {
+  const m = String(v).trim().match(/^(\d{4})-?(\d{2})-?(\d{2})[ T]?(\d{2})?:?(\d{2})?:?(\d{2})?/);
+  if (!m) throw new ServiceNowError(`Invalid date/time: ${v} (use YYYY-MM-DD HH:MM:SS)`, 'INVALID_REQUEST');
+  return `${m[1]}${m[2]}${m[3]}T${m[4] ?? '00'}${m[5] ?? '00'}${m[6] ?? '00'}`;
 }
 
 async function resolveGroup(client: ServiceNowClient, group: string): Promise<string> {
@@ -137,7 +162,8 @@ export async function executeOnCallToolCall(
     case 'add_roster_member': {
       requireWrite();
       if (!args.roster || !args.member) throw new ServiceNowError('roster and member are required', 'INVALID_REQUEST');
-      const payload: Record<string, any> = { roster: args.roster, member: args.member, ...(args.fields ?? {}) };
+      const member = await resolveMemberUser(client, args.member);
+      const payload: Record<string, any> = { roster: args.roster, member, ...(args.fields ?? {}) };
       if (args.order !== undefined) payload.order = args.order;
       const result = await client.createRecord('cmn_rota_member', payload);
       return { ...result, summary: `Added member to roster ${args.roster}` };
@@ -147,14 +173,26 @@ export async function executeOnCallToolCall(
       if (!args.roster || !args.member || !args.start || !args.end) {
         throw new ServiceNowError('roster, member, start and end are required', 'INVALID_REQUEST');
       }
+      // On-call overrides are roster schedule entries (roster_schedule_span, type on_call) on the
+      // rotation's schedule; there is no cmn_rota_override table.
+      const roster = await client.getRecord('cmn_rota_roster', args.roster, 'sys_id,name,rota');
+      const rotaId = typeof (roster as any).rota === 'object' ? (roster as any).rota.value : (roster as any).rota;
+      const rota = rotaId ? await client.getRecord('cmn_rota', rotaId, 'sys_id,group,schedule') : ({} as any);
+      const refVal = (v: any) => (v && typeof v === 'object' ? v.value : v);
+      const user = await resolveMemberUser(client, args.member);
       const payload: Record<string, any> = {
+        name: args.name || `Override ${String(args.start).slice(0, 10)}`,
+        type: 'on_call',
+        show_as: 'on_call',
         roster: args.roster,
-        member: args.member,
-        start_date_time: args.start,
-        end_date_time: args.end,
+        user,
+        start_date_time: toScheduleDateTime(args.start),
+        end_date_time: toScheduleDateTime(args.end),
+        ...(refVal(rota.group) ? { group: refVal(rota.group) } : {}),
+        ...(refVal(rota.schedule) ? { schedule: refVal(rota.schedule) } : {}),
         ...(args.fields ?? {}),
       };
-      const result = await client.createRecord('cmn_rota_override', payload);
+      const result = await client.createRecord('roster_schedule_span', payload);
       return { ...result, summary: `Created on-call override ${args.start} → ${args.end}` };
     }
     default:

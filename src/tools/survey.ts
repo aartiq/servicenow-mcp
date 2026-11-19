@@ -20,7 +20,7 @@ export function getSurveyToolDefinitions() {
         properties: {
           name: { type: 'string', description: 'Survey name' },
           description: { type: 'string', description: 'Survey description' },
-          type: { type: 'string', description: 'Metric type (e.g. "survey")' },
+          type: { type: 'string', description: 'Evaluation method: survey (default), assessment, quiz, attestation, rating' },
           fields: { type: 'object', description: 'Additional field values' },
         },
         required: ['name'],
@@ -80,9 +80,17 @@ export async function executeSurveyToolCall(
     case 'create_survey': {
       requireWrite();
       if (!args.name) throw new ServiceNowError('name is required', 'INVALID_REQUEST');
-      const payload: Record<string, any> = { name: args.name, ...(args.fields ?? {}) };
+      // asmt_metric_type has no "type" column: the kind of assessment is evaluation_method. table,
+      // display_field and scale_factor are mandatory; surveys use the definition table itself.
+      const payload: Record<string, any> = {
+        name: args.name,
+        evaluation_method: args.type || 'survey',
+        table: 'asmt_metric_type',
+        display_field: 'name',
+        scale_factor: '10',
+        ...(args.fields ?? {}),
+      };
       if (args.description) payload.description = args.description;
-      if (args.type) payload.type = args.type;
       const result = await client.createRecord('asmt_metric_type', payload);
       return { ...result, summary: `Created survey "${args.name}"` };
     }

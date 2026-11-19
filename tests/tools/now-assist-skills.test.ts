@@ -126,24 +126,42 @@ describe('executeNowAssistSkillsToolCall', () => {
       prompt_template: 'Summarize: {{input}}',
     };
 
-    it('creates a skill with correct data', async () => {
-      (mockClient.createRecord as ReturnType<typeof vi.fn>).mockResolvedValue({
-        sys_id: 'new-skill',
-        name: 'Test Skill',
-      });
+    it('creates a OneExtend capability and registers it in sn_nowassist_skill_config', async () => {
+      (mockClient.queryRecords as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, records: [{ sys_id: 'fam1' }] });
+      (mockClient.createRecord as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({ sys_id: 'cap1', name: 'Test Skill' })
+        .mockResolvedValueOnce({ sys_id: 'new-skill', name: 'Test Skill' });
 
       const result = await executeNowAssistSkillsToolCall(mockClient, 'create_now_assist_skill', validArgs);
 
       expect(result.message).toContain('created');
       expect(result.skill.sys_id).toBe('new-skill');
-      expect(mockClient.createRecord).toHaveBeenCalledWith(
-        'sn_now_assist_skill',
+      expect(result.capability.sys_id).toBe('cap1');
+      const [capTable, capData] = (mockClient.createRecord as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(capTable).toBe('sys_one_extend_capability');
+      expect(capData).toMatchObject({ name: 'Test Skill', type: 'skill' });
+      expect(JSON.parse(capData.metadata)).toMatchObject({ prompt_template: 'Summarize: {{input}}' });
+      expect(mockClient.createRecord).toHaveBeenNthCalledWith(2,
+        'sn_nowassist_skill_config',
         expect.objectContaining({
           name: 'Test Skill',
-          active: true,
-          prompt_template: 'Summarize: {{input}}',
+          skill_family: 'fam1',
+          skill_table: 'sys_one_extend_capability',
+          skill_id: 'cap1',
+          active: false,
         })
       );
+    });
+
+    it('removes the capability if the skill config cannot be created', async () => {
+      (mockClient.queryRecords as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, records: [{ sys_id: 'fam1' }] });
+      (mockClient.createRecord as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({ sys_id: 'cap1' })
+        .mockRejectedValueOnce(new Error('boom'));
+      (mockClient.deleteRecord as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      await expect(executeNowAssistSkillsToolCall(mockClient, 'create_now_assist_skill', validArgs)).rejects.toThrow('boom');
+      expect(mockClient.deleteRecord).toHaveBeenCalledWith('sys_one_extend_capability', 'cap1');
     });
 
     it('requires NOW_ASSIST_ENABLED + WRITE_ENABLED', async () => {
@@ -168,18 +186,17 @@ describe('executeNowAssistSkillsToolCall', () => {
       ).rejects.toThrow('description is required');
     });
 
-    it('includes optional model field when provided', async () => {
+    it('stores the optional model in the capability metadata', async () => {
+      (mockClient.queryRecords as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, records: [{ sys_id: 'fam1' }] });
       (mockClient.createRecord as ReturnType<typeof vi.fn>).mockResolvedValue({ sys_id: 'new' });
 
       await executeNowAssistSkillsToolCall(mockClient, 'create_now_assist_skill', {
         ...validArgs,
-        model: 'gpt-5.4',
+        model: 'gpt-5.5',
       });
 
-      expect(mockClient.createRecord).toHaveBeenCalledWith(
-        'sn_now_assist_skill',
-        expect.objectContaining({ model: 'gpt-5.4' })
-      );
+      const [, capData] = (mockClient.createRecord as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(JSON.parse(capData.metadata).model).toBe('gpt-5.5');
     });
   });
 

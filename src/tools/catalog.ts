@@ -97,7 +97,7 @@ export function getCatalogToolDefinitions() {
       name: 'create_approval_rule',
       description:
         'Create an approval rule that automatically generates approval requests when a record matches given conditions (requires WRITE_ENABLED=true). ' +
-        'Uses the sysapproval_rule table.',
+        'Uses the Approval Rules table (sysrule_approvals).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -205,7 +205,7 @@ export function getCatalogToolDefinitions() {
           cat_item_id: { type: 'string', description: 'Catalog item sys_id' },
           name: { type: 'string', description: 'Variable name' },
           question_text: { type: 'string', description: 'Label shown to user' },
-          type: { type: 'string', description: 'Variable type: string/reference/select_box/checkbox/date/date_time/integer/multi_line_text/email' },
+          type: { type: 'string', description: 'Variable type: string/reference/select_box/checkbox/date/date_time/integer (single line text)/multi_line_text/email/yes_no/multiple_choice/numeric_scale/list_collector/url/label, or a raw type number' },
           order: { type: 'number', description: 'Display order (default: 100)' },
           mandatory: { type: 'boolean', description: 'Required field' },
         },
@@ -310,22 +310,24 @@ export async function executeCatalogToolCall(
       requireWrite();
       if (!args.name || !args.table || !args.approver_type || !args.approver)
         throw new ServiceNowError('name, table, approver_type, and approver are required', 'INVALID_REQUEST');
+      // Approval rules live in sysrule_approvals (extends sysrule): user or group approver plus a condition.
       const data: Record<string, any> = {
         name: args.name,
         table: args.table,
-        approver_type: args.approver_type,
         active: args.active !== false,
         order: args.order ?? 100,
       };
       if (args.approver_type === 'group') {
-        data.approver_group = args.approver;
+        data.group = args.approver;
       } else {
-        data.approver = args.approver;
+        data.user = args.approver;
       }
       if (args.condition) data.condition = args.condition;
-      const result = await client.createRecord('sysapproval_rule', data);
+      const result = await client.createRecord('sysrule_approvals', data);
       return {
         ...result,
+        table: 'sysrule_approvals',
+        applies_to: args.table,
         summary: `Created approval rule "${args.name}" for table "${args.table}" with ${args.approver_type} approver`,
       };
     }
@@ -372,9 +374,12 @@ export async function executeCatalogToolCall(
       requireWrite();
       if (!args.cat_item_id || !args.name || !args.question_text || !args.type)
         throw new ServiceNowError('cat_item_id, name, question_text, and type are required', 'INVALID_REQUEST');
+      // item_option_new.type choice values (question.type): 6 Single Line Text, 8 Reference, 5 Select Box,
+      // 7 CheckBox, 9 Date, 10 Date/Time, 2 Multi Line Text, 26 Email, 1 Yes/No, 3 Multiple Choice, 4 Numeric Scale.
       const typeMap: Record<string, string> = {
-        string: '6', reference: '8', select_box: '1', checkbox: '7', date: '10',
-        date_time: '15', integer: '2', multi_line_text: '2', email: '32',
+        string: '6', single_line_text: '6', reference: '8', select_box: '5', checkbox: '7', date: '9',
+        date_time: '10', integer: '6', multi_line_text: '2', email: '26', yes_no: '1', multiple_choice: '3',
+        numeric_scale: '4', list_collector: '21', url: '27', label: '11',
       };
       const result = await client.createRecord('item_option_new', {
         cat_item: args.cat_item_id,

@@ -4,7 +4,7 @@
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
-import { requireWrite, requireScripting } from '../utils/permissions.js';
+import { requireWrite, requireScripting, isScriptingEnabled } from '../utils/permissions.js';
 
 export function getFlowToolDefinitions() {
   return [
@@ -35,7 +35,7 @@ export function getFlowToolDefinitions() {
     },
     {
       name: 'trigger_flow',
-      description: 'Trigger a Flow Designer flow with optional input parameters (requires WRITE_ENABLED=true)',
+      description: 'Trigger a published Flow Designer flow or subflow in the background with optional inputs, via the server-side sn_fd.FlowAPI runner (requires WRITE_ENABLED=true and SCRIPTING_ENABLED=true; ServiceNow has no REST endpoint for this)',
       inputSchema: {
         type: 'object',
         properties: {
@@ -178,7 +178,7 @@ export function getFlowToolDefinitions() {
     },
     {
       name: 'publish_flow',
-      description: 'Publish (activate) a draft flow or subflow. **[Write]**',
+      description: 'Publish a draft flow or subflow (compiles and activates it via sn_fd.FlowAPI.publish; needs SCRIPTING_ENABLED). **[Write]**',
       inputSchema: {
         type: 'object',
         properties: {
@@ -210,7 +210,7 @@ export function getFlowToolDefinitions() {
     },
     {
       name: 'test_flow',
-      description: 'Execute a flow in test mode with sample inputs. **[Write]**',
+      description: 'Run a published flow or subflow synchronously (foreground) with sample inputs and return its context id and outputs (needs SCRIPTING_ENABLED). **[Write]**',
       inputSchema: {
         type: 'object',
         properties: {
@@ -234,6 +234,36 @@ export function getFlowToolDefinitions() {
       },
     },
   ];
+}
+
+function requireFlowScripting(what: string): void {
+  if (!isScriptingEnabled()) {
+    throw new ServiceNowError(
+      `${what} has no REST endpoint in ServiceNow; it runs through the server-side sn_fd.FlowAPI, which NowAIKit calls as a one-time server script. Set SCRIPTING_ENABLED=true (with WRITE_ENABLED=true).`,
+      'SCRIPTING_NOT_ENABLED',
+    );
+  }
+}
+
+/** Run a published flow/subflow through sn_fd.FlowAPI (background for trigger, foreground for test). */
+async function runFlow(client: ServiceNowClient, flowSysId: string, inputs: Record<string, any>, foreground: boolean): Promise<any> {
+  requireFlowScripting('Running a flow');
+  const script =
+    `var gr = new GlideRecord('sys_hub_flow');\n` +
+    `if (!gr.get(${JSON.stringify(String(flowSysId))})) throw 'Flow not found: ${String(flowSysId).replace(/[^0-9a-zA-Z]/g, '')}';\n` +
+    `var name = gr.sys_scope.scope + '.' + gr.getValue('internal_name');\n` +
+    `var type = gr.getValue('type') || 'flow';\n` +
+    `var runner = sn_fd.FlowAPI.getRunner();\n` +
+    `runner = (type == 'subflow') ? runner.subflow(name) : (type == 'action' ? runner.action(name) : runner.flow(name));\n` +
+    `var res = runner.${foreground ? 'inForeground()' : 'inBackground()'}.withInputs(${JSON.stringify(inputs)}).run();\n` +
+    `var outputs = null; try { outputs = JSON.parse(JSON.stringify(res.getOutputs())); } catch (e) {}\n` +
+    `return { flow: name, type: type, context_id: '' + res.getContextId(), outputs: outputs };`;
+  const exec = await client.executeScript(script);
+  if (exec && exec.ok === false) {
+    const msg = String(exec.error || '');
+    throw new ServiceNowError(`Flow run failed: ${msg}${/not been published/i.test(msg) ? ' (publish it first with publish_flow)' : ''}`, 'FLOW_RUN_FAILED');
+  }
+  return exec?.result ?? exec;
 }
 
 export async function executeFlowToolCall(
@@ -261,9 +291,8 @@ export async function executeFlowToolCall(
     case 'trigger_flow': {
       requireWrite();
       if (!args.flow_sys_id) throw new ServiceNowError('flow_sys_id is required', 'INVALID_REQUEST');
-      const payload = { sys_id: args.flow_sys_id, inputs: args.inputs ?? {} };
-      const result = await client.createRecord('sys_hub_flow_trigger', payload);
-      return { ...result, summary: `Triggered flow ${args.flow_sys_id}` };
+      const result = await runFlow(client, args.flow_sys_id, args.inputs ?? {}, false);
+      return { ...result, summary: `Triggered ${result.type} ${result.flow} (context ${result.context_id})` };
     }
     case 'get_flow_execution': {
       if (!args.execution_sysid) throw new ServiceNowError('execution_sysid is required', 'INVALID_REQUEST');
@@ -339,15 +368,32 @@ export async function executeFlowToolCall(
     case 'create_flow_action': {
       requireScripting();
       if (!args.name) throw new ServiceNowError('name is required', 'INVALID_REQUEST');
-      const result = await client.createRecord('sys_hub_action_type_definition', { name: args.name, ...(args.description ? { description: args.description } : {}), ...(args.script ? { script: args.script } : {}) });
-      return { action: 'created', ...result };
+      // sys_hub_action_type_definition has no script column (script steps are separate step instances),
+      // so the action is created as a draft definition to finish in Flow Designer.
+      const result = await client.createRecord('sys_hub_action_type_definition', { name: args.name, state: 'draft', active: 'true', access: 'public', ...(args.description ? { description: args.description } : {}) });
+      return {
+        action: 'created', ...result,
+        ...(args.script || args.inputs || args.outputs ? { note: 'Inputs, outputs and the script step are not created over REST; add them in Flow Designer (Action Designer), then publish the action.' } : {}),
+      };
     }
     case 'publish_flow': {
       requireWrite();
       if (!args.flow_sys_id) throw new ServiceNowError('flow_sys_id is required', 'INVALID_REQUEST');
-      const table = 'sys_hub_flow'; // flows and subflows share sys_hub_flow (type=flow|subflow)
-      const result = await client.updateRecord(table, args.flow_sys_id, { active: 'true' });
-      return { action: 'published', ...result };
+      // Setting active=true on sys_hub_flow does NOT publish: Flow Designer runs a compiled snapshot.
+      // The supported path is the server-side sn_fd.FlowAPI.publish(), run as a one-time server script.
+      requireFlowScripting('Publishing a flow');
+      const script =
+        `var res = sn_fd.FlowAPI.publish(${JSON.stringify(String(args.flow_sys_id))});\n` +
+        `var gr = new GlideRecord('sys_hub_flow'); gr.get(${JSON.stringify(String(args.flow_sys_id))});\n` +
+        `var parsed = null; try { parsed = JSON.parse(res); } catch (e) {}\n` +
+        `return { status: gr.getValue('status'), active: gr.getValue('active'), error: parsed ? (parsed.errorMessage || '') : '' };`;
+      const exec = await client.executeScript(script);
+      if (exec && exec.ok === false) throw new ServiceNowError(`Publish failed: ${exec.error}`, 'PUBLISH_FAILED');
+      const out = exec?.result ?? {};
+      if (out.error || out.status !== 'published') {
+        throw new ServiceNowError(`Flow ${args.flow_sys_id} was not published${out.error ? `: ${out.error}` : ` (status ${out.status})`}`, 'PUBLISH_FAILED');
+      }
+      return { action: 'published', sys_id: args.flow_sys_id, status: out.status, active: out.active };
     }
     case 'update_flow': {
       requireWrite();
@@ -367,8 +413,8 @@ export async function executeFlowToolCall(
     case 'test_flow': {
       requireWrite();
       if (!args.flow_sys_id) throw new ServiceNowError('flow_sys_id is required', 'INVALID_REQUEST');
-      const result = await client.createRecord('sys_hub_flow_trigger', { sys_id: args.flow_sys_id, inputs: args.test_inputs ?? {}, test_mode: 'true' });
-      return { action: 'test_triggered', ...result };
+      const result = await runFlow(client, args.flow_sys_id, args.test_inputs ?? {}, true);
+      return { action: 'test_executed', ...result };
     }
     case 'get_flow_error_log': {
       if (!args.flow_sys_id) throw new ServiceNowError('flow_sys_id is required', 'INVALID_REQUEST');

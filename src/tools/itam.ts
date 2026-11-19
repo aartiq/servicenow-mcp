@@ -197,9 +197,13 @@ export async function executeItamToolCall(
     case 'retire_asset': {
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
       requireWrite();
-      const payload: Record<string, any> = { install_status: 'retired' };
+      // alm_asset.install_status is an integer choice: 7 = Retired. There is no disposal_date
+      // column; the retirement date is retirement_date (and retired).
+      const payload: Record<string, any> = { install_status: '7' };
       if (args.disposal_reason) payload.disposal_reason = args.disposal_reason;
-      if (args.disposal_date) payload.disposal_date = args.disposal_date;
+      const retiredOn = args.disposal_date || new Date().toISOString().slice(0, 10);
+      payload.retirement_date = retiredOn;
+      payload.retired = retiredOn;
       const result = await client.updateRecord('alm_asset', args.sys_id, payload);
       return { action: 'retired', sys_id: args.sys_id, ...result };
     }
@@ -250,8 +254,15 @@ export async function executeItamToolCall(
       if (!args.asset_id || !args.new_stage)
         throw new ServiceNowError('asset_id and new_stage are required', 'INVALID_REQUEST');
       requireWrite();
-      const stageMap: Record<string, string> = {
-        in_stock: '6', in_use: '1', in_maintenance: '7', retired: '8', disposed: '9',
+      // alm_asset install_status choices: 1 In use, 3 In maintenance, 6 In stock, 7 Retired, 8 Missing, 9 In transit.
+      const stageMap: Record<string, { install_status: string; substatus?: string }> = {
+        in_use: { install_status: '1' },
+        in_maintenance: { install_status: '3' },
+        in_stock: { install_status: '6', substatus: 'available' },
+        retired: { install_status: '7' },
+        disposed: { install_status: '7', substatus: 'disposed' },
+        missing: { install_status: '8' },
+        in_transit: { install_status: '9' },
       };
       let sysId = args.asset_id;
       if (!/^[0-9a-f]{32}$/i.test(args.asset_id)) {
@@ -259,10 +270,11 @@ export async function executeItamToolCall(
         if (resp.count === 0) throw new ServiceNowError(`Asset not found: ${args.asset_id}`, 'NOT_FOUND');
         sysId = resp.records[0].sys_id;
       }
-      const result = await client.updateRecord('alm_asset', sysId, {
-        install_status: stageMap[args.new_stage] || args.new_stage,
-        work_notes: args.notes || '',
-      });
+      const stage = stageMap[String(args.new_stage).toLowerCase()] || { install_status: String(args.new_stage) };
+      const update: Record<string, any> = { install_status: stage.install_status };
+      if (stage.substatus) update.substatus = stage.substatus;
+      if (args.notes) update.work_notes = args.notes;
+      const result = await client.updateRecord('alm_asset', sysId, update);
       return { action: 'lifecycle_updated', sys_id: sysId, new_stage: args.new_stage, ...result };
     }
 

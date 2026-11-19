@@ -183,8 +183,12 @@ const auth = program.command('auth').description('Per-user authentication manage
 auth
   .command('login')
   .description('Authenticate as yourself — queries run in your own ServiceNow permission context')
-  .action(async () => {
-    await authLogin();
+  .option('-i, --instance <name>', 'Instance to sign in to (skips the picker)')
+  .option('--no-browser', 'Print the sign-in link instead of opening a browser (SSH / headless)')
+  .action(async (opts: { instance?: string; browser?: boolean }) => {
+    await authLogin({ instance: opts.instance, browser: opts.browser });
+    // One-shot command: don't let pooled HTTPS keep-alive sockets hold the terminal open.
+    process.exit(process.exitCode ?? 0);
   });
 
 auth
@@ -204,8 +208,10 @@ auth
 auth
   .command('test')
   .description('Validate a connection end-to-end: stored token, a live API call, and OAuth refresh')
-  .action(async () => {
-    await authTest();
+  .option('-i, --instance <name>', 'Instance to test (skips the picker)')
+  .action(async (opts: { instance?: string }) => {
+    await authTest({ instance: opts.instance });
+    process.exit(process.exitCode ?? 0);
   });
 
 // ─── doctor ───────────────────────────────────────────────────────────────────

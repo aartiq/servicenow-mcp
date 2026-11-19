@@ -93,3 +93,17 @@ describe('executeCoreToolCall – unknown tool', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('parseNaturalLanguageUpdate', () => {
+  it('extracts the record and field changes', async () => {
+    const { parseNaturalLanguageUpdate } = await import('../../src/tools/core.js');
+    expect(parseNaturalLanguageUpdate('set urgency to 3 and short description to "a and b, c" on INC0010001')).toEqual({
+      identifier: 'INC0010001',
+      fields: { urgency: '3', 'short description': 'a and b, c' },
+    });
+    expect(parseNaturalLanguageUpdate('INC0010002: priority=2, state=6')).toEqual({
+      identifier: 'INC0010002',
+      fields: { priority: '2', state: '6' },
+    });
+  });
+});

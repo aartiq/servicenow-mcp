@@ -516,7 +516,8 @@ export async function executeScriptToolCall(
         active: args.active !== false,
         global: args.global ?? false,
       };
-      if (args.field_name) data.field_name = args.field_name;
+      // The field column on sys_script_client is "field" (onChange target).
+      if (args.field_name) data.field = args.field_name;
       const result = await client.createRecord('sys_script_client', data);
       return { ...result, summary: `Created client script "${args.name}" (${args.type}) on table "${args.table}"` };
     }
@@ -529,12 +530,13 @@ export async function executeScriptToolCall(
     case 'list_ui_policies': {
       let query = '';
       if (args.active !== undefined) query = `active=${args.active}`;
-      if (args.table) query = query ? `${query}^model_table=${args.table}` : `model_table=${args.table}`;
+      // UI policies use "table"; catalog UI policies (a subclass) use model_table.
+      if (args.table) query = query ? `${query}^table=${args.table}^ORmodel_table=${args.table}` : `table=${args.table}^ORmodel_table=${args.table}`;
       const resp = await client.queryRecords({
         table: 'sys_ui_policy',
         query: query || undefined,
         limit: args.limit || 25,
-        fields: 'sys_id,short_description,model_table,active,conditions,sys_updated_on',
+        fields: 'sys_id,short_description,table,model_table,active,conditions,sys_updated_on',
       });
       return { count: resp.count, ui_policies: resp.records };
     }
@@ -547,12 +549,13 @@ export async function executeScriptToolCall(
         throw new ServiceNowError('short_description and table are required', 'INVALID_REQUEST');
       const data: Record<string, any> = {
         short_description: args.short_description,
-        model_table: args.table,
+        table: args.table,
         active: args.active !== false,
         run_scripts: args.run_scripts ?? false,
       };
       if (args.conditions) data.conditions = args.conditions;
-      if (args.script) data.script = args.script;
+      // sys_ui_policy has no "script" column: scripts run from script_true / script_false.
+      if (args.script) { data.script_true = args.script; data.run_scripts = args.run_scripts ?? true; }
       const result = await client.createRecord('sys_ui_policy', data);
       return { ...result, summary: `Created UI policy "${args.short_description}" on table "${args.table}"` };
     }
@@ -561,12 +564,16 @@ export async function executeScriptToolCall(
       let query = '';
       if (args.active !== undefined) query = `active=${args.active}`;
       if (args.table) query = query ? `${query}^table=${args.table}` : `table=${args.table}`;
-      if (args.type) query = query ? `${query}^action_type=${args.type}` : `action_type=${args.type}`;
+      if (args.type) {
+        const placement: Record<string, string> = { button: 'form_button', form_button: 'form_button', context_menu: 'form_context_menu', related_link: 'form_link', link: 'form_link', list_button: 'list_button', list_link: 'list_link', list_context_menu: 'list_context_menu' };
+        const flag = placement[String(args.type).toLowerCase()];
+        if (flag) query = query ? `${query}^${flag}=true` : `${flag}=true`;
+      }
       const resp = await client.queryRecords({
         table: 'sys_ui_action',
         query: query || undefined,
         limit: args.limit || 25,
-        fields: 'sys_id,name,table,action_type,active,form_button,list_button,sys_updated_on',
+        fields: 'sys_id,name,table,active,form_button,form_link,form_context_menu,list_button,sys_updated_on',
       });
       return { count: resp.count, ui_actions: resp.records };
     }
@@ -587,7 +594,14 @@ export async function executeScriptToolCall(
       };
       if (args.script) data.script = args.script;
       if (args.condition) data.condition = args.condition;
-      if (args.type) data.action_type = args.type;
+      // sys_ui_action has no action_type column: the placement is a set of booleans.
+      const placement: Record<string, string> = { button: 'form_button', form_button: 'form_button', context_menu: 'form_context_menu', related_link: 'form_link', link: 'form_link', list_button: 'list_button', list_link: 'list_link', list_context_menu: 'list_context_menu' };
+      if (args.type) {
+        const flag = placement[String(args.type).toLowerCase()];
+        if (!flag) throw new ServiceNowError(`Unknown UI action type "${args.type}". Use button, context_menu, related_link or list_button.`, 'INVALID_REQUEST');
+        if (flag !== 'form_button' && args.form_button === undefined) data.form_button = false;
+        data[flag] = true;
+      }
       const result = await client.createRecord('sys_ui_action', data);
       return { ...result, summary: `Created UI action "${args.name}" on table "${args.table}"` };
     }

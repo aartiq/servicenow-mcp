@@ -373,8 +373,22 @@ export async function executeSecurityToolCall(
     case 'run_security_playbook': {
       requireWrite();
       if (!args.playbook_sys_id || !args.incident_sys_id) throw new ServiceNowError('playbook_sys_id and incident_sys_id are required', 'INVALID_REQUEST');
-      const result = await client.createRecord('sn_si_playbook_execution', { playbook: args.playbook_sys_id, incident: args.incident_sys_id, ...(args.parameters || {}) });
-      return { action: 'executed', ...result };
+      // There is no sn_si_playbook_execution table and no REST endpoint for launching a playbook.
+      // Security Incident Response playbooks (Process Automation Designer, sys_pd_process_definition)
+      // start from their trigger conditions on the incident, so report the active ones instead of
+      // pretending to launch one.
+      const contexts = await client.queryRecords({
+        table: 'sys_pd_context',
+        query: `input_record=${args.incident_sys_id}`,
+        limit: 10,
+        fields: 'sys_id,process_definition,state,sys_created_on',
+      }).catch(() => ({ count: 0, records: [] as any[] }));
+      throw new ServiceNowError(
+        `ServiceNow has no API for starting a security playbook on demand. Playbook ${args.playbook_sys_id} runs when its trigger ` +
+        `conditions match the incident (Process Automation Designer). ${contexts.count ? `Playbook runs already on this incident: ${contexts.records.map((r: any) => r.sys_id).join(', ')}.` : 'No playbook has run on this incident yet.'} ` +
+        'Update the incident so it meets the playbook trigger, or start it from the Security Incident workspace.',
+        'NOT_SUPPORTED',
+      );
     }
     case 'get_security_dashboard': {
       const days = args.days || 30;
@@ -391,8 +405,13 @@ export async function executeSecurityToolCall(
     case 'scan_vulnerabilities': {
       requireWrite();
       if (!args.ci_sys_ids?.length && !args.group) throw new ServiceNowError('ci_sys_ids or group is required', 'INVALID_REQUEST');
-      const result = await client.createRecord('sn_vul_scan_request', { ci_list: args.ci_sys_ids?.join(',') || '', group: args.group || '', scan_type: args.scan_type || 'full' });
-      return { action: 'scan_requested', ...result };
+      // Vulnerability Response does not run scans itself (there is no sn_vul_scan_request table): scans run in the
+      // connected scanner (Qualys, Tenable, Rapid7...) and results arrive through its integration.
+      throw new ServiceNowError(
+        'ServiceNow Vulnerability Response does not run scans itself. Start the scan in the connected scanner (Qualys, Tenable, Rapid7 and so on); ' +
+        'its Vulnerability Response integration then imports the results into sn_vul_vulnerable_item. Use list_vulnerabilities to review them.',
+        'NOT_SUPPORTED',
+      );
     }
     case 'create_grc_risk': {
       requireWrite();

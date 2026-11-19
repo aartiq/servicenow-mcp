@@ -259,12 +259,13 @@ export function getCoreToolDefinitions() {
     },
     {
       name: 'natural_language_update',
-      description: 'Update a record using natural language (requires WRITE_ENABLED=true)',
+      description: 'Update a record from a plain-English instruction such as "set priority to 2 on INC0010001" (requires WRITE_ENABLED=true)',
       inputSchema: {
         type: 'object',
         properties: {
-          instruction: { type: 'string', description: 'Natural language update instruction' },
+          instruction: { type: 'string', description: 'Instruction naming the record (number or sys_id) and the changes, e.g. "set priority to 2 and state to 2 on INC0010001"' },
           table: { type: 'string', description: 'Table name' },
+          dry_run: { type: 'boolean', description: 'Parse and show the update without applying it' },
         },
         required: ['instruction', 'table'],
       },
@@ -328,6 +329,31 @@ export function getCoreToolDefinitions() {
       },
     },
   ];
+}
+
+/**
+ * Parse "set priority to 2 and short description to "x" on INC0010001" style instructions.
+ * Supports "field to value", "field = value" and "field: value", separated by commas, semicolons or "and".
+ */
+export function parseNaturalLanguageUpdate(instruction: string): { identifier?: string; fields: Record<string, string> } {
+  let text = instruction.trim();
+  const idMatch = text.match(/\b([0-9a-f]{32})\b/i) || text.match(/\b([A-Z]{2,8}\d{4,})\b/);
+  const identifier = idMatch?.[1];
+  if (identifier) {
+    text = text.replace(new RegExp(`\\s*\\b(?:on|for|of|in|record)?\\s*${identifier}\\b[:,]?`, 'i'), ' ');
+  }
+  text = text.replace(/^\s*(?:please\s+)?(?:update|change|set|modify|edit)\b\s*/i, '').replace(/^\s*(?:set|so that)\b\s*/i, '');
+  const fields: Record<string, string> = {};
+  // Protect quoted values so separators inside them are kept.
+  const quoted: string[] = [];
+  text = text.replace(/"([^"]*)"|'([^']*)'/g, (_m, a, b) => { quoted.push(a ?? b); return `\u0000${quoted.length - 1}\u0000`; });
+  for (const part of text.split(/\s*(?:,|;|\band\b|\bset\b)\s*/i)) {
+    const m = part.match(/^\s*([A-Za-z_][\w .-]*?)\s*(?:=|:|\bto\b|\bas\b)\s*(.+?)\s*$/i);
+    if (!m) continue;
+    const value = m[2].replace(/\u0000(\d+)\u0000/g, (_x, i) => quoted[Number(i)]);
+    fields[m[1].trim()] = value;
+  }
+  return { identifier, fields };
 }
 
 export async function executeCoreToolCall(
@@ -489,9 +515,40 @@ export async function executeCoreToolCall(
     case 'natural_language_search':
       return await client.naturalLanguageSearch(args.query, args.limit);
 
-    case 'natural_language_update':
+    case 'natural_language_update': {
       requireWrite();
-      return await client.naturalLanguageUpdate(args.instruction, args.table);
+      if (!args.instruction || !args.table) throw new ServiceNowError('instruction and table are required', 'INVALID_REQUEST');
+      const parsed = parseNaturalLanguageUpdate(String(args.instruction));
+      if (!parsed.identifier) {
+        throw new ServiceNowError('Could not find the record in the instruction. Include its number (e.g. INC0010001) or sys_id.', 'INVALID_REQUEST');
+      }
+      if (!Object.keys(parsed.fields).length) {
+        throw new ServiceNowError('Could not find any field changes. Use phrases like "set priority to 2" or "state=6".', 'INVALID_REQUEST');
+      }
+      const lookup = /^[0-9a-f]{32}$/i.test(parsed.identifier) ? `sys_id=${parsed.identifier}` : `number=${parsed.identifier}`;
+      const found = await client.queryRecords({ table: args.table, query: lookup, limit: 1 });
+      if (!found.count) throw new ServiceNowError(`Record ${parsed.identifier} not found in ${args.table}`, 'NOT_FOUND');
+      const target = found.records[0] as Record<string, any>;
+      // Map phrases to real columns: exact name, or the label-ish form ("short description" -> short_description).
+      const columns = new Set(Object.keys(target));
+      const fields: Record<string, any> = {};
+      const unknown: string[] = [];
+      for (const [k, v] of Object.entries(parsed.fields)) {
+        const col = k.toLowerCase().trim().replace(/[\s-]+/g, '_');
+        if (columns.has(col)) fields[col] = v; else unknown.push(k);
+      }
+      if (!Object.keys(fields).length) {
+        throw new ServiceNowError(`None of the fields (${unknown.join(', ')}) exist on ${args.table}.`, 'INVALID_REQUEST');
+      }
+      assertWriteAllowed(args.table, fields);
+      const sysId = String(target.sys_id);
+      if (args.dry_run) {
+        return { action: 'dry_run', would: 'update', table: args.table, sys_id: sysId, applied: fields, ignored_fields: unknown };
+      }
+      const updated = await client.updateRecord(args.table, sysId, fields);
+      await appendAudit({ instance: instanceManager.getCurrentName(), tool: 'natural_language_update', action: 'update', table: args.table, sys_id: sysId, result: 'ok' }, fields);
+      return { action: 'updated', table: args.table, sys_id: sysId, applied: fields, ...(unknown.length ? { ignored_fields: unknown } : {}), record: updated };
+    }
 
     case 'list_instances':
       return {
@@ -561,7 +618,7 @@ export async function executeCoreToolCall(
       requireWrite();
       if (!args.schedule_id) throw new ServiceNowError('schedule_id is required', 'INVALID_REQUEST');
       const data: Record<string, any> = {
-        dsc_schedule: args.schedule_id,
+        dscheduler: args.schedule_id,
         state: 'active',
       };
       if (args.mid_server) data.mid_server = args.mid_server;

@@ -172,6 +172,7 @@ export function getHrsdToolDefinitions() {
           manager: { type: 'string', description: 'Manager user sys_id' },
           location: { type: 'string', description: 'Office location' },
           job_title: { type: 'string', description: 'Job title' },
+          hr_service: { type: 'string', description: 'HR service sys_id or name (default: the active service whose name contains "onboard")' },
         },
         required: ['employee_sys_id', 'start_date'],
       },
@@ -185,6 +186,7 @@ export function getHrsdToolDefinitions() {
           employee_sys_id: { type: 'string', description: 'Departing employee user sys_id' },
           last_day: { type: 'string', description: 'Last working day (ISO 8601)' },
           reason: { type: 'string', description: 'Offboarding reason (resignation, termination, retirement)' },
+          hr_service: { type: 'string', description: 'HR service sys_id or name (default: the active service whose name contains "offboard")' },
           manager: { type: 'string', description: 'Manager user sys_id' },
         },
         required: ['employee_sys_id', 'last_day'],
@@ -230,6 +232,20 @@ async function withPlugin<T>(plugin: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/** hr_service is a reference: resolve a sys_id, an exact name, or the first active service matching a keyword. */
+async function resolveHrService(client: ServiceNowClient, value: string | undefined, keyword: string): Promise<string> {
+  if (value && /^[0-9a-f]{32}$/i.test(value)) return value;
+  const query = value ? `name=${value}^ORvalue=${value}` : `active=true^nameLIKE${keyword}^ORvalueLIKE${keyword}`;
+  const found = await client.queryRecords({ table: 'sn_hr_core_service', query, limit: 1, fields: 'sys_id' });
+  if (!found.count) {
+    throw new ServiceNowError(
+      value ? `HR service not found: ${value}` : `No active HR service matching "${keyword}" exists on this instance; pass hr_service (sys_id or name).`,
+      'NOT_FOUND',
+    );
+  }
+  return String((found.records[0] as any).sys_id);
+}
+
 export async function executeHrsdToolCall(
   client: ServiceNowClient,
   name: string,
@@ -272,7 +288,7 @@ export async function executeHrsdToolCall(
       requireWrite();
       if (!args.sys_id || !args.close_notes) throw new ServiceNowError('sys_id and close_notes are required', 'INVALID_REQUEST');
       const result = await client.updateRecord('sn_hr_core_case', args.sys_id, {
-        state: 'closed_complete',
+        state: '3', // Closed Complete (sn_hr_core_case.state is an integer choice)
         close_notes: args.close_notes,
         ...(args.close_code ? { close_code: args.close_code } : {}),
       });
@@ -333,25 +349,27 @@ export async function executeHrsdToolCall(
     case 'create_onboarding_case': {
       requireWrite();
       if (!args.employee_sys_id || !args.start_date) throw new ServiceNowError('employee_sys_id and start_date are required', 'INVALID_REQUEST');
+      const onboardingService = await resolveHrService(client, args.hr_service, 'onboard');
       const result = await client.createRecord('sn_hr_core_case', {
         short_description: `Employee Onboarding - ${args.start_date}`,
-        hr_service: 'Onboarding',
+        hr_service: onboardingService,
         subject_person: args.employee_sys_id,
         ...(args.department ? { department: args.department } : {}),
         ...(args.manager ? { assigned_to: args.manager } : {}),
         ...(args.location ? { location: args.location } : {}),
-        ...(args.job_title ? { u_job_title: args.job_title } : {}),
+        ...(args.job_title ? { description: `Job title: ${args.job_title}` } : {}),
       });
       return { action: 'created', type: 'onboarding', ...result };
     }
     case 'create_offboarding_case': {
       requireWrite();
       if (!args.employee_sys_id || !args.last_day) throw new ServiceNowError('employee_sys_id and last_day are required', 'INVALID_REQUEST');
+      const offboardingService = await resolveHrService(client, args.hr_service, 'offboard');
       const result = await client.createRecord('sn_hr_core_case', {
         short_description: `Employee Offboarding - ${args.last_day}`,
-        hr_service: 'Offboarding',
+        hr_service: offboardingService,
         subject_person: args.employee_sys_id,
-        ...(args.reason ? { u_offboarding_reason: args.reason } : {}),
+        ...(args.reason ? { description: `Offboarding reason: ${args.reason}` } : {}),
         ...(args.manager ? { assigned_to: args.manager } : {}),
       });
       return { action: 'created', type: 'offboarding', ...result };

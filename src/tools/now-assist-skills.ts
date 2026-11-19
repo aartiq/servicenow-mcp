@@ -220,7 +220,7 @@ export async function executeNowAssistSkillsToolCall(
         record = await withSkillPlugin(() => client.createRecord(SKILL_TABLE, data));
       } catch (e) {
         // Don't leave an orphan capability behind when the skill config can't be created.
-        await client.deleteRecord(CAPABILITY_TABLE, capability.sys_id).catch(() => undefined);
+        await client.deleteRecord(CAPABILITY_TABLE, String(capability.sys_id)).catch(() => undefined);
         throw e;
       }
       return {

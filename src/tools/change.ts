@@ -137,6 +137,12 @@ export async function executeChangeToolCall(
       if (args.backout_plan) data.backout_plan = args.backout_plan;
       if (args.test_plan) data.test_plan = args.test_plan;
       if (args.cmdb_ci) data.cmdb_ci = args.cmdb_ci;
+      // On instances with change models, type is derived from chg_model (a bare type=standard is reset to
+      // normal), so point chg_model at the model named after the type.
+      try {
+        const model = await client.queryRecords({ table: 'chg_model', query: `name=${String(args.type)}^ORname=${String(args.type).charAt(0).toUpperCase()}${String(args.type).slice(1)}`, limit: 1, fields: 'sys_id' });
+        if (model.count) data.chg_model = String((model.records[0] as any).sys_id);
+      } catch { /* no change models on this instance: type alone applies */ }
       const result = await client.createRecord('change_request', data);
       const cSid = typeof result.sys_id === 'object' ? result.sys_id?.value : result.sys_id;
       const cUrl = cSid && typeof (client as any).recordUrl === 'function' ? (client as any).recordUrl('change_request', cSid) : undefined;
@@ -166,13 +172,45 @@ export async function executeChangeToolCall(
     case 'submit_change_for_approval': {
       requireWrite();
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
-      const result = await client.updateRecord('change_request', args.sys_id, { state: '-5' });
-      return { ...result, summary: `Submitted change request ${args.sys_id} for approval` };
+      // "Request Approval" moves a change out of New: normal -> Assess (-4), emergency -> Authorize (-3),
+      // standard (pre-approved) -> Scheduled (-2). The previous state=-5 was New, i.e. a no-op.
+      const cur = await client.getRecord('change_request', args.sys_id, 'state,type');
+      const type = String((cur as any).type || 'normal');
+      const next = type === 'emergency' ? '-3' : type === 'standard' ? '-2' : '-4';
+      let result;
+      try {
+        result = await client.updateRecord('change_request', args.sys_id, { state: next });
+      } catch (e) {
+        if (e instanceof Error && /State Transition/i.test(e.message)) {
+          throw new ServiceNowError(`The ${type} change model blocked the move out of New. It usually needs an assignment group (and for normal changes an assignee/planned dates) before approval can be requested. ServiceNow said: ${e.message}`, 'INVALID_STATE');
+        }
+        throw e;
+      }
+      const after = String((result as any).state ?? '');
+      // Approval engines may move the change on immediately (e.g. no approvers needed), so only New is a failure.
+      if (after === '-5') {
+        throw new ServiceNowError(`Change ${args.sys_id} stayed in New; the change model did not allow the move to ${next}. Check mandatory fields (assignment group, planned dates, CI) for the ${type} model.`, 'INVALID_STATE');
+      }
+      return { ...result, summary: `Submitted ${type} change request ${args.sys_id} for approval (state now ${after || next})` };
     }
     case 'close_change_request': {
       requireWrite();
       if (!args.sys_id || !args.close_code || !args.close_notes)
         throw new ServiceNowError('sys_id, close_code, and close_notes are required', 'INVALID_REQUEST');
+      // The change model only allows Closed from Review (and Implement > Review). Walk forward from
+      // Scheduled/Implement/Review; anything earlier still needs its approvals, so explain that.
+      const cur = await client.getRecord('change_request', args.sys_id, 'state');
+      const state = String((cur as any).state);
+      const order = ['-2', '-1', '0'];
+      if (!order.includes(state) && state !== '3') {
+        throw new ServiceNowError(
+          `Change ${args.sys_id} is in state ${state}; the change model only closes changes from Scheduled, Implement or Review. Get it approved and scheduled first (submit_change_for_approval, then approve).`,
+          'INVALID_STATE',
+        );
+      }
+      for (const step of order.slice(order.indexOf(state) + 1)) {
+        await client.updateRecord('change_request', args.sys_id, { state: step });
+      }
       const result = await client.updateRecord('change_request', args.sys_id, {
         state: '3',
         close_code: args.close_code,

@@ -118,6 +118,8 @@ export async function executeVaToolCall(
       requireWrite();
       const payload: Record<string, any> = {
         name: args.name,
+        // title is the mandatory display name of a topic in Virtual Agent Designer.
+        title: args.name,
         active: args.active !== false,
       };
       if (args.description) payload.description = args.description;

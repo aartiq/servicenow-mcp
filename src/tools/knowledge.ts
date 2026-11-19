@@ -4,7 +4,7 @@
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
-import { requireWrite } from '../utils/permissions.js';
+import { isScriptingEnabled, requireWrite } from '../utils/permissions.js';
 
 export function getKnowledgeToolDefinitions() {
   return [
@@ -94,6 +94,43 @@ export function getKnowledgeToolDefinitions() {
   ];
 }
 
+/**
+ * Publish or retire an article the way the platform's Publish/Retire UI actions do. Knowledge
+ * articles move through their knowledge base's publish/retire workflow, so a plain Table API
+ * write of workflow_state is reverted (it stays draft). With SCRIPTING_ENABLED we call
+ * KnowledgeUIAction server-side (instant or approval flow, as configured); otherwise we try the
+ * Table API and report the state the article actually ended up in.
+ */
+async function runKbLifecycle(client: ServiceNowClient, sysId: string, action: 'publish' | 'retire'): Promise<{ state: string; method: string; record: any; note?: string }> {
+  const target = action === 'publish' ? 'published' : 'retired';
+  let method = 'table_api';
+  if (isScriptingEnabled()) {
+    method = 'knowledge_ui_action';
+    const call = action === 'publish' ? 'publish(gr)' : 'retireKnowledgeRecord(gr)';
+    const exec = await client.executeScript(
+      `var gr = new GlideRecord('kb_knowledge');\n` +
+      `if (!gr.get(${JSON.stringify(sysId)})) return { error: 'not found' };\n` +
+      `new global.KnowledgeUIAction().${call};\n` +
+      `return { ok: true };`,
+    );
+    const out = exec?.result ?? exec?.output;
+    if (exec?.ok === false || out?.error) {
+      throw new ServiceNowError(`Knowledge ${action} failed: ${exec?.error || out?.error}`, 'OPERATION_FAILED');
+    }
+  } else {
+    await client.updateRecord('kb_knowledge', sysId, { workflow_state: target });
+  }
+  const record = await client.getRecord('kb_knowledge', sysId);
+  const state = String((record as any).workflow_state ?? '');
+  let note: string | undefined;
+  if (state !== target) {
+    note = method === 'table_api'
+      ? `The knowledge base workflow kept the article in "${state}". Articles must go through the KB ${action} workflow; enable SCRIPTING_ENABLED so NowAIKit can run it the way the ${action === 'publish' ? 'Publish' : 'Retire'} button does.`
+      : `The knowledge base ${action} workflow left the article in "${state}" (for example awaiting approval).`;
+  }
+  return { state, method, record, note };
+}
+
 export async function executeKnowledgeToolCall(
   client: ServiceNowClient,
   name: string,
@@ -160,8 +197,8 @@ export async function executeKnowledgeToolCall(
     case 'publish_knowledge_article': {
       requireWrite();
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
-      const result = await client.updateRecord('kb_knowledge', args.sys_id, { workflow_state: 'published' });
-      return { ...result, summary: `Published knowledge article ${args.sys_id}` };
+      const res = await runKbLifecycle(client, args.sys_id, 'publish');
+      return { ...res.record, workflow_state: res.state, method: res.method, ...(res.note ? { note: res.note } : {}), summary: res.state === 'published' ? `Published knowledge article ${args.sys_id}` : `Publish started for ${args.sys_id}; article is now "${res.state}"` };
     }
     case 'retire_knowledge_article': {
       requireWrite();
@@ -172,8 +209,8 @@ export async function executeKnowledgeToolCall(
         if (resp.count === 0) throw new ServiceNowError(`Article not found: ${args.article_id}`, 'NOT_FOUND');
         sysId = resp.records[0].sys_id;
       }
-      const result = await client.updateRecord('kb_knowledge', sysId, { workflow_state: 'retired' });
-      return { ...result, summary: `Retired knowledge article ${args.article_id}` };
+      const res = await runKbLifecycle(client, String(sysId), 'retire');
+      return { ...res.record, workflow_state: res.state, method: res.method, ...(res.note ? { note: res.note } : {}), summary: res.state === 'retired' ? `Retired knowledge article ${args.article_id}` : `Retire started for ${args.article_id}; article is now "${res.state}"` };
     }
     default:
       return null;

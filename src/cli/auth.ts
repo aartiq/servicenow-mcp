@@ -20,6 +20,8 @@ const b64url = (b: Buffer): string => b.toString('base64').replace(/\+/g, '-').r
 
 /** Open a URL in the user's default browser (best-effort, cross-platform). */
 function openBrowser(url: string): void {
+  // --no-browser / NOWAIKIT_NO_BROWSER=1: SSH sessions and headless machines just get the printed link.
+  if (process.env.NOWAIKIT_NO_BROWSER === '1') return;
   try {
     if (process.platform === 'darwin') {
       spawn('open', [url], { stdio: 'ignore', detached: true }).unref();
@@ -52,14 +54,18 @@ function captureCodeViaLoopback(authUrl: string, port: number, expectedState?: s
         const ok = !!code && stateOk;
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(`<html><body style="font-family:sans-serif;padding:48px;color:#2b2630"><h2 style="color:#2f7256">NowAIKit</h2><p>${ok ? 'Signed in. You can close this tab and return to your terminal.' : 'Sign-in failed: ' + (err || (!stateOk ? 'state mismatch' : 'no authorization code returned'))}.</p></body></html>`);
+        // Drop the browser's keep-alive connection too, or the CLI waits for the tab to close before exiting.
         server.close();
+        server.closeAllConnections?.();
         if (!stateOk) { reject(new Error('state mismatch (possible CSRF)')); return; }
         if (code) resolve(code); else reject(new Error(err || 'no code in callback'));
       } catch (e) { try { res.writeHead(500); res.end(); } catch { /* noop */ } server.close(); reject(e as Error); }
     });
     server.on('error', (e) => reject(e));
     server.listen(port, '127.0.0.1', () => openBrowser(authUrl));
-    setTimeout(() => { try { server.close(); } catch { /* noop */ } reject(new Error('timed out waiting for browser sign-in')); }, 180_000);
+    // Cleared once the server closes, so a finished sign-in doesn't keep the CLI alive for 3 minutes.
+    const timer = setTimeout(() => { try { server.close(); } catch { /* noop */ } reject(new Error('timed out waiting for browser sign-in')); }, 180_000);
+    server.on('close', () => clearTimeout(timer));
   });
 }
 
@@ -125,17 +131,25 @@ function tokenKey(instanceUrl: string): string {
   return instanceUrl.replace(/https?:\/\//, '').replace(/[^a-z0-9]/gi, '_');
 }
 
-export async function authLogin(): Promise<void> {
+export async function authLogin(opts: { instance?: string; browser?: boolean } = {}): Promise<void> {
+  if (opts.browser === false) process.env.NOWAIKIT_NO_BROWSER = '1';
   const instances = listInstances();
   if (instances.length === 0) {
     console.log(chalk.yellow('No instances configured. Run `nowaikit setup` first.'));
+    return;
+  }
+  if (opts.instance && !instances.some(i => i.name.toLowerCase() === opts.instance!.toLowerCase())) {
+    console.log(chalk.red(`No instance named "${opts.instance}". Configured: ${instances.map(i => i.name).join(', ')}`));
+    process.exitCode = 1;
     return;
   }
 
   // Pick by the unique instance NAME, not the URL — several instances can share one instanceUrl
   // (e.g. a basic and an OAuth config for the same box), and keying on the URL would resolve to the
   // wrong one (the first match), silently using the wrong auth method.
-  const instanceName = instances.length === 1
+  const instanceName = opts.instance
+    ? instances.find(i => i.name.toLowerCase() === opts.instance!.toLowerCase())!.name
+    : instances.length === 1
     ? instances[0]!.name
     : await select<string>({
         message: 'Choose instance to authenticate against:',
@@ -285,13 +299,19 @@ export async function authLogin(): Promise<void> {
  * call, and (for OAuth) a refresh_token exchange to confirm the client id/secret still mint tokens.
  * Prints a clear pass/fail per check with an actionable hint on failure.
  */
-export async function authTest(): Promise<void> {
+export async function authTest(opts: { instance?: string } = {}): Promise<void> {
   const instances = listInstances();
   if (instances.length === 0) {
     console.log(chalk.yellow('No instances configured. Run `nowaikit setup` first.'));
     return;
   }
-  const instanceName = instances.length === 1
+  const named = opts.instance ? instances.find(i => i.name.toLowerCase() === opts.instance!.toLowerCase()) : undefined;
+  if (opts.instance && !named) {
+    console.log(chalk.red(`No instance named "${opts.instance}".`));
+    process.exitCode = 1;
+    return;
+  }
+  const instanceName = named ? named.name : instances.length === 1
     ? instances[0]!.name
     : await select<string>({
         message: 'Test which instance?',
@@ -355,7 +375,7 @@ export async function authTest(): Promise<void> {
         body: body.toString(),
       });
       if (resp.ok) {
-        console.log(chalk.green('  ✓ OAuth refresh works (Client ID + Secret are valid)'));
+        console.log(chalk.green(`  ✓ OAuth refresh works (${instance.clientSecret ? 'Client ID + Secret are valid' : 'public PKCE client, no secret needed'})`));
       } else {
         const txt = await resp.text();
         console.log(chalk.red(`  ✗ OAuth refresh failed: ${resp.status}`));

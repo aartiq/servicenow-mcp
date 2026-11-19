@@ -101,8 +101,14 @@ export async function executeDeploymentToolCall(
       requireScripting();
       if (!args.table || !args.sys_id || !args.new_name) throw new ServiceNowError('table, sys_id, and new_name are required', 'INVALID_REQUEST');
       const source = await client.getRecord(args.table, args.sys_id);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { sys_id: _sysId, sys_created_on: _created, sys_updated_on: _updated, sys_created_by: _createdBy, sys_updated_by: _updatedBy, ...cloneData } = source;
+      // Copy field values only: flatten reference objects ({link,value}) to their sys_id and drop every
+      // system field (sys_id, sys_update_name, sys_mod_count, sys_package, sys_scope, ...), which would
+      // otherwise collide with the source's update-set identity or be rejected.
+      const cloneData: Record<string, any> = {};
+      for (const [k, v] of Object.entries(source as Record<string, any>)) {
+        if (k.startsWith('sys_')) continue;
+        cloneData[k] = v && typeof v === 'object' && 'value' in v ? (v as any).value : v;
+      }
       cloneData.name = args.new_name;
       if (args.target_scope) cloneData.sys_scope = args.target_scope;
       const result = await client.createRecord(args.table, cloneData);
@@ -143,18 +149,14 @@ export async function executeDeploymentToolCall(
     case 'execute_background_script': {
       requireScripting();
       if (!args.script) throw new ServiceNowError('script is required', 'INVALID_REQUEST');
-      try {
-        const resp = await client.callNowAssist('/api/now/sp/background_script', { script: args.script, scope: args.scope || 'global' });
-        return { action: 'executed', output: resp };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return {
-          action: 'failed',
-          error:
-            `Server-side background scripts are not exposed through a standard ServiceNow REST endpoint, so arbitrary script cannot be run over REST (${msg}). ` +
-            `Options: (1) use the Fluent/now-sdk tools which execute against your authenticated instance, (2) install a companion Scripted REST API that evaluates the script, or (3) run it from the Background Scripts UI.`,
-        };
+      // There is no REST endpoint for background scripts (/api/now/sp/background_script does not exist).
+      // client.executeScript runs it through SCRIPT_EXEC_ENDPOINT if configured, otherwise as a
+      // one-time, self-deleting scheduled job. A "return" in the script is captured as the result.
+      const exec = await client.executeScript(String(args.script), args.scope || undefined);
+      if (exec && exec.ok === false) {
+        return { action: 'failed', error: exec.error, via: exec.via };
       }
+      return { action: 'executed', output: exec?.result ?? exec?.output ?? null, via: exec?.via ?? 'endpoint' };
     }
 
     case 'import_cmdb_data': {

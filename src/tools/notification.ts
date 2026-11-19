@@ -261,7 +261,7 @@ export function getNotificationToolDefinitions() {
     },
     {
       name: 'schedule_notification',
-      description: '[Write] Schedule a notification for future delivery',
+      description: '[Write] Explain how to send a notification at a set time. ServiceNow notifications are event/condition driven and have no schedule of their own, so this returns NOT_SUPPORTED with the scheduled-job alternative and changes nothing',
       inputSchema: {
         type: 'object',
         properties: {
@@ -498,11 +498,17 @@ export async function executeNotificationToolCall(
       requireWrite();
       if (!args.notification_id || !args.schedule)
         throw new ServiceNowError('notification_id and schedule are required', 'INVALID_REQUEST');
-      const result = await client.updateRecord('sysevent_email_action', args.notification_id, {
-        schedule: args.schedule,
-        active: args.active !== false ? 'true' : 'false',
-      });
-      return { ...result, summary: `Scheduled notification ${args.notification_id} with schedule: ${args.schedule}` };
+      // sysevent_email_action has no schedule column (the old implementation wrote a non-existent
+      // "schedule" field and silently re-activated the notification). Notifications are sent when their
+      // event fires or their record condition matches, so there is nothing to schedule on the rule itself.
+      const rule = await client.getRecord('sysevent_email_action', args.notification_id, 'name,event_name,collection,generation_type,active');
+      throw new ServiceNowError(
+        `ServiceNow notifications cannot be scheduled: "${(rule as any).name}" is sent when ` +
+        `${(rule as any).event_name ? `the event "${(rule as any).event_name}" fires` : `a ${(rule as any).collection} record matches its condition`}. ` +
+        'To send it at a set time, create a scheduled job (create_scheduled_job) that queues that event for the record ' +
+        '(gs.eventQueue), or use create_scheduled_report for recurring report emails. Nothing was changed.',
+        'NOT_SUPPORTED',
+      );
     }
     default:
       return null;

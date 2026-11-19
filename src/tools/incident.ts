@@ -141,7 +141,6 @@ export async function executeIncidentToolCall(
         state: '6',
         close_code: args.resolution_code,
         close_notes: args.resolution_notes,
-        resolved_at: new Date().toISOString(),
       });
       return { ...result, summary: `Resolved incident ${args.sys_id}` };
     }

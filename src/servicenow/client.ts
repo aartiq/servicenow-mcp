@@ -385,21 +385,25 @@ export class ServiceNowClient {
       );
     }
 
-    if (!this.oauthConfig?.username || !this.oauthConfig?.password) {
-      throw new ServiceNowError(
-        'Username and password are required for OAuth password grant',
-        'AUTHENTICATION_FAILED'
-      );
-    }
+    // With a username + password: password grant. With only client id + secret: client credentials
+    // (ServiceNow Washington DC+, runs as the OAuth app's "OAuth Application User"; needs
+    // glide.oauth.inbound.client.credential.grant_type.enabled=true on the instance).
+    const useClientCredentials = !this.oauthConfig?.username || !this.oauthConfig?.password;
 
     const tokenUrl = `${this.baseUrl}/oauth_token.do`;
-    const body = new URLSearchParams({
-      grant_type: 'password',
-      client_id: this.oauthConfig.clientId,
-      client_secret: this.oauthConfig.clientSecret,
-      username: this.oauthConfig.username,
-      password: this.oauthConfig.password,
-    });
+    const body = useClientCredentials
+      ? new URLSearchParams({
+          grant_type: 'client_credentials',
+          client_id: this.oauthConfig.clientId,
+          client_secret: this.oauthConfig.clientSecret,
+        })
+      : new URLSearchParams({
+          grant_type: 'password',
+          client_id: this.oauthConfig.clientId,
+          client_secret: this.oauthConfig.clientSecret,
+          username: this.oauthConfig.username!,
+          password: this.oauthConfig.password!,
+        });
 
     try {
       const response = await fetch(tokenUrl, {
@@ -411,8 +415,13 @@ export class ServiceNowClient {
       });
 
       if (!response.ok) {
+        const detail = await response.text().catch(() => '');
         throw new ServiceNowError(
-          `OAuth authentication failed: ${response.status} ${response.statusText}`,
+          `OAuth authentication failed: ${response.status} ${response.statusText}` +
+            (useClientCredentials
+              ? '. No username/password is configured, so NowAIKit used the client_credentials grant: set an "OAuth Application User" on the OAuth app ' +
+                'and enable glide.oauth.inbound.client.credential.grant_type.enabled, or add a username and password for the password grant.'
+              : /invalid_client/.test(detail) ? ' (invalid_client: check the client id and secret)' : ''),
           'AUTHENTICATION_FAILED'
         );
       }

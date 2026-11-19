@@ -272,15 +272,19 @@ export async function executeAgileToolCall(
     }
     case 'create_story_dependency': {
       requireWrite();
-      const result = await client.createRecord('m2m_story_dependencies', { story: args.story, dependent_story: args.dependent_story });
+      if (!args.story || !args.dependent_story) throw new ServiceNowError('story and dependent_story are required', 'INVALID_REQUEST');
+      // m2m_story_dependencies has prerequisite_story (the blocker) and dependent_story (the blocked one);
+      // there is no "story" column. Per this tool's schema, `story` is blocked and `dependent_story` is the blocker.
+      const result = await client.createRecord('m2m_story_dependencies', { dependent_story: args.story, prerequisite_story: args.dependent_story });
       return { action: 'created', ...result };
     }
     case 'list_story_dependencies': {
-      const resp = await client.queryRecords({ table: 'm2m_story_dependencies', query: `story=${args.story}^ORdependent_story=${args.story}`, limit: args.limit || 50, fields: 'sys_id,story,dependent_story' });
+      const resp = await client.queryRecords({ table: 'm2m_story_dependencies', query: `prerequisite_story=${args.story}^ORdependent_story=${args.story}`, limit: args.limit || 50, fields: 'sys_id,prerequisite_story,dependent_story' });
       return { count: resp.count, dependencies: resp.records };
     }
     case 'delete_story_dependency': {
       requireWrite();
+      if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
       await client.deleteRecord('m2m_story_dependencies', args.sys_id);
       return { action: 'deleted', sys_id: args.sys_id };
     }

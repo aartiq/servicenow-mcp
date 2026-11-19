@@ -27,7 +27,7 @@ export function getOrchestrationToolDefinitions() {
   return [
     {
       name: 'create_playbook',
-      description: 'Create a playbook definition with ordered steps that chain tool calls (requires NOW_ASSIST_ENABLED + WRITE_ENABLED)',
+      description: 'Create (or update) a NowAIKit playbook definition with ordered steps that chain tool calls, stored as system property nowaikit.playbook.<name>; run it with execute_playbook (requires NOW_ASSIST_ENABLED + WRITE_ENABLED)',
       inputSchema: {
         type: 'object',
         properties: {
@@ -87,7 +87,7 @@ export function getOrchestrationToolDefinitions() {
     },
     {
       name: 'list_playbooks',
-      description: 'List stored playbook definitions from sys_hub_action_type_definition',
+      description: 'List stored NowAIKit playbook definitions (system properties nowaikit.playbook.*)',
       inputSchema: {
         type: 'object',
         properties: {
@@ -98,6 +98,8 @@ export function getOrchestrationToolDefinitions() {
     },
   ];
 }
+
+const PLAYBOOK_PREFIX = 'nowaikit.playbook.';
 
 const ORCHESTRATION_TOOL_NAMES = new Set([
   'create_playbook', 'execute_playbook', 'list_playbooks',
@@ -232,31 +234,25 @@ export async function executeOrchestrationToolCall(
         }
       }
 
-      // Attempt to store as a record; fall back to returning the definition
-      try {
-        const record = await client.createRecord('sys_hub_action_type_definition', {
-          name: args.name,
-          description: args.description,
-          definition: JSON.stringify({
-            steps: args.steps,
-            version: '1.0',
-            created_by: 'nowaikit',
-          }),
-          active: true,
-        });
-        return { message: 'Playbook created', playbook: record };
-      } catch {
-        // Table may not exist — return the definition for manual creation
+      // NowAIKit playbooks chain MCP tool calls client-side (execute_playbook), so they are not Flow
+      // Designer actions. They are stored as a JSON system property (nowaikit.playbook.<slug>) that
+      // list_playbooks reads back; pass the returned definition to execute_playbook.
+      const definition = { name: args.name, description: args.description, steps: args.steps, version: '1.0', created_by: 'nowaikit' };
+      const value = JSON.stringify(definition);
+      if (value.length > 4000) {
         return {
-          message: 'Playbook definition generated (table sys_hub_action_type_definition may not be available). Use this definition for manual creation.',
-          definition: {
-            name: args.name,
-            description: args.description,
-            steps: args.steps,
-            version: '1.0',
-          },
+          message: 'Playbook definition generated but not stored: it is longer than the 4000 characters a system property holds. Pass it to execute_playbook directly.',
+          definition,
         };
       }
+      const slug = String(args.name).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'playbook';
+      const propName = `${PLAYBOOK_PREFIX}${slug}`;
+      const existing = await client.queryRecords({ table: 'sys_properties', query: `name=${propName}`, limit: 1, fields: 'sys_id' });
+      const payload = { name: propName, value, type: 'string', description: `NowAIKit playbook: ${args.description}`.slice(0, 4000) };
+      const record = existing.count
+        ? await client.updateRecord('sys_properties', String((existing.records[0] as any).sys_id), payload)
+        : await client.createRecord('sys_properties', payload);
+      return { message: existing.count ? 'Playbook updated' : 'Playbook created', playbook: { sys_id: record.sys_id, property: propName, ...definition } };
     }
 
     case 'execute_playbook': {
@@ -350,14 +346,18 @@ export async function executeOrchestrationToolCall(
 
     case 'list_playbooks': {
       const limit = args.limit || 25;
-
       const resp = await client.queryRecords({
-        table: 'sys_hub_action_type_definition',
-        query: 'active=true',
+        table: 'sys_properties',
+        query: `nameSTARTSWITH${PLAYBOOK_PREFIX}`,
         limit,
-        fields: 'sys_id,name,description,active,sys_updated_on',
+        fields: 'sys_id,name,value,description,sys_updated_on',
       });
-      return { count: resp.count, playbooks: resp.records };
+      const playbooks = resp.records.map((r: any) => {
+        let def: any = {};
+        try { def = JSON.parse(r.value); } catch { /* not a NowAIKit playbook definition */ }
+        return { sys_id: r.sys_id, property: r.name, name: def.name ?? r.name, description: def.description ?? r.description, steps: def.steps ?? [], sys_updated_on: r.sys_updated_on };
+      });
+      return { count: resp.count, playbooks };
     }
 
     default:

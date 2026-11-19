@@ -65,7 +65,10 @@ async function runNowSdk(args: string[], timeoutMs = 30000, cwd?: string): Promi
     if (error.code === 'ENOENT') {
       throw new ServiceNowError('now-sdk not found. Install with: npm i -g @servicenow/sdk', 'FLUENT_NOT_INSTALLED');
     }
-    throw new ServiceNowError(`now-sdk error: ${error.stderr || error.message}`, 'FLUENT_ERROR');
+    // Node deprecation warnings land on stderr too; drop them so the real CLI error shows.
+    const stderr = String(error.stderr || '').split('\n').filter((l: string) => l && !/DeprecationWarning|--trace-deprecation/.test(l)).join('\n');
+    const detail = [stderr, String(error.stdout || '').trim()].filter(Boolean).join('\n') || error.message;
+    throw new ServiceNowError(`now-sdk error: ${detail.slice(0, 4000)}`, 'FLUENT_ERROR');
   }
 }
 
@@ -345,6 +348,7 @@ export function getFluentToolDefinitions() {
       name: 'fluent_download',
       description:
         'Download an application\'s metadata from the instance into a local folder (`now-sdk download`). ' +
+        'Uses the SDK\'s default credential (the download command has no alias flag; switch with `now-sdk auth --use <alias>`). ' +
         'REQUIRES FLUENT_ENABLED=true and WRITE_ENABLED=true (writes local files).',
       inputSchema: {
         type: 'object',

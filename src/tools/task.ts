@@ -50,6 +50,7 @@ export function getTaskToolDefinitions() {
         properties: {
           sys_id: { type: 'string', description: 'System ID of the task' },
           close_notes: { type: 'string', description: 'Optional closure notes' },
+          state: { type: 'string', description: 'Closed state value to use (default: the table\'s closed-complete state, 3 for most tasks)' },
         },
         required: ['sys_id'],
       },
@@ -89,7 +90,15 @@ export async function executeTaskToolCall(
     case 'complete_task': {
       requireWrite();
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
-      const data: Record<string, any> = { state: '3' };
+      // Most task tables use 3 = Closed Complete; some have their own closed state.
+      const CLOSED: Record<string, Record<string, string>> = {
+        incident: { state: '7' },
+        problem_task: { state: '157', close_code: 'completed' },
+        sn_customerservice_case: { state: '3' },
+      };
+      let cls = '';
+      try { cls = String((await client.getRecord('task', args.sys_id, 'sys_class_name') as any).sys_class_name || ''); } catch { /* fall back to 3 */ }
+      const data: Record<string, any> = args.state ? { state: String(args.state) } : { ...(CLOSED[cls] || { state: '3' }) };
       if (args.close_notes) data.close_notes = args.close_notes;
       const result = await client.updateRecord('task', args.sys_id, data);
       return { ...result, summary: `Completed task ${args.sys_id}` };

@@ -5,7 +5,8 @@
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
-import { requireWrite } from '../utils/permissions.js';
+import { isScriptingEnabled, requireWrite } from '../utils/permissions.js';
+import { buildPaIndicatorPayload } from './performance.js';
 
 export function getReportingToolDefinitions() {
   return [
@@ -234,7 +235,7 @@ export function getReportingToolDefinitions() {
     },
     {
       name: 'create_scheduled_report',
-      description: '[Write] Schedule a report for recurring email delivery',
+      description: '[Write] Schedule a report for recurring email delivery (sysauto_report)',
       inputSchema: {
         type: 'object',
         properties: {
@@ -244,6 +245,9 @@ export function getReportingToolDefinitions() {
           day_of_week: { type: 'string', description: 'Day of week (for weekly frequency)' },
           day_of_month: { type: 'number', description: 'Day of month (for monthly frequency)' },
           format: { type: 'string', description: 'Export format: pdf/csv/xlsx' },
+          name: { type: 'string', description: 'Schedule name (default: "Scheduled: <report title>")' },
+          run_time: { type: 'string', description: 'Time of day to send (HH:mm:ss)' },
+          active: { type: 'boolean', description: 'Activate the schedule (default true)' },
         },
         required: ['report_id', 'frequency', 'recipients'],
       },
@@ -409,25 +413,30 @@ export async function executeReportingToolCall(
     case 'trigger_scheduled_job': {
       requireWrite();
       if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
-      // Trigger by setting next_action to now and ensuring it's active.
-      const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-      await client.updateRecord('sysauto', args.sys_id, { next_action: now, active: true });
-      // Verify the write actually took effect. ACLs / protected tables can silently discard
-      // field writes while the Table API still returns HTTP 200, so re-read before claiming success.
-      const check = await client.getRecord('sysauto', args.sys_id) as Record<string, any> | null;
-      const nextAction = check ? String(check.next_action ?? '') : '';
-      const isActive = check ? String(check.active) !== 'false' : false;
-      const triggered = isActive && nextAction.startsWith(now.slice(0, 10));
-      if (!triggered) {
-        return {
-          action: 'trigger_unverified',
-          sys_id: args.sys_id,
-          next_action: nextAction || null,
-          active: check?.active,
-          warning: `Could not confirm the job was triggered (next_action=${nextAction || 'unchanged'}, active=${check?.active}). ACLs or a protected table may have silently rejected the write. Verify in the instance before relying on this.`,
-        };
+      // sysauto has no next_action column (that lives on the sys_trigger the scheduler creates), so
+      // writing it through the Table API did nothing. "Execute Now" is the server-side
+      // gs.executeNow(job) API, run here as a one-time server script.
+      if (!/^[0-9a-f]{32}$/i.test(String(args.sys_id))) throw new ServiceNowError('sys_id must be a sys_id', 'INVALID_REQUEST');
+      const job = await client.getRecord('sysauto', args.sys_id, 'sys_id,name,sys_class_name');
+      if (!isScriptingEnabled()) {
+        throw new ServiceNowError(
+          `Running scheduled job "${(job as any).name}" now uses the server-side gs.executeNow() API, so it needs SCRIPTING_ENABLED=true. ` +
+          'Or open the job in ServiceNow and click Execute Now.',
+          'SCRIPTING_NOT_ENABLED',
+        );
       }
-      return { action: 'triggered', sys_id: args.sys_id, next_action: nextAction, active: check?.active, summary: `Triggered scheduled job ${args.sys_id}` };
+      const script =
+        `var j = new GlideRecord('sysauto');\n` +
+        `if (!j.get('${args.sys_id}')) return { error: 'Scheduled job not found' };\n` +
+        `var real = new GlideRecord(j.sys_class_name + ''); real.get(j.sys_id + '');\n` +
+        `var trig = gs.executeNow(real);\n` +
+        `return { trigger: '' + trig };`;
+      const exec = await client.executeScript(script);
+      const out = exec?.result ?? exec?.output ?? {};
+      if (exec?.ok === false || out?.error) {
+        throw new ServiceNowError(`Could not trigger scheduled job ${args.sys_id}: ${exec?.error || out.error}`, 'TRIGGER_FAILED');
+      }
+      return { action: 'triggered', sys_id: args.sys_id, name: (job as any).name, trigger_sys_id: out?.trigger || undefined, summary: `Triggered scheduled job "${(job as any).name}"` };
     }
     case 'create_report': {
       requireWrite();
@@ -439,9 +448,14 @@ export async function executeReportingToolCall(
         type: args.type,
         aggregate: args.aggregate || 'COUNT',
       };
+      // sys_report: "field" is the group-by field, "filter" the condition, "trend_field" the
+      // date field for trends; there is no group_by/filter_fields column.
       if (args.field) data.field = args.field;
-      if (args.query) data.filter_fields = args.query;
-      if (args.group_by) data.group_by = args.group_by;
+      if (args.query) data.filter = args.query;
+      if (args.group_by) {
+        if (!data.field) data.field = args.group_by;
+        else data.row = args.group_by;
+      }
       if (args.roles) data.roles = args.roles;
       const result = await client.createRecord('sys_report', data);
       return { ...result, summary: `Created report "${args.title}" (${args.type}) on table "${args.table}"` };
@@ -487,30 +501,38 @@ export async function executeReportingToolCall(
       requireWrite();
       if (!args.report_id || !args.frequency || !args.recipients)
         throw new ServiceNowError('report_id, frequency, and recipients are required', 'INVALID_REQUEST');
-      const result = await client.createRecord('sys_report_schedule', {
+      // Scheduled report emails live in sysauto_report (a scheduled job of type "Scheduled Email of Report").
+      const report = await client.getRecord('sys_report', args.report_id, 'sys_id,title');
+      const FORMATS: Record<string, string> = { pdf: 'PDF', csv: 'CSV', xlsx: 'XLSX', excel: 'Excel', png: 'PNG' };
+      const runType = String(args.frequency).toLowerCase();
+      const data: Record<string, any> = {
+        name: args.name || `Scheduled: ${(report as any).title}`,
         report: args.report_id,
-        frequency: args.frequency,
-        email: args.recipients,
-        day: args.day_of_week || '',
-        day_of_month: args.day_of_month || '',
-        format: args.format || 'pdf',
-        active: 'true',
-      });
+        report_title: (report as any).title,
+        run_type: runType,
+        address_list: args.recipients,
+        output_type: FORMATS[String(args.format || 'pdf').toLowerCase()] || args.format,
+        active: args.active === false ? 'false' : 'true',
+      };
+      if (args.run_time) data.run_time = args.run_time;
+      if (runType === 'weekly' && args.day_of_week) data.run_dayofweek = args.day_of_week;
+      if (runType === 'monthly' && args.day_of_month) data.run_dayofmonth = String(args.day_of_month);
+      const result = await client.createRecord('sysauto_report', data);
       return { ...result, summary: `Created scheduled report delivery (${args.frequency}) for report ${args.report_id}` };
     }
     case 'create_kpi': {
       requireWrite();
       if (!args.name || !args.table || !args.aggregate)
         throw new ServiceNowError('name, table, and aggregate are required', 'INVALID_REQUEST');
-      const result = await client.createRecord('pa_indicators', {
-        name: args.name,
-        cube: args.table,
-        aggregate: args.aggregate,
-        conditions: args.conditions || '',
-        field: args.field || '',
-        unit: args.unit || '',
-      });
-      return { ...result, summary: `Created KPI "${args.name}" (${args.aggregate} on ${args.table})` };
+      // An indicator links to its table through an indicator source (pa_cubes), not a table name.
+      const { data, indicatorSource } = await buildPaIndicatorPayload(client, { ...args, facts_table: args.table });
+      const result = await client.createRecord('pa_indicators', data);
+      return {
+        ...result,
+        indicator_source: indicatorSource?.sys_id,
+        indicator_source_created: indicatorSource?.created,
+        summary: `Created KPI "${args.name}" (${args.aggregate} on ${args.table})`,
+      };
     }
     case 'generate_report': {
       if (!args.format || !args.title)

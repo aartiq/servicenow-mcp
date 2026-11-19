@@ -205,4 +205,9 @@ button:disabled { opacity: .55; cursor: default; }
 .row input { flex: 1; min-width: 180px; }
 .muted { color: var(--nk-muted); }
 .html-block { padding: 8px 10px; background: var(--nk-bg2); border-radius: var(--nk-radius); }
+/* Two columns on wide views, like ServiceNow forms; long text, groups and actions span both. */
+@media (min-width: 640px) {
+  form { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; align-items: start; }
+  form > .field:has(textarea), form > fieldset, form > div:not(.field), form > .actions, form > .banner { grid-column: 1 / -1; }
+}
 `;

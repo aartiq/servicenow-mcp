@@ -90,7 +90,7 @@ export function getIntegrationToolDefinitions() {
     },
     {
       name: 'run_transform_map',
-      description: 'Execute a Transform Map on an Import Set to load data (requires WRITE_ENABLED=true)',
+      description: 'Execute a Transform Map on an Import Set to load data (runs GlideImportSetTransformer server-side; requires WRITE_ENABLED and SCRIPTING_ENABLED)',
       inputSchema: {
         type: 'object',
         properties: {
@@ -198,6 +198,8 @@ export function getIntegrationToolDefinitions() {
           name: { type: 'string', description: 'Unique event name (e.g. "my_app.record_created")' },
           description: { type: 'string', description: 'Description of when this event fires' },
           table: { type: 'string', description: 'Table that fires this event (e.g. "incident")' },
+          fired_by: { type: 'string', description: 'Optional note on what fires the event (e.g. a business rule name)' },
+          queue: { type: 'string', description: 'Optional custom event queue name' },
         },
         required: ['name', 'table'],
       },
@@ -306,7 +308,7 @@ export async function executeIntegrationToolCall(
       if (!args.name || !args.endpoint) throw new ServiceNowError('name and endpoint are required', 'INVALID_REQUEST');
       const data: Record<string, any> = {
         name: args.name,
-        endpoint: args.endpoint,
+        rest_endpoint: args.endpoint,
         description: args.description || '',
         authentication_type: args.authentication_type || 'no_authentication',
       };
@@ -344,41 +346,34 @@ export async function executeIntegrationToolCall(
       if (!args.transform_map_sys_id || !args.import_set_sys_id) {
         throw new ServiceNowError('transform_map_sys_id and import_set_sys_id are required', 'INVALID_REQUEST');
       }
-      // Trigger transform via Scripted REST — create a sys_import_set_run record
-      const data = {
-        import_set: args.import_set_sys_id,
-        transform_map: args.transform_map_sys_id,
-      };
-      const result = await client.createRecord('sys_import_set_run', data);
+      requireScripting();
+      // Creating a sys_import_set_run record does not transform anything. The supported path is the
+      // server-side GlideImportSetTransformer API, so this runs as a one-time server script.
+      const setId = String(args.import_set_sys_id);
+      const mapId = String(args.transform_map_sys_id);
+      if (!/^[0-9a-f]{32}$/i.test(setId) || !/^[0-9a-f]{32}$/i.test(mapId)) {
+        throw new ServiceNowError('transform_map_sys_id and import_set_sys_id must be sys_ids', 'INVALID_REQUEST');
+      }
+      const script =
+        `var set = new GlideRecord('sys_import_set');\n` +
+        `if (!set.get('${setId}')) return { error: 'Import set not found: ${setId}' };\n` +
+        `var run = new GlideImportSetRun('${setId}');\n` +
+        `var log = new GlideImportLog(run, 'NowAIKit transform');\n` +
+        `var t = new GlideImportSetTransformer();\n` +
+        `t.setLogger(log); t.setImportSetRun(run); t.setImportSetID('${setId}'); t.setMapID('${mapId}'); t.setSyncImport(true);\n` +
+        `t.transformAllMaps(set);\n` +
+        `var h = new GlideRecord('sys_import_set_run'); h.addQuery('set', '${setId}'); h.orderByDesc('sys_created_on'); h.setLimit(1); h.query();\n` +
+        `var out = { state: '' + set.state };\n` +
+        `if (h.next()) { out.run_sys_id = '' + h.sys_id; out.run_state = '' + h.state; out.total = '' + h.total; out.inserts = '' + h.inserts; out.updates = '' + h.updates; out.errors = '' + h.errors; out.ignored = '' + h.ignored; out.skipped = '' + h.skipped; }\n` +
+        `return out;`;
+      const exec = await client.executeScript(script);
+      if (exec && exec.ok === false) throw new ServiceNowError(`Transform failed: ${exec.error}`, 'TRANSFORM_FAILED');
+      const out = exec?.result ?? exec?.output ?? exec;
+      if (out?.error) throw new ServiceNowError(out.error, 'NOT_FOUND');
       return {
-        ...result,
-        summary: `Triggered Transform Map ${args.transform_map_sys_id} on Import Set ${args.import_set_sys_id}`,
+        ...out,
+        summary: `Ran Transform Map ${mapId} on Import Set ${setId}`,
       };
-    }
-    case 'list_transform_field_maps': {
-      if (!args.transform_map_sys_id) throw new ServiceNowError('transform_map_sys_id is required', 'INVALID_REQUEST');
-      return await client.queryRecords({
-        table: 'sys_transform_entry',
-        query: `map=${args.transform_map_sys_id}`,
-        limit: args.limit ?? 50,
-        fields: 'sys_id,map,source_field,target_field,coalesce,use_source_script,sys_updated_on',
-      });
-    }
-    // ── Import Sets ─────────────────────────────────────────────────────────
-    case 'list_import_sets': {
-      const parts: string[] = [];
-      if (args.state) parts.push(`state=${args.state}`);
-      if (args.query) parts.push(args.query);
-      return await client.queryRecords({
-        table: 'sys_import_set',
-        query: parts.join('^') || undefined,
-        limit: args.limit ?? 25,
-        fields: 'sys_id,label,state,table_name,import_count,error_count,sys_created_on',
-      });
-    }
-    case 'get_import_set': {
-      if (!args.sys_id) throw new ServiceNowError('sys_id is required', 'INVALID_REQUEST');
-      return await client.getRecord('sys_import_set', args.sys_id);
     }
     case 'create_import_set_row': {
       requireWrite();
@@ -428,11 +423,13 @@ export async function executeIntegrationToolCall(
     case 'register_event': {
       requireScripting();
       if (!args.name || !args.table) throw new ServiceNowError('name and table are required', 'INVALID_REQUEST');
-      const data = {
-        name: args.name,
+      const data: Record<string, any> = {
+        event_name: args.name,
         table: args.table,
         description: args.description || '',
       };
+      if (args.fired_by) data.fired_by = args.fired_by;
+      if (args.queue) data.queue = args.queue;
       const result = await client.createRecord('sysevent_register', data);
       return { ...result, summary: `Registered event "${args.name}" for table "${args.table}"` };
     }

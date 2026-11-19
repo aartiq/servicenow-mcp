@@ -10,7 +10,7 @@
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
-import { requireWrite } from '../utils/permissions.js';
+import { isScriptingEnabled, requireWrite } from '../utils/permissions.js';
 
 export function getMlToolDefinitions() {
   return [
@@ -61,6 +61,7 @@ export function getMlToolDefinitions() {
         type: 'object',
         properties: {
           solution_name: { type: 'string', description: 'ML solution name (default auto-detect)' },
+          dry_run: { type: 'boolean', description: 'Resolve the solution definition without submitting a training job (default false)' },
         },
         required: [],
       },
@@ -72,6 +73,7 @@ export function getMlToolDefinitions() {
         type: 'object',
         properties: {
           solution_name: { type: 'string', description: 'ML solution name (default auto-detect)' },
+          dry_run: { type: 'boolean', description: 'Resolve the solution definition without submitting a training job (default false)' },
         },
         required: [],
       },
@@ -222,38 +224,91 @@ export async function executeMlToolCall(
       return { historical_period_days: lookback, total_incidents: resp.count, avg_daily_rate: Math.round(dailyRate * 10) / 10, forecast_days: daysAhead, forecast_total: Math.round(dailyRate * daysAhead), forecast_range: { low: Math.round(dailyRate * daysAhead * 0.7), high: Math.round(dailyRate * daysAhead * 1.3) } };
     }
 
-    case 'ml_train_incident_classifier': {
-      requireWrite();
-      const solutions = await client.queryRecords({ table: 'ml_solution', query: args.solution_name ? `name=${args.solution_name}` : 'solution_typeLIKEclassif^active=true', limit: 1, fields: 'sys_id,name,training_status' });
-      if (solutions.count === 0) return { error: 'No classification ML solution found. Enable Predictive Intelligence.' };
-      const sol = solutions.records[0];
-      try {
-        await client.callNowAssist(`/api/now/ml/solution/${sol.sys_id}/train`, {});
-        return { action: 'training_triggered', solution: sol.name, sys_id: sol.sys_id };
-      } catch (err) { return { action: 'training_failed', solution: sol.name, error: err instanceof Error ? err.message : String(err) }; }
-    }
-
+    case 'ml_train_incident_classifier':
     case 'ml_train_change_risk': {
       requireWrite();
-      const solutions = await client.queryRecords({ table: 'ml_solution', query: args.solution_name ? `name=${args.solution_name}` : 'nameLIKEchange^active=true', limit: 1, fields: 'sys_id,name' });
-      if (solutions.count === 0) return { error: 'No change risk ML solution found.' };
-      const sol = solutions.records[0];
+      const table = name === 'ml_train_incident_classifier' ? 'incident' : 'change_request';
+      // Trainable Predictive Intelligence solutions are defined in ml_capability_definition_base
+      // (classification subclass); ml_solution rows are the trained versions.
+      const query = args.solution_name
+        ? `solution_name=${args.solution_name}^ORsolution_label=${args.solution_name}`
+        : `sys_class_name=ml_capability_definition_classification^table=${table}^ORDERBYDESCactive`;
+      const defs = await client.queryRecords({ table: 'ml_capability_definition_base', query, limit: 1, fields: 'sys_id,solution_name,solution_label,sys_class_name,table,active' });
+      if (defs.count === 0) {
+        return { error: `No ${args.solution_name ? `ML solution "${args.solution_name}"` : `classification solution on ${table}`} found. Create one in Predictive Intelligence first.` };
+      }
+      const def: any = defs.records[0];
+      const solution = { sys_id: def.sys_id, solution_name: def.solution_name, label: def.solution_label, table: def.table, active: def.active };
+      if (args.dry_run) return { action: 'dry_run', solution };
+      // There is no REST endpoint for training; the supported path is the sn_ml server API.
+      if (!isScriptingEnabled()) {
+        return { action: 'training_not_submitted', solution, error: 'Training uses the server-side sn_ml API, so it needs SCRIPTING_ENABLED=true (or train it from Predictive Intelligence > Solution Definitions).' };
+      }
+      const store = def.sys_class_name === 'ml_capability_definition_regression' ? 'RegressionSolutionStore'
+        : def.sys_class_name === 'ml_capability_definition_similarity' ? 'SimilaritySolutionStore'
+        : def.sys_class_name === 'ml_capability_definition_cluster' ? 'ClusteringSolutionStore'
+        : 'ClassificationSolutionStore';
+      const script =
+        `var sol = sn_ml.${store}.get(${JSON.stringify(String(def.solution_name))});\n` +
+        `if (!sol) return { error: 'Solution not found in sn_ml store' };\n` +
+        `var job = sol.submitTrainingJob();\n` +
+        `return { version: '' + (job && job.getVersionNumber ? job.getVersionNumber() : ''), status: '' + (job && job.getStatus ? job.getStatus() : '') };`;
       try {
-        await client.callNowAssist(`/api/now/ml/solution/${sol.sys_id}/train`, {});
-        return { action: 'training_triggered', solution: sol.name, sys_id: sol.sys_id };
-      } catch (err) { return { action: 'training_failed', error: err instanceof Error ? err.message : String(err) }; }
+        const exec = await client.executeScript(script);
+        if (exec?.ok === false || exec?.result?.error) {
+          return { action: 'training_failed', solution, error: exec?.error || exec?.result?.error };
+        }
+        return { action: 'training_triggered', solution, job: exec?.result ?? exec?.output };
+      } catch (err) {
+        return { action: 'training_failed', solution, error: err instanceof Error ? err.message : String(err) };
+      }
     }
 
     case 'ml_train_anomaly_detector': {
       requireWrite();
       if (!args.table || !args.field) throw new ServiceNowError('table and field are required', 'INVALID_REQUEST');
-      return { action: 'anomaly_training_queued', table: args.table, field: args.field, note: 'Configure anomaly detection models via ML Workbench.' };
+      // No write happens here: anomaly detection models are configured in ML Workbench / Health Log Analytics.
+      return { action: 'not_submitted', table: args.table, field: args.field, note: 'NowAIKit cannot train anomaly detectors through the API. Configure anomaly detection models in ML Workbench.' };
     }
 
     case 'ml_evaluate_model': {
       if (!args.model_sys_id) throw new ServiceNowError('model_sys_id is required', 'INVALID_REQUEST');
-      const model = await client.getRecord('ml_solution', args.model_sys_id);
-      return { name: model.name, type: model.solution_type, training_status: model.training_status, accuracy: model.accuracy, last_trained: model.last_trained, total_records_trained: model.training_record_count, active: model.active };
+      // Accept an ml_solution sys_id, or a solution definition sys_id (then use its latest trained solution).
+      const SOLUTION_FIELDS = 'sys_id,solution_name,capability,state,active,version,solution_precision,solution_recall,solution_coverage,row_count,class_count,table,output_field,last_activated_date,sys_updated_on,solution_definition,ml_capability_definition';
+      let model: any;
+      try {
+        model = await client.getRecord('ml_solution', args.model_sys_id, SOLUTION_FIELDS);
+      } catch (e) {
+        if (!(e instanceof ServiceNowError) || e.code !== 'NOT_FOUND') throw e;
+        const latest = await client.queryRecords({
+          table: 'ml_solution',
+          query: `ml_capability_definition=${args.model_sys_id}^ORsolution_definition=${args.model_sys_id}^ORDERBYDESCsys_created_on`,
+          limit: 1,
+          fields: SOLUTION_FIELDS,
+        });
+        if (!latest.count) throw new ServiceNowError(`ML solution not found: ${args.model_sys_id}`, 'NOT_FOUND');
+        model = latest.records[0];
+      }
+      const ref = (v: any) => (v && typeof v === 'object' ? v.value : v);
+      return {
+        sys_id: model.sys_id,
+        name: model.solution_name,
+        type: model.capability,
+        version: model.version,
+        training_status: model.state,
+        accuracy: model.solution_precision,
+        precision: model.solution_precision,
+        recall: model.solution_recall,
+        coverage: model.solution_coverage,
+        class_count: model.class_count,
+        table: model.table,
+        output_field: model.output_field,
+        last_trained: model.sys_updated_on,
+        last_activated: model.last_activated_date,
+        total_records_trained: model.row_count,
+        active: model.active,
+        solution_definition: ref(model.ml_capability_definition) || ref(model.solution_definition),
+      };
     }
 
     case 'ml_model_training_history': {

@@ -197,9 +197,32 @@ export async function executeAppStudioToolCall(
       if (args.description) data.description = args.description;
       if (args.vendor) data.vendor = args.vendor;
       if (args.logo) data.logo = args.logo;
+      // Creating a sys_app makes ServiceNow create a "default" update set for the new scope and repoint
+      // the caller's current update set preference at it. Restore the caller's previous update set so
+      // later changes don't silently land in the new app's default set.
+      const prefQuery = 'name=sys_update_set^user=javascript:gs.getUserID()';
+      const before = await client.queryRecords({ table: 'sys_user_preference', query: prefQuery, fields: 'sys_id,value', limit: 1 }).catch(() => undefined);
+      const beforeValue = before?.records?.[0]?.value ? String(before.records[0].value) : undefined;
       const result = await client.createRecord('sys_app', data);
+      let updateSetNote: string | undefined;
+      if (beforeValue) {
+        try {
+          const after = await client.queryRecords({ table: 'sys_user_preference', query: prefQuery, fields: 'sys_id,value', limit: 1 });
+          const afterRec = after.records?.[0] as any;
+          if (afterRec && String(afterRec.value) !== beforeValue) {
+            await client.updateRecord('sys_user_preference', String(afterRec.sys_id), { value: beforeValue });
+            updateSetNote = 'ServiceNow switched your current update set to the new app\'s default update set; it was restored to your previous one.';
+          } else if (!afterRec) {
+            const me = await client.queryRecords({ table: 'sys_user', query: 'sys_id=javascript:gs.getUserID()', fields: 'sys_id', limit: 1 });
+            const uid = me.records?.[0]?.sys_id;
+            if (uid) await client.createRecord('sys_user_preference', { name: 'sys_update_set', user: String(uid), value: beforeValue, type: 'string' });
+            updateSetNote = 'ServiceNow reset your current update set while creating the app; it was restored to your previous one.';
+          }
+        } catch { /* best effort */ }
+      }
       return {
         ...result,
+        ...(updateSetNote ? { update_set_note: updateSetNote } : {}),
         scope,
         summary: `Created scoped app "${args.name}" with scope "${scope}"`,
         ...(note ? { note } : {}),

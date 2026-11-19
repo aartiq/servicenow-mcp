@@ -59,7 +59,7 @@ export function classifyProbe(status: number, contentType: string, body: string,
   if (/hibernat/.test(text) || /developer\.servicenow\.com/.test(location) || /instance\s+is\s+(asleep|sleeping)/.test(text)) {
     return { state: 'hibernating', detail: 'The instance is hibernating (developer instances sleep when unused).' };
   }
-  if (status === 401 || status === 200) return { state: 'up', detail: `REST API answered (HTTP ${status}).` };
+  if (status === 401 || status === 200) return { state: 'up', detail: 'up, REST API responding.' };
   if (status >= 300 && status < 400) return { state: 'unexpected', detail: `Redirected to ${location || 'another page'} (HTTP ${status}).` };
   if (status >= 500) return { state: 'down', detail: `Instance error (HTTP ${status}).` };
   if (/text\/html/.test(contentType)) return { state: 'unexpected', detail: `Got an HTML page instead of the REST API (HTTP ${status}).` };

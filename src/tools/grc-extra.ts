@@ -57,12 +57,13 @@ export function getGrcExtraToolDefinitions() {
     },
     {
       name: 'run_control_test',
-      description: 'Create/attest a control test (sn_compliance_control_test). Requires WRITE_ENABLED=true',
+      description: 'Record a control test result: an indicator result (sn_grc_indicator_result) on the control\'s manual indicator, which is created if the control has none. Requires WRITE_ENABLED=true',
       inputSchema: {
         type: 'object',
         properties: {
           control: { type: 'string', description: 'sys_id of the control (sn_compliance_control)' },
-          result: { type: 'string', description: 'Test result/state (e.g. "pass", "fail")' },
+          result: { type: 'string', description: 'Test result (e.g. "pass", "fail")' },
+          indicator: { type: 'string', description: 'Optional indicator (sn_grc_indicator) sys_id to record against' },
           notes: { type: 'string', description: 'Test notes/evidence' },
           fields: { type: 'object', description: 'Additional field values' },
         },
@@ -90,7 +91,8 @@ export async function executeGrcExtraToolCall(
       if (!args.short_description) throw new ServiceNowError('short_description is required', 'INVALID_REQUEST');
       const payload: Record<string, any> = { short_description: args.short_description, ...(args.fields ?? {}) };
       if (args.description) payload.description = args.description;
-      if (args.source) payload.source = args.source;
+      // The related control/risk/audit record is the issue's "item" reference (there is no source column).
+      if (args.source) payload.item = args.source;
       const result = await client.createRecord('sn_grc_issue', payload);
       return { ...result, summary: `Created GRC issue "${args.short_description}"` };
     }
@@ -106,10 +108,51 @@ export async function executeGrcExtraToolCall(
     case 'run_control_test': {
       requireWrite();
       if (!args.control) throw new ServiceNowError('control is required', 'INVALID_REQUEST');
-      const payload: Record<string, any> = { control: args.control, ...(args.fields ?? {}) };
-      if (args.result) payload.state = args.result;
-      if (args.notes) payload.notes = args.notes;
-      const result = await client.createRecord('sn_compliance_control_test', payload);
+      // There is no control-test table: GRC records control testing as indicator results
+      // (sn_grc_indicator_result) on an indicator (sn_grc_indicator) attached to the control.
+      const control = await client.getRecord('sn_compliance_control', args.control, 'sys_id,name,profile');
+      const refVal = (v: any) => (v && typeof v === 'object' ? v.value : v);
+      let indicator = args.indicator as string | undefined;
+      let indicatorCreated = false;
+      if (!indicator && !refVal((control as any).profile)) {
+        throw new ServiceNowError(
+          `Control "${(control as any).name}" has no entity (profile). GRC only accepts indicators on controls that belong to an entity, so set the control's profile first or pass an existing indicator.`,
+          'INVALID_REQUEST',
+        );
+      }
+      if (!indicator) {
+        const found = await client.queryRecords({ table: 'sn_grc_indicator', query: `item=${args.control}^type=manual`, limit: 1, fields: 'sys_id' });
+        if (found.count > 0) indicator = String((found.records[0] as any).sys_id);
+        else {
+          const created = await client.createRecord('sn_grc_indicator', {
+            name: `${(control as any).name} manual test`,
+            item: args.control,
+            type: 'manual',
+            category: 'Compliance Indicator',
+            ...(refVal((control as any).profile) ? { entity: refVal((control as any).profile) } : {}),
+          });
+          indicator = String(created.sys_id);
+          indicatorCreated = true;
+        }
+      }
+      const r = String(args.result ?? '').toLowerCase();
+      const passed = args.result === undefined ? undefined : ['pass', 'passed', 'true', 'effective', 'compliant', 'success'].includes(r);
+      const payload: Record<string, any> = {
+        indicator,
+        collection_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        ...(passed !== undefined ? { passed: String(passed) } : {}),
+        ...(args.notes ? { value: String(args.notes) } : {}),
+        ...(args.fields ?? {}),
+      };
+      let result: Record<string, any>;
+      try {
+        result = await client.createRecord('sn_grc_indicator_result', payload);
+      } catch (e) {
+        // Don't leave the indicator we just created behind when the result can't be recorded.
+        if (indicatorCreated) await client.deleteRecord('sn_grc_indicator', String(indicator)).catch(() => undefined);
+        throw e;
+      }
+      result.indicator_created = indicatorCreated;
       return { ...result, summary: `Recorded control test for ${args.control}` };
     }
     default:

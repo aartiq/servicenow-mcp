@@ -74,7 +74,7 @@ const FIELDS_JS = String.raw`
   /** Typeahead used by reference (single) and list (multi) fields. */
   function typeahead(f, st, id, onPick) {
     var box = el('div', { className: 'ref' });
-    var input = el('input', { type: 'text', id: id, autocomplete: 'off', placeholder: 'Type to search ' + (f.reference || '') });
+    var input = el('input', { type: 'text', id: id, autocomplete: 'off', placeholder: 'Search ' + (f.label || f.reference || '').toLowerCase() });
     var list = el('div', { className: 'ref-list' });
     list.style.display = 'none';
     var timer = null, seq = 0;
