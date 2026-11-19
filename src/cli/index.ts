@@ -10,7 +10,7 @@
  *   nowaikit auth whoami     — show current authenticated user
  *   nowaikit instances list  — list configured instances
  *   nowaikit instances remove <name>  — remove an instance
- *   nowaikit capabilities    — list all 26 Apex capabilities
+ *   nowaikit capabilities    — list all 27 Apex capabilities
  *   nowaikit run <capability> — run a capability in direct mode (BYOK)
  */
 import './suppress-warnings.js'; // must be first: installs the warning filter before ora/cli-spinners load
@@ -214,6 +214,13 @@ auth
     process.exit(process.exitCode ?? 0);
   });
 
+// Interactive commands print their own output; keep the request logging out of the way unless asked for.
+program.hook('preAction', (_cmd, action) => {
+  if (['doctor', 'run', 'report', 'capabilities'].includes(action.name()) && !process.env.NOWAIKIT_LOG_LEVEL) {
+    process.env.NOWAIKIT_LOG_LEVEL = 'warn';
+  }
+});
+
 // ─── doctor ───────────────────────────────────────────────────────────────────
 program
   .command('doctor')
@@ -371,7 +378,7 @@ program
 program
   .command('capabilities')
   .alias('caps')
-  .description('List all 26 capabilities (scan / review / build / ops / docs)')
+  .description('List all 27 capabilities (scan / review / build / ops / docs)')
   .option('--json', 'Output the capability list as JSON (name, description, category, arguments)')
   .action(async (options: { json?: boolean }) => {
     const { getCapabilityMeta } = await import('../prompts/index.js');
@@ -422,13 +429,15 @@ program
   .option('-t, --table <table>', 'Target table name')
   .option('-s, --scope <scope>', 'Application scope or scan scope')
   .option('-f, --focus <focus>', 'Review focus: security, performance, all')
+  .option('--run-scan <spec>', 'scan-instance: run an Instance Scan first. full, suite:<name|sys_id>, combo:<sys_id>, point:<table>:<sys_id>, apps:<suite>:<scope ids>, update-sets:<suite>:<ids>')
+  .option('--scan-result <ref>', 'Instance Scan skills: report on one scan result (sys_id, SR number or progress id)')
   .option('--format <format>', 'Output format: md (default), pdf, pptx')
   .option('--brand-company <name>', 'White-label company name for reports')
   .option('--brand-color <hex>', 'White-label accent colour (hex, e.g. #2563EB)')
   .option('--brand-logo <file>', 'PNG logo file for the report cover')
   .action(async (
     capability: string,
-    options: { instance?: string; provider?: string; model?: string; apiKey?: string; output?: string; table?: string; scope?: string; focus?: string; format?: string; brandCompany?: string; brandColor?: string; brandLogo?: string }
+    options: { instance?: string; provider?: string; model?: string; apiKey?: string; output?: string; table?: string; scope?: string; focus?: string; runScan?: string; scanResult?: string; format?: string; brandCompany?: string; brandColor?: string; brandLogo?: string }
   ) => {
     cliBanner();
 
@@ -476,6 +485,8 @@ program
       if (options.table) args.table = options.table;
       if (options.scope) args.scope = options.scope;
       if (options.focus) args.focus = options.focus;
+      if (options.runScan) args.run_scan = options.runScan;
+      if (options.scanResult) args.result = options.scanResult;
 
       const result = await executeDirectly({
         capability,
@@ -488,6 +499,7 @@ program
           baseUrl,
         },
         output: options.output,
+        onProgress: (message) => { spinner.text = `${teal(capability)}: ${message}`; },
       });
 
       spinner.succeed(`Capability completed (${result.dataGathered} data points gathered)`);
@@ -589,6 +601,8 @@ program
   .option('-o, --output <file>', 'Output file path')
   .option('-t, --table <table>', 'Target table name')
   .option('-s, --scope <scope>', 'Application scope or scan scope')
+  .option('--run-scan <spec>', 'scan-instance: run an Instance Scan first (see run --help)')
+  .option('--scan-result <ref>', 'Instance Scan skills: report on one scan result')
   .option('--format <format>', 'Output format: pdf (default), pptx', 'pdf')
   .option('--brand-company <name>', 'White-label company name for reports')
   .option('--brand-color <hex>', 'White-label accent colour (hex, e.g. #2563EB)')
@@ -603,6 +617,8 @@ program
     if (options.output) args.push('-o', options.output);
     if (options.table) args.push('-t', options.table);
     if (options.scope) args.push('-s', options.scope);
+    if (options.runScan) args.push('--run-scan', options.runScan);
+    if (options.scanResult) args.push('--scan-result', options.scanResult);
     if (options.brandCompany) args.push('--brand-company', options.brandCompany);
     if (options.brandColor) args.push('--brand-color', options.brandColor);
     if (options.brandLogo) args.push('--brand-logo', options.brandLogo);
