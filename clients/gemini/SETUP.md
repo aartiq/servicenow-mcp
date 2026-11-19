@@ -23,7 +23,7 @@ The Python client in this directory:
 
 ```bash
 cd clients/gemini
-pip install google-generativeai python-dotenv
+pip install google-genai mcp python-dotenv
 ```
 
 ### Step 2: Configure Credentials
@@ -42,7 +42,6 @@ SERVICENOW_BASIC_USERNAME=your_username
 SERVICENOW_BASIC_PASSWORD=your_password
 WRITE_ENABLED=false
 GEMINI_API_KEY=your_gemini_api_key
-MCP_SERVER_PATH=../../dist/server.js
 ```
 
 #### OAuth
@@ -61,7 +60,6 @@ SERVICENOW_OAUTH_USERNAME=your_username
 SERVICENOW_OAUTH_PASSWORD=your_password
 WRITE_ENABLED=false
 GEMINI_API_KEY=your_gemini_api_key
-MCP_SERVER_PATH=../../dist/server.js
 ```
 
 ### Step 3: Run
@@ -74,12 +72,13 @@ python servicenow_gemini_client.py
 
 ## Vertex AI Setup
 
-For Vertex AI, GCP handles authentication — ServiceNow credentials still come from env vars.
+For Vertex AI, GCP handles authentication. ServiceNow credentials still come from env vars.
 
 ### Step 1: Install Dependencies
 
 ```bash
-pip install google-cloud-aiplatform python-dotenv
+pip install google-genai mcp python-dotenv
+# then set GOOGLE_GENAI_USE_VERTEXAI=true, GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION
 ```
 
 ### Step 2: Authenticate with GCP
@@ -126,7 +125,7 @@ What are the top 5 assignment groups by open incident count?
 
 | Problem | Solution |
 |---------|----------|
-| `google.generativeai not found` | Run `pip install google-generativeai` |
+| `No module named google.genai` | Run `pip install google-genai mcp` |
 | API key errors | Check `GEMINI_API_KEY` in `.env` |
 | Vertex auth errors | Run `gcloud auth application-default login` |
 | Server not found | Check `MCP_SERVER_PATH`; run `npm run build` |
