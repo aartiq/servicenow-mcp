@@ -558,7 +558,8 @@ program
           }
 
           const reportResult = await generateReport(result.content, reportFormat, {
-            title: capability.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            title: (await import('../prompts/index.js')).getCapabilityMeta().find((m) => m.name === capability)?.title
+              || capability.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
             instanceUrl: instConfig?.instanceUrl || '',
             instanceName: instName,
             capability,

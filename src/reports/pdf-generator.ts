@@ -242,7 +242,7 @@ export async function generatePdf(data: ReportData, outputPath: string): Promise
     for (const table of section.tables) {
       const tableBody: any[][] = [
         table.headers.map(h => ({ text: h, style: 'tableHeader' })),
-        ...table.rows.map(row => row.map(cell => ({ text: linkifyTextPdf(cell, data.instanceUrl, { fontSize: 9 }) }))),
+        ...table.rows.map(row => row.map(cell => ({ text: linkifyTextPdf(breakLongTokens(cell), data.instanceUrl, { fontSize: 9 }) }))),
       ];
 
       content.push({
@@ -269,6 +269,7 @@ export async function generatePdf(data: ReportData, outputPath: string): Promise
 
   // ─── Build PDF Document Definition ─────────────────────────────────────
   const docDefinition: any = {
+    info: { title: data.title, author: company || 'NowAIKit', subject: `${data.title} for ${data.instanceName}`, creator: company || 'NowAIKit', producer: company || 'NowAIKit' },
     content,
     defaultStyle: {
       font: 'Roboto',
@@ -309,4 +310,9 @@ export async function generatePdf(data: ReportData, outputPath: string): Promise
   const nodeBuffer = Buffer.from(buffer);
   writeFileSync(outputPath, nodeBuffer);
   return { filePath: outputPath, sizeBytes: nodeBuffer.length };
+}
+
+/** Let long ids (sys_ids, hashes) wrap inside table cells; URLs are left whole so they stay clickable. */
+export function breakLongTokens(text: string): string {
+  return text.replace(/(?<![=/\w])([0-9a-f]{20,}|[A-Za-z0-9_]{36,})(?![\w)])/gi, (t) => t.replace(/(.{16})/g, '$1\u200B'));
 }

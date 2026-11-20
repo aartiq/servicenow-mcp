@@ -167,3 +167,19 @@ describe('tables with empty cells', () => {
     expect(t.rows).toEqual([['A', '50%', ''], ['B', '', 'x'], ['C', '1', 'a | b']]);
   });
 });
+
+describe('executive summary and long ids', () => {
+  it('skips code fences and rule lines in the summary', async () => {
+    const { parseMarkdown } = await import('../../src/reports/parser.js');
+    const md = ['# Report', '', '```', 'INSTANCE SCAN REPORT', '====', '```', '', 'The instance has 10 findings.', '', '## Detail', 'x'].join('\n');
+    const d = parseMarkdown(md, { title: 't', capability: 'scan-instance', instanceName: 'i', instanceUrl: 'https://x.service-now.com' });
+    expect(d.executiveSummary).not.toMatch(/```|====/);
+  });
+  it('lets long ids wrap but keeps URLs whole', async () => {
+    const { breakLongTokens } = await import('../../src/reports/pdf-generator.js');
+    const id = '40922277ff013210c2f5ffffffffff0c';
+    expect(breakLongTokens(`Suite ${id}`)).toContain('​');
+    const url = `https://x.service-now.com/scan_check.do?sys_id=${id}`;
+    expect(breakLongTokens(url)).toBe(url);
+  });
+});

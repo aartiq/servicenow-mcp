@@ -118,6 +118,17 @@ function parseTable(lines: string[]): ReportTable | null {
 
 /** Extract the executive summary from markdown. */
 function extractExecutiveSummary(markdown: string): string {
+  // Code fences and "=====" rules are layout from a text template, not summary text.
+  const clean = (t: string) => t.split('\n').filter((l) => l.trim() && !/^\s*```/.test(l) && !/^\s*[=-]{3,}\s*$/.test(l)).join('\n');
+  const raw = extractSummaryRaw(markdown);
+  const cleaned = clean(raw);
+  if (cleaned) return cleaned;
+  // Nothing usable: take the first prose paragraph of the report.
+  const para = markdown.split(/\n\s*\n/).map((p) => p.trim()).find((p) => p && !p.startsWith('#') && !p.startsWith('```') && !p.startsWith('|') && !/^[=-]{3,}$/.test(p));
+  return para ? clean(para).split('\n').slice(0, 5).join('\n') : '';
+}
+
+function extractSummaryRaw(markdown: string): string {
   // Look for "EXECUTIVE SUMMARY" or "Executive Summary" heading
   const pattern = /(?:^|\n)#+\s*(?:EXECUTIVE\s+SUMMARY|Executive\s+Summary)[^\n]*\n([\s\S]*?)(?=\n#|\n---|\n\*{3}|$)/i;
   const match = markdown.match(pattern);
