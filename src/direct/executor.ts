@@ -28,6 +28,53 @@ function withUrls<T extends { records?: any[] }>(client: ServiceNowClient, table
   return resp;
 }
 
+/** Every URL to the instance found anywhere in the gathered data. */
+export function knownUrls(data: unknown, instanceUrl: string): Set<string> {
+  const host = instanceUrl.replace(/\/$/, '');
+  const out = new Set<string>();
+  const walk = (v: unknown) => {
+    if (typeof v === 'string') { if (host && v.startsWith(host)) out.add(v); return; }
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (v && typeof v === 'object') Object.values(v).forEach(walk);
+  };
+  walk(data);
+  return out;
+}
+
+/** The record key of a ServiceNow URL (table and sys_id), when it has one. */
+function recordKey(url: string): string | null {
+  const m = /\/([a-z0-9_]+)\.do\?sys_id=([0-9a-f]{32})/i.exec(url);
+  return m ? `${m[1]!.toLowerCase()}:${m[2]!.toLowerCase()}` : null;
+}
+
+/**
+ * Keep only record links that came from the gathered data. A model can garble a long sys_id while
+ * copying it; such a link is turned back into its plain label so the report never links to a record
+ * that does not exist. List links and links to other sites are left alone.
+ */
+export function keepKnownLinks(content: string, data: unknown, instanceUrl: string): { content: string; removed: number } {
+  const host = instanceUrl.replace(/\/$/, '');
+  if (!host) return { content, removed: 0 };
+  const known = new Set([...knownUrls(data, host)].map(recordKey).filter(Boolean) as string[]);
+  let removed = 0;
+  const esc = host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const md = new RegExp(`\\[([^\\]\\n]{1,200})\\]\\((${esc}/[^\\s)]+)\\)`, 'g');
+  let out = content.replace(md, (whole, label: string, url: string) => {
+    const key = recordKey(url);
+    if (!key || known.has(key)) return whole;
+    removed++;
+    return label;
+  });
+  const bare = new RegExp(`(?<!\\()${esc}/[a-z0-9_]+\\.do\\?sys_id=[0-9a-f]{32}`, 'gi');
+  out = out.replace(bare, (url) => {
+    const key = recordKey(url);
+    if (!key || known.has(key)) return url;
+    removed++;
+    return '(record link left out: not in the gathered data)';
+  });
+  return { content: out, removed };
+}
+
 /** A clickable list view for a table and encoded query. */
 function listLink(client: ServiceNowClient, table: string, query: string): string {
   return `${String((client as any).instanceUrl ?? '').replace(/\/$/, '')}/${table}_list.do?sysparm_query=${encodeURIComponent(query)}`;
@@ -54,6 +101,8 @@ export interface DirectExecutionResult {
   model: string;
   usage?: { input_tokens: number; output_tokens: number };
   dataGathered: number;
+  /** Links to the instance that were not in the gathered data and were turned back into plain text. */
+  linksRemoved?: number;
 }
 
 /**
@@ -424,9 +473,11 @@ export async function executeDirectly(options: DirectExecutionOptions): Promise<
 
   // 5. Call LLM
   const response: LlmResponse = await callLlm(options.llmConfig, messages);
+  const checked = keepKnownLinks(response.content, data, client.instanceUrl);
 
   return {
-    content: response.content,
+    content: checked.content,
+    ...(checked.removed ? { linksRemoved: checked.removed } : {}),
     model: response.model,
     usage: response.usage,
     dataGathered: dataCount,

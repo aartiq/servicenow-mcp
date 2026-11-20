@@ -126,3 +126,21 @@ describe('direct-mode data plans', () => {
     }
   });
 });
+
+describe('only real record links survive', () => {
+  it('turns links that are not in the gathered data back into plain text', async () => {
+    const { keepKnownLinks } = await import('../../src/direct/executor.js');
+    const host = 'https://x.service-now.com';
+    const good = `${host}/cmdb_ci.do?sys_id=${'a'.repeat(32)}`;
+    const garbled = `${host}/cmdb_ci.do?sys_id=${'a'.repeat(16)}${'b'.repeat(16)}`;
+    const data = { cis: { records: [{ record_url: good }] } };
+    const text = `See [NY2A](${good}) and [NY2B](${garbled}), the [list](${host}/cmdb_ci_list.do?sysparm_query=x), ${garbled} and [docs](https://docs.servicenow.com).`;
+    const r = keepKnownLinks(text, data, host);
+    expect(r.removed).toBe(2);
+    expect(r.content).toContain(`[NY2A](${good})`);
+    expect(r.content).toContain('and NY2B,');
+    expect(r.content).toContain('cmdb_ci_list.do');
+    expect(r.content).toContain('[docs](https://docs.servicenow.com)');
+    expect(r.content).toContain('record link left out');
+  });
+});
