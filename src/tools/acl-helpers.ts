@@ -97,9 +97,9 @@ async function count(client: ServiceNowClient, table: string, query: string): Pr
 
 async function group(client: ServiceNowClient, table: string, field: string, query: string): Promise<Array<{ value: string; count: number }> | string> {
   try {
-    const rows = await client.runStats(table, { query, groupBy: field });
+    const rows = await client.runStats(table, { query, groupBy: field, displayValue: true });
     return rows
-      .map((r: any) => ({ value: String(r.groupby_fields?.[0]?.value ?? '') || '(empty)', count: Number(r.stats?.count ?? 0) }))
+      .map((r: any) => ({ value: String(r.groupby_fields?.[0]?.display_value || r.groupby_fields?.[0]?.value || '') || '(empty)', count: Number(r.stats?.count ?? 0) }))
       .sort((a, b) => b.count - a.count);
   } catch (err) {
     return errText(err);
@@ -174,7 +174,7 @@ export async function aclPosture(client: ServiceNowClient, opts: AclPostureOptio
   });
   const prop = (props.records as any[])[0];
   const strict = prop ? String(prop.value) : null;
-  const denyCount = Array.isArray(byDecision) ? byDecision.find((d) => d.value === 'deny')?.count ?? 0 : null;
+  const denyCount = Array.isArray(byDecision) ? byDecision.find((d) => /^deny/i.test(d.value))?.count ?? 0 : null;
   const notes = [(missingRows as any).note, (denyRows as any).note].filter(Boolean);
 
   return {

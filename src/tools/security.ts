@@ -70,7 +70,7 @@ export function getSecurityToolDefinitions() {
       inputSchema: {
         type: 'object',
         properties: {
-          state: { type: 'string', description: 'Filter by state: open, under_investigation, in_review, awaiting_implementation, deferred (risk_accepted), resolved, closed, or the number' },
+          state: { type: 'string', description: 'Filter by state: open (any active item), under_investigation, in_review, awaiting_implementation, deferred (risk_accepted), resolved, closed, or the number (1 is the Open state itself)' },
           severity: { type: 'string', description: 'Filter by risk rating: critical, high, medium, low, none' },
           ci_sysid: { type: 'string', description: 'Filter by affected CI sys_id' },
           cve: { type: 'string', description: 'Filter by CVE ID, e.g. CVE-2026-109618 (vulnerability.id)' },
@@ -372,7 +372,11 @@ export async function executeSecurityToolCall(
         if (args.query) parts.push(args.query);
         return await withPlugin('Vulnerability Response', () => client.queryRecords({ table: 'sn_vul_entry', query: parts.join('^') || '', limit: args.limit ?? 25, fields: 'sys_id,id,name,summary,cisa_exists,due_date,epss_score,epss_percentile,risk_score,sys_class_name' }));
       }
-      if (args.state) parts.push(`state=${mapChoice(VIT_STATES, args.state, 'vulnerable item state')}`);
+      if (args.state) {
+        // "open" means any item still being worked (active), as people use it; the Open state itself is 1.
+        if (String(args.state).trim().toLowerCase() === 'open') parts.push('active=true');
+        else parts.push(`state=${mapChoice(VIT_STATES, args.state, 'vulnerable item state')}`);
+      }
       if (args.severity) parts.push(`risk_rating=${mapChoice(RISK_RATINGS, args.severity, 'risk rating')}`);
       if (args.ci_sysid) parts.push(`cmdb_ci=${args.ci_sysid}`);
       if (args.cve) parts.push(`vulnerability.id=${String(args.cve).trim().toUpperCase()}`);

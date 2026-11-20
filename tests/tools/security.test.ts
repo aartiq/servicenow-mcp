@@ -66,7 +66,7 @@ describe('Security Operations tools', () => {
       // Vulnerable items carry the per-CI state and risk rating; the CVE library does not.
       expect(mockClient.queryRecords).toHaveBeenCalledWith(expect.objectContaining({
         table: 'sn_vul_vulnerable_item',
-        query: 'state=1^risk_rating=1',
+        query: 'active=true^risk_rating=1',
       }));
     });
   });
