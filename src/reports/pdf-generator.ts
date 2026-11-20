@@ -161,7 +161,10 @@ export async function generatePdf(data: ReportData, outputPath: string): Promise
 
   // ─── Findings by Section ───────────────────────────────────────────────
   for (const section of data.sections) {
-    if (section.findings.length === 0 && section.tables.length === 0) continue;
+    const prose = proseBlocks(section.content, data.instanceUrl);
+    // The executive summary already has its own page.
+    if (/^executive summary/i.test(section.title) && data.executiveSummary) continue;
+    if (section.findings.length === 0 && section.tables.length === 0 && prose.length === 0) continue;
 
     content.push({
       text: [
@@ -172,6 +175,9 @@ export async function generatePdf(data: ReportData, outputPath: string): Promise
       ],
       margin: [0, 15, 0, 10],
     });
+
+    // The section's own text (paragraphs and bullet lists), with clickable links.
+    content.push(...prose);
 
     // Findings table
     if (section.findings.length > 0) {
@@ -315,4 +321,45 @@ export async function generatePdf(data: ReportData, outputPath: string): Promise
 /** Let long ids (sys_ids, hashes) wrap inside table cells; URLs are left whole so they stay clickable. */
 export function breakLongTokens(text: string): string {
   return text.replace(/(?<![=/\w])([0-9a-f]{20,}|[A-Za-z0-9_]{36,})(?![\w)])/gi, (t) => t.replace(/(.{16})/g, '$1\u200B'));
+}
+
+/** Markdown prose (paragraphs, bullet and numbered lists) as pdfmake blocks with clickable links. */
+export function proseBlocks(markdown: string, instanceUrl: string): any[] {
+  const out: any[] = [];
+  const clean = (t: string) => t.replace(/\*\*(.+?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1').trim();
+  let para: string[] = [];
+  let list: { ordered: boolean; items: string[] } | null = null;
+  const flushPara = () => {
+    if (para.length) out.push({ text: linkifyTextPdf(clean(para.join(' ')), instanceUrl, { fontSize: FONT_SIZES.body, color: BRAND.text }), margin: [0, 0, 0, 6] });
+    para = [];
+  };
+  const flushList = () => {
+    if (list && list.items.length) {
+      const items = list.items.map((i) => ({ text: linkifyTextPdf(clean(i), instanceUrl, { fontSize: FONT_SIZES.body, color: BRAND.text }) }));
+      out.push(list.ordered ? { ol: items, margin: [0, 0, 0, 6] } : { ul: items, margin: [0, 0, 0, 6] });
+    }
+    list = null;
+  };
+  let inFence = false;
+  for (const raw of (markdown || '').split('\n')) {
+    const line = raw.replace(/\s+$/, '');
+    if (/^\s*```/.test(line)) { inFence = !inFence; continue; }
+    if (inFence || /^\s*[=-]{3,}\s*$/.test(line) || /^\s*#{4,}/.test(line)) continue;
+    const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
+    const num = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    if (!line.trim()) { flushPara(); flushList(); continue; }
+    if (bullet || num) {
+      flushPara();
+      const ordered = !!num;
+      if (!list || list.ordered !== ordered) { flushList(); list = { ordered, items: [] }; }
+      list.items.push((bullet ?? num)![1]!);
+      continue;
+    }
+    if (list && /^\s{2,}\S/.test(raw)) { list.items[list.items.length - 1] += ` ${line.trim()}`; continue; }
+    flushList();
+    para.push(line.trim());
+  }
+  flushPara();
+  flushList();
+  return out;
 }

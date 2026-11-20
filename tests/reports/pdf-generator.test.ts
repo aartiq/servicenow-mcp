@@ -73,3 +73,17 @@ describe('generatePdf', () => {
     expect(result.sizeBytes).toBeLessThan(500000);
   });
 });
+
+describe('section prose in PDFs', () => {
+  it('turns paragraphs and lists into blocks with clickable links', async () => {
+    const { proseBlocks } = await import('../../src/reports/pdf-generator.js');
+    const md = ['The **deadline** passed.', '', '- one [INC1](https://x.service-now.com/incident.do?sys_id=' + 'a'.repeat(32) + ')', '- two', '', '1. first', '2. second', '', '```', 'skip me', '```'].join('\n');
+    const blocks = proseBlocks(md, 'https://x.service-now.com');
+    expect(blocks).toHaveLength(3);
+    expect(JSON.stringify(blocks[0])).toContain('The deadline passed.');
+    expect(blocks[1].ul).toHaveLength(2);
+    expect(JSON.stringify(blocks[1])).toContain('"link":"https://x.service-now.com/incident.do');
+    expect(blocks[2].ol).toHaveLength(2);
+    expect(JSON.stringify(blocks)).not.toContain('skip me');
+  });
+});
