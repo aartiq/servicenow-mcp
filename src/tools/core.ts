@@ -16,6 +16,7 @@ import type {
   ServiceMappingSummaryParams,
 } from '../servicenow/types.js';
 import { ServiceNowError } from '../utils/errors.js';
+import { tableHierarchy } from './platform-insights.js';
 import { requireWrite } from '../utils/permissions.js';
 import { instanceManager } from '../servicenow/instances.js';
 import { assertWriteAllowed, assertDeleteAllowed } from '../utils/guardrails.js';
@@ -372,7 +373,15 @@ export async function executeCoreToolCall(
       if (params.displayValue === undefined) {
         params.displayValue = (args.display_value === undefined ? 'all' : args.display_value) as any;
       }
-      const response = await client.queryRecords(params);
+      let response;
+      try {
+        response = await client.queryRecords(params);
+      } catch (err) {
+        // ServiceNow answers a query on a field that doesn't exist with the same 403 it uses for a
+        // field you can't read. Say which fields are unknown so the caller fixes the query instead
+        // of reporting a permissions problem.
+        throw await explainUnknownFields(client, params, err);
+      }
       return { count: response.count, records: response.records, summary: `Found ${response.count} record(s) in "${params.table}"` };
     }
     case 'get_table_schema':
@@ -651,5 +660,47 @@ export async function executeCoreToolCall(
 
     default:
       return null; // not handled here
+  }
+}
+
+
+/** Field names an encoded query filters or sorts on (dot-walks keep their first segment). */
+export function queryFieldNames(query: string | undefined): string[] {
+  if (!query) return [];
+  const names = new Set<string>();
+  for (const raw of query.split('^')) {
+    const term = raw.trim().replace(/^(ORDERBYDESC|ORDERBY|GROUPBY)/, '').replace(/^(OR|NQ)(?=[a-z_])/, '');
+    const m = /^([a-z_][a-z0-9_]*)/.exec(term); // field names are lower case, operators upper case
+    if (m && m[1] !== 'javascript') names.add(m[1]);
+  }
+  return [...names];
+}
+
+/** Turn a "Field(s) present in the query do not have permission" 403 into an unknown-field error when that's what it is. */
+async function explainUnknownFields(client: ServiceNowClient, params: QueryRecordsParams, err: unknown): Promise<unknown> {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (!/Field\(s\) present in the query do not have permission/i.test(msg)) return err;
+  const wanted = [...new Set([...queryFieldNames(params.query), ...String(params.fields || '').split(',').map((f) => f.trim().split('.')[0].toLowerCase()).filter(Boolean)])];
+  if (!wanted.length) return err;
+  try {
+    const tables = await tableHierarchy(client, params.table);
+    const dict = await client.queryRecords({
+      table: 'sys_dictionary', query: `nameIN${tables.join(',')}^elementISNOTEMPTY`, fields: 'element', limit: 2000,
+    });
+    const known = new Set((dict.records as any[]).map((r) => String(r.element?.value ?? r.element ?? '').toLowerCase()));
+    if (known.size === 0) return err;
+    known.add('sys_id');
+    const unknown = wanted.filter((f) => !known.has(f));
+    if (!unknown.length) return err;
+    const sample = ['number', 'short_description', 'description', 'state', 'assignment_group', 'assigned_to', 'cmdb_ci', 'priority', 'sys_created_on']
+      .filter((f) => known.has(f));
+    return new ServiceNowError(
+      `${params.table} has no field named ${unknown.join(', ')}. This is a query mistake, not a permissions problem. ` +
+      `Fix the query and try again${sample.length ? ` (fields on this table include ${sample.join(', ')})` : ''}, ` +
+      `or call get_table_schema for the full list.`,
+      'INVALID_REQUEST',
+    );
+  } catch {
+    return err;
   }
 }
