@@ -130,10 +130,10 @@ function extractExecutiveSummary(markdown: string): string {
 
 function extractSummaryRaw(markdown: string): string {
   // Look for "EXECUTIVE SUMMARY" or "Executive Summary" heading
-  const pattern = /(?:^|\n)#+\s*(?:EXECUTIVE\s+SUMMARY|Executive\s+Summary)[^\n]*\n([\s\S]*?)(?=\n#|\n---|\n\*{3}|$)/i;
+  const pattern = /(?:^|\n)#+\s*(?:\d+[.)]\s*)?(?:EXECUTIVE\s+SUMMARY|Executive\s+Summary|Summary|Headline)[^\n]*\n([\s\S]*?)(?=\n#|\n---|\n\*{3}|$)/i;
   const match = markdown.match(pattern);
   if (match) {
-    return match[1].trim().split('\n').filter(l => l.trim()).slice(0, 10).join('\n');
+    return match[1].trim().split('\n').filter(l => l.trim() && !/^\s*(?:\*\*)?(?:area\s+)?score\b/i.test(l)).slice(0, 10).join('\n');
   }
 
   // Fallback: first paragraph after first heading

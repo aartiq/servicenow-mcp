@@ -183,3 +183,13 @@ describe('executive summary and long ids', () => {
     expect(breakLongTokens(url)).toBe(url);
   });
 });
+
+describe('numbered executive summary headings', () => {
+  it('finds "## 1. Executive summary with the score"', async () => {
+    const { parseMarkdown } = await import('../../src/reports/parser.js');
+    const md = ['# Report', 'Instance: demo2.', '', '## 1. Executive summary with the score', 'Score: 55/100', 'The CMDB is half way there.', '', '## 2. Detail', 'x'].join('\n');
+    const d = parseMarkdown(md, { title: 't', capability: 'csdm-data-foundations', instanceName: 'i', instanceUrl: 'https://x.service-now.com' });
+    expect(d.executiveSummary).toBe('The CMDB is half way there.');
+    expect(d.metrics.score).toBe(55);
+  });
+});
