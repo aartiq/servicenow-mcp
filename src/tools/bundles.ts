@@ -132,8 +132,18 @@ export async function executeBundleToolCall(
         service = await client.getRecord('cmdb_ci', args.name_or_sysid, 'sys_id,name,sys_class_name,operational_status');
       } else {
         const r = await client.queryRecords({ table: 'cmdb_ci', query: `name=${args.name_or_sysid}`, limit: 1, fields: 'sys_id,name,sys_class_name,operational_status' });
-        if (r.count === 0) throw new ServiceNowError(`Service or CI not found: ${args.name_or_sysid}`, 'NOT_FOUND');
-        service = r.records[0];
+        if (r.count === 0) {
+          // No exact match: try a partial name and offer the candidates instead of a bare "not found".
+          const like = await client.queryRecords({ table: 'cmdb_ci', query: `nameLIKE${args.name_or_sysid}^ORDERBYname`, limit: 10, fields: 'sys_id,name,sys_class_name' });
+          if (like.records.length === 1) service = like.records[0];
+          else if (like.records.length > 1) {
+            return {
+              found: false,
+              candidates: like.records.map((c: any) => client.attachRecordUrl('cmdb_ci', c)),
+              summary: `No CI is named exactly "${args.name_or_sysid}". ${like.records.length} CI(s) contain it; call again with one of their names or sys_ids.`,
+            };
+          } else throw new ServiceNowError(`Service or CI not found: ${args.name_or_sysid}`, 'NOT_FOUND');
+        } else service = r.records[0];
       }
       const sid = service?.sys_id && typeof service.sys_id === 'object' ? service.sys_id.value : service?.sys_id;
       const sname = service?.name && typeof service.name === 'object' ? service.name.value : service?.name;

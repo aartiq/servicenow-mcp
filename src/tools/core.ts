@@ -594,7 +594,10 @@ export async function executeCoreToolCall(
       const maxDepth = args.depth || 2;
       // In cmdb_rel_ci the parent depends on the child ("Depends on::Used by"). Walking to children gives
       // what this CI relies on; walking to parents gives what breaks when it fails. Default: both.
-      const direction = ['impacted', 'dependencies', 'both'].includes(args.direction) ? args.direction : 'both';
+      if (args.direction !== undefined && !['impacted', 'dependencies', 'both'].includes(args.direction)) {
+        throw new ServiceNowError(`direction must be impacted, dependencies or both, not "${args.direction}"`, 'INVALID_REQUEST');
+      }
+      const direction = args.direction || 'both';
       const ref = (v: any) => (v && typeof v === 'object' ? v.value : v) as string;
       const seen = new Set<string>([String(args.ci_sys_id)]);
 
@@ -604,7 +607,7 @@ export async function executeCoreToolCall(
         const resp = await client.queryRecords({
           table: 'cmdb_rel_ci',
           query: `${from}=${ciSysId}`,
-          fields: 'sys_id,child,type,parent',
+          fields: 'sys_id,child,type,parent,parent.name,parent.sys_class_name,child.name,child.sys_class_name,type.name',
           limit: 100,
         });
         const out: any[] = [];
@@ -613,7 +616,10 @@ export async function executeCoreToolCall(
           if (!nextId || visited.has(nextId)) continue;
           visited.add(nextId); seen.add(nextId);
           const deeper = await traverse(nextId, currentDepth + 1, from, visited);
-          out.push(from === 'parent' ? { relationship: rel, downstream: deeper } : { relationship: rel, impacted: deeper });
+          // Names and classes travel with each hop, so the result reads without a second lookup.
+          const r = rel as any;
+          const ci = { sys_id: nextId, name: ref(r[`${other}.name`]) || null, class: ref(r[`${other}.sys_class_name`]) || null, relationship_type: ref(r['type.name']) || null };
+          out.push(from === 'parent' ? { relationship: rel, ci, downstream: deeper } : { relationship: rel, ci, impacted: deeper });
         }
         return out;
       }

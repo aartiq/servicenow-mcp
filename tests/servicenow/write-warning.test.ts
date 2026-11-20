@@ -28,3 +28,24 @@ describe('updateRecord write verification', () => {
     expect(r._write_warning).not.toMatch(/work_notes/);
   });
 });
+
+describe('writes that time out', () => {
+  it('reads the record back and says the update may have committed, instead of UPDATE_FAILED', async () => {
+    process.env.NOWAIKIT_SKIP_MANDATORY_CHECK = 'true';
+    const abort = Object.assign(new Error('This operation was aborted'), { name: 'AbortError' });
+    vi.stubGlobal('fetch', vi.fn(async (_u: string, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'PATCH') throw abort;
+      return new Response(JSON.stringify({ result: { sys_id: 'a'.repeat(32), state: '3' } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+    await expect(mk().updateRecord('change_request', 'a'.repeat(32), { state: '3' })).rejects.toMatchObject({
+      code: 'WRITE_UNCONFIRMED',
+      message: expect.stringMatching(/appears to have committed/),
+    });
+  });
+
+  it('gives writes a longer timeout than reads by default', () => {
+    const c: any = mk();
+    expect(c.writeTimeoutMs).toBeGreaterThanOrEqual(120000);
+    expect(c.requestTimeoutMs).toBe(30000);
+  });
+});

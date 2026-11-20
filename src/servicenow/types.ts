@@ -41,6 +41,8 @@ export interface ServiceNowConfig {
   maxRetries?: number;
   retryDelayMs?: number;
   requestTimeoutMs?: number;
+  /** Timeout for writes (POST, PATCH, PUT, DELETE). Default 120 s, or WRITE_TIMEOUT_MS. */
+  writeTimeoutMs?: number;
 }
 
 export interface QueryRecordsParams {

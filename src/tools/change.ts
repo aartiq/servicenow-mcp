@@ -4,6 +4,7 @@
  */
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
+import { CHANGE_STATES, mapChoice } from './vr-helpers.js';
 import { requireWrite } from '../utils/permissions.js';
 
 export function getChangeToolDefinitions() {
@@ -63,7 +64,7 @@ export function getChangeToolDefinitions() {
         type: 'object',
         properties: {
           query: { type: 'string', description: 'Encoded query filter' },
-          state: { type: 'string', description: 'Change state (e.g., "-5"=Requested, "-4"=Draft, "0"=Open)' },
+          state: { type: 'string', description: 'Change state: new, assess, authorize, scheduled, implement, review, closed, canceled, or the number (-5 to 4)' },
           limit: { type: 'number', description: 'Max records (default: 10)' },
         },
         required: [],
@@ -165,7 +166,10 @@ export async function executeChangeToolCall(
     }
     case 'list_change_requests': {
       let query = args.query || '';
-      if (args.state) query = query ? `${query}^state=${args.state}` : `state=${args.state}`;
+      if (args.state) {
+        const st = mapChoice(CHANGE_STATES, args.state, 'change state');
+        query = query ? `${query}^state=${st}` : `state=${st}`;
+      }
       const resp = await client.queryRecords({ table: 'change_request', query: query || undefined, limit: args.limit || 10 });
       return { count: resp.count, records: resp.records };
     }
@@ -199,8 +203,11 @@ export async function executeChangeToolCall(
         throw new ServiceNowError('sys_id, close_code, and close_notes are required', 'INVALID_REQUEST');
       // The change model only allows Closed from Review (and Implement > Review). Walk forward from
       // Scheduled/Implement/Review; anything earlier still needs its approvals, so explain that.
-      const cur = await client.getRecord('change_request', args.sys_id, 'state');
+      const cur = await client.getRecord('change_request', args.sys_id, 'state,number');
       const state = String((cur as any).state);
+      if (state === '3') {
+        return { ...cur, already_closed: true, summary: `Change ${(cur as any).number || args.sys_id} is already closed; nothing was changed.` };
+      }
       const order = ['-2', '-1', '0'];
       if (!order.includes(state) && state !== '3') {
         throw new ServiceNowError(

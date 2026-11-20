@@ -70,6 +70,12 @@ export function forbiddenDiagnostic(authMethod: 'basic' | 'oauth'): string {
   return lines.join('\n');
 }
 
+/** True when a request was cut off by our own timeout (no answer from ServiceNow). */
+function isAbort(error: unknown): boolean {
+  const e = error as { name?: string; message?: string; cause?: { name?: string } } | undefined;
+  return e?.name === 'AbortError' || e?.cause?.name === 'AbortError' || /aborted|timed? ?out/i.test(String(e?.message ?? ''));
+}
+
 /**
  * A business-rule or data-policy abort. ServiceNow returns 403 for these, but they are NOT a
  * permissions problem, so we surface them separately and never show the roles/ACL checklist.
@@ -171,6 +177,7 @@ export class ServiceNowClient {
   private maxRetries: number;
   private retryDelayMs: number;
   private requestTimeoutMs: number;
+  private writeTimeoutMs: number;
 
   /** For impersonation mode: user sys_id to pass in X-Sn-Impersonate */
   private impersonateUserSysId?: string;
@@ -192,7 +199,9 @@ export class ServiceNowClient {
     this.basicConfig = config.basic;
     this.maxRetries = config.maxRetries ?? 3; // honor an explicit 0 (|| would turn 0 back into 3)
     this.retryDelayMs = config.retryDelayMs || 1000;
-    this.requestTimeoutMs = config.requestTimeoutMs || 30000;
+    this.requestTimeoutMs = config.requestTimeoutMs || Number(process.env.REQUEST_TIMEOUT_MS) || 30000;
+    // Writes can run business rules, flows and workflows synchronously, so they get longer by default.
+    this.writeTimeoutMs = config.writeTimeoutMs || Number(process.env.WRITE_TIMEOUT_MS) || Math.max(this.requestTimeoutMs, 120000);
     this.impersonateUserSysId = config.impersonateUserSysId;
     this.perUserBearerToken = config.perUserBearerToken;
     this.perUserRefreshToken = config.perUserRefreshToken;
@@ -505,7 +514,8 @@ export class ServiceNowClient {
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+        const isWrite = !['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase());
+        const timeout = setTimeout(() => controller.abort(), isWrite ? this.writeTimeoutMs : this.requestTimeoutMs);
 
         const extraHeaders: Record<string, string> = {};
         const impersonateHeader = this.getImpersonateHeader();
@@ -1249,6 +1259,12 @@ export class ServiceNowClient {
       return this.attachRecordUrl(table, response.result);
     } catch (error) {
       if (error instanceof ServiceNowError) throw error;
+      if (isAbort(error)) {
+        throw new ServiceNowError(
+          `The create in ${table} timed out with no answer from ServiceNow. It may still have been committed: check for the record before trying again, or you may create a duplicate.`,
+          'WRITE_UNCONFIRMED'
+        );
+      }
       throw new ServiceNowError(
         `Failed to create record in ${table}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'CREATE_FAILED'
@@ -1295,6 +1311,26 @@ export class ServiceNowClient {
       return this.attachRecordUrl(table, result as ServiceNowRecord);
     } catch (error) {
       if (error instanceof ServiceNowError) throw error;
+      if (isAbort(error)) {
+        // No answer in time. The update may still have committed, so read the record back and say so
+        // instead of reporting a failure that invites a retry (or a duplicate follow-up record).
+        let detail = 'The record could not be read back.';
+        try {
+          const fields = Object.keys(data).filter((f) => !JOURNAL_FIELDS.has(f));
+          const now = await this.getRecord(table, sysId, fields.join(',') || 'sys_id,sys_updated_on');
+          const applied = fields.filter((f) => {
+            const v = (now as any)[f];
+            return String(v && typeof v === 'object' ? v.value : v ?? '').trim() === String(data[f] ?? '').trim();
+          });
+          detail = fields.length && applied.length === fields.length
+            ? 'Reading the record back shows the requested values, so the update appears to have committed.'
+            : `Reading the record back: ${applied.length} of ${fields.length} requested field(s) show the new value.`;
+        } catch { /* keep the default detail */ }
+        throw new ServiceNowError(
+          `The update of ${table} ${sysId} timed out with no answer from ServiceNow and may have committed. ${detail} Check the record before trying again.`,
+          'WRITE_UNCONFIRMED'
+        );
+      }
       throw new ServiceNowError(
         `Failed to update record ${sysId} in ${table}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'UPDATE_FAILED'
