@@ -195,6 +195,15 @@ export function findAllEntityMatches(text: string, instanceUrl: string): EntityM
  * Returns a single string if no entities found, or an array of text objects.
  */
 export function linkifyTextPdf(text: string, instanceUrl: string, baseStyle: Record<string, any> = {}): any {
+  // Model output often carries markdown **bold**; render it as bold rather than literal asterisks.
+  if (/\*\*[^*]+\*\*/.test(text)) {
+    const parts = text.split(/(\*\*[^*]+\*\*)/).filter((p) => p !== '');
+    return parts.flatMap((part) => {
+      const bold = /^\*\*[^*]+\*\*$/.test(part);
+      const runs = linkifyTextPdf(bold ? part.slice(2, -2) : part, instanceUrl, bold ? { ...baseStyle, bold: true } : baseStyle);
+      return Array.isArray(runs) ? runs : [runs];
+    });
+  }
   const matches = findAllEntityMatches(text, instanceUrl);
   if (matches.length === 0) return { text, ...baseStyle };
 
