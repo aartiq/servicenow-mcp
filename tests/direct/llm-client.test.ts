@@ -41,7 +41,7 @@ describe('claude-cli provider', () => {
         { role: 'system', content: 'SYSTEM RULES' },
         { role: 'user', content: 'THE DATA' },
       ]);
-      expect(r.content).toContain('ARGS:-p|ARGS:--tools|ARGS:|ARGS:--strict-mcp-config|');
+      expect(r.content).toContain('ARGS:-p|ARGS:--tools|ARGS:|ARGS:--strict-mcp-config|ARGS:--effort|ARGS:low|');
       expect(r.content).not.toContain('--append-system-prompt');
       expect(r.content.indexOf('SYSTEM RULES')).toBeLessThan(r.content.indexOf('THE DATA'));
     } finally {

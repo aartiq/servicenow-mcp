@@ -377,7 +377,9 @@ async function callClaudeCli(config: LlmConfig, messages: LlmMessage[]): Promise
   // data in the prompt instead of starting an agent loop (which can stall waiting for permissions).
   // The skill instructions go in the prompt itself, not --append-system-prompt: a long appended
   // system prompt made headless runs hang until the timeout.
-  const args = ['-p', '--tools', '', '--strict-mcp-config'];
+  // Low effort by default: the data is already gathered, so long thinking only slows the report down.
+  // NOWAIKIT_CLAUDE_EFFORT (low, medium, high, xhigh, max) changes it.
+  const args = ['-p', '--tools', '', '--strict-mcp-config', '--effort', process.env.NOWAIKIT_CLAUDE_EFFORT || 'low'];
   if (config.model) args.push('--model', config.model);
   const full = system ? `${system}\n\n---\n\n${prompt}` : prompt;
   const text = await runCli(bin, args, full, config.timeoutMs ?? cliTimeoutMs());
