@@ -102,6 +102,8 @@ import { getOttoToolDefinitions, executeOttoToolCall } from './otto.js';
 import { getAiPlatformToolDefinitions, executeAiPlatformToolCall } from './ai-platform.js';
 // Release info, Process Mining, ATF coverage, table operation trace, integration auth, CSDM health, MCP exposure
 import { getPlatformInsightsToolDefinitions, executePlatformInsightsToolCall } from './platform-insights.js';
+// Named threats and CISA KEV compliance (Vulnerability Response)
+import { getVrInsightsToolDefinitions, executeVrInsightsToolCall } from './vr-insights.js';
 import { getDocsToolDefinitions, executeDocsToolCall } from './docs.js';
 // Now Assist Skills
 import { getNowAssistSkillsToolDefinitions, executeNowAssistSkillsToolCall } from './now-assist-skills.js';
@@ -370,6 +372,7 @@ const ALL_TOOLS = [
   ...getOttoToolDefinitions(),
   ...getAiPlatformToolDefinitions(),
   ...getPlatformInsightsToolDefinitions(),
+  ...getVrInsightsToolDefinitions(),
   ...getDocsToolDefinitions(),
   ...getNowAssistSkillsToolDefinitions(),
   ...getAiAgentsToolDefinitions(),
@@ -480,6 +483,11 @@ const SEARCH_SYNONYMS: Record<string, string[]> = {
   oauth: ['auth', 'oauth'],
   teams: ['team', 'agent'],
   metrics: ['metrics', 'runtime'],
+  cve: ['vulnerability', 'threat', 'cve'],
+  kev: ['kev', 'vulnerability'],
+  vuln: ['vulnerability'],
+  zero: ['threat', 'vulnerability'],
+  sir: ['security_incident'],
 };
 
 function searchTerms(query: string): string[] {
@@ -700,6 +708,7 @@ export async function executeTool(
     () => executeOttoToolCall(client, name, args),
     () => executeAiPlatformToolCall(client, name, args),
     () => executePlatformInsightsToolCall(client, name, args),
+    () => executeVrInsightsToolCall(client, name, args),
     () => executeDocsToolCall(name, args),
     () => executeNowAssistSkillsToolCall(client, name, args),
     () => executeAiAgentsToolCall(client, name, args),

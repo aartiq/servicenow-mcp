@@ -47,12 +47,15 @@ const KEY_SECTIONS: Record<string, { args?: Record<string, string>; table?: stri
   'atf-coverage': { keys: ['atf_code_coverage', 'atf_suites', 'recent_test_results'] },
   'table-execution-order': { table: 'incident', keys: ['trace', 'trace_insert', 'same_order_collisions'] },
   'process-insights': { keys: ['process_mining_projects', 'process_mining_findings', 'reassignment_by_group_90d'] },
+  'zero-day-response': { args: { threat: 'PHP2Shell' }, keys: ['threat_status', 'kev_compliance', 'security_dashboard'] },
+  'kev-compliance-report': { keys: ['kev_compliance', 'open_kev_items', 'security_dashboard'] },
+  'vuln-exposure-brief': { args: { cve: 'CVE-2026-109618' }, keys: ['security_dashboard', 'kev_compliance', 'threat_status'] },
 };
 
 describe('direct-mode data plans', () => {
   it('every capability has a plan, and every planned tool exists and only reads', async () => {
     const caps = getCapabilityMeta();
-    expect(caps.length).toBeGreaterThanOrEqual(35);
+    expect(caps.length).toBeGreaterThanOrEqual(38);
     for (const cap of caps) {
       expect(DATA_PLANS[cap.name], `plan for ${cap.name}`).toBeDefined();
       for (const s of DATA_PLANS[cap.name]!) {

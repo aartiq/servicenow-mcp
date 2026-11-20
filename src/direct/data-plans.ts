@@ -317,6 +317,29 @@ export const DATA_PLANS: Record<string, PlanStep[]> = {
     { key: 'stale_operational', tool: 'cmdb_find_stale', args: () => ({ lifecycle_model: 'either', limit: 10 }), limit: 4000 },
     { key: 'ai_inventory_cis', tool: 'list_ai_inventory_cis', args: () => ({ mode: 'gaps', limit: 5 }), limit: 4000 },
   ],
+  'zero-day-response': [
+    { key: 'threat_status', tool: 'get_threat_status', args: (c) => (c.args.cve || c.args.threat ? { cve: c.args.cve || undefined, name: c.args.threat || undefined, limit: 100 } : null), limit: 20000, why: 'needs --arg cve=<CVE IDs> or --arg threat=<name>' },
+    { key: 'remediation_task', tool: 'get_vulnerability', args: (c) => {
+      const n = pick(c.results, 'threat_status.remediation_tasks.0.number');
+      return n ? { number_or_sysid: n } : null;
+    }, limit: 8000, why: 'no remediation task for this threat' },
+    { key: 'security_incident', tool: 'get_security_incident', args: (c) => {
+      const n = pick(c.results, 'threat_status.security_incidents.0.number');
+      return n ? { number_or_sysid: n } : null;
+    }, limit: 9000, why: 'no security incident mentions this threat' },
+    { key: 'kev_compliance', tool: 'get_kev_compliance', args: () => ({ limit: 15 }), limit: 6000 },
+    { key: 'security_dashboard', tool: 'get_security_dashboard', args: () => ({}), limit: 2000 },
+  ],
+  'kev-compliance-report': [
+    { key: 'kev_compliance', tool: 'get_kev_compliance', args: (c) => ({ days: Number(c.args.days) || 90, limit: 40 }), limit: 14000 },
+    { key: 'open_kev_items', tool: 'list_vulnerabilities', args: () => ({ kev: true, active: true, limit: 50 }), limit: 9000 },
+    { key: 'security_dashboard', tool: 'get_security_dashboard', args: () => ({}), limit: 2000 },
+  ],
+  'vuln-exposure-brief': [
+    { key: 'security_dashboard', tool: 'get_security_dashboard', args: () => ({}), limit: 2000 },
+    { key: 'kev_compliance', tool: 'get_kev_compliance', args: () => ({ limit: 10 }), limit: 6000 },
+    { key: 'threat_status', tool: 'get_threat_status', args: (c) => (c.args.cve || c.args.threat ? { cve: c.args.cve || undefined, name: c.args.threat || undefined, limit: 30 } : null), limit: 12000, why: 'no named threat given (--arg threat=<name> or --arg cve=<IDs>)' },
+  ],
   'mcp-exposure-review': [
     step.mcpExposure,
     { key: 'external_agents', tool: 'list_external_agents', args: () => ({ limit: 15 }), limit: 5000 },
