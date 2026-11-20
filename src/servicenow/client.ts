@@ -168,6 +168,21 @@ export function validateQuery(query: string): string {
 /** Journal fields always read back empty after a write, so they can't be verified from the response. */
 const JOURNAL_FIELDS = new Set(['work_notes', 'comments', 'comments_and_work_notes']);
 
+/**
+ * Tables whose obvious name is not where the data lives on current releases. When a read of one of
+ * these is refused, point the caller (usually a model) at the right table instead of a bare 403.
+ */
+const TABLE_HINTS: Record<string, string> = {
+  sn_vul_remediation_task:
+    'Hint: on Vulnerability Response 26.x, remediation tasks (VUL numbers) are stored in sn_vul_vulnerability, not sn_vul_remediation_task. ' +
+    'Use get_vulnerability with the VUL number, or query sn_vul_vulnerability.',
+};
+
+function tableHintFor(url: string): string | undefined {
+  const m = /\/api\/now\/(?:v\d+\/)?table\/([a-z0-9_]+)/i.exec(url);
+  return m ? TABLE_HINTS[m[1].toLowerCase()] : undefined;
+}
+
 export class ServiceNowClient {
   private baseUrl: string;
   private authMethod: 'oauth' | 'basic';
@@ -591,7 +606,8 @@ export class ServiceNowClient {
               errorMessage = `${errorMessage}\n\n${businessRuleAbortDiagnostic()}`;
             } else {
               errorCode = 'INSUFFICIENT_PRIVILEGES';
-              errorMessage = `${errorMessage}\n\n${forbiddenDiagnostic(this.authMethod)}`;
+              const hint = tableHintFor(url);
+              errorMessage = `${errorMessage}${hint ? `\n\n${hint}` : ''}\n\n${forbiddenDiagnostic(this.authMethod)}`;
             }
           } else if (response.status === 404) {
             errorCode = 'NOT_FOUND';
