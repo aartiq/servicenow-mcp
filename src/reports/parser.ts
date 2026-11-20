@@ -95,17 +95,21 @@ function enrichFinding(finding: ReportFinding, lines: string[]): void {
 function parseTable(lines: string[]): ReportTable | null {
   if (lines.length < 2) return null;
 
+  // Keep empty cells (an empty cell is still a column) and drop only the outer pipes.
   const parseRow = (line: string): string[] =>
-    line.split('|').map(c => c.trim()).filter(c => c.length > 0);
+    line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
 
-  const headers = parseRow(lines[0]);
-  if (headers.length === 0) return null;
+  const headers = parseRow(lines[0]).filter((h, i, a) => h.length > 0 || i < a.length - 1);
+  if (headers.length === 0 || headers.every((h) => !h)) return null;
 
-  // Skip separator line (line[1])
+  // Skip separator line (line[1]). Every row gets exactly one cell per header.
   const rows: string[][] = [];
   for (let i = 2; i < lines.length; i++) {
-    const row = parseRow(lines[i]);
-    if (row.length > 0) rows.push(row);
+    const cells = parseRow(lines[i]);
+    if (cells.every((c) => !c)) continue;
+    const row = headers.map((_, j) => cells[j] ?? '');
+    if (cells.length > headers.length) row[headers.length - 1] = cells.slice(headers.length - 1).join(' | ');
+    rows.push(row);
   }
 
   if (rows.length === 0) return null;

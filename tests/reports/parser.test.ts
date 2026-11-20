@@ -156,3 +156,14 @@ describe('parseMarkdown', () => {
     expect(result.metrics.totalFindings).toBe(0);
   });
 });
+
+describe('tables with empty cells', () => {
+  it('keeps one cell per header so the PDF never gets an undefined cell', async () => {
+    const { parseMarkdown } = await import('../../src/reports/parser.js');
+    const md = ['## Metrics', '', '| Metric | Result | Note |', '|---|---|---|', '| A | 50% | |', '| B | | x |', '| C | 1 | a | b |', ''].join('\n');
+    const d = parseMarkdown(md, { title: 't', capability: 'csdm-data-foundations', instanceName: 'i', instanceUrl: 'https://x.service-now.com' });
+    const t = d.sections[0]!.tables[0]!;
+    expect(t.headers).toEqual(['Metric', 'Result', 'Note']);
+    expect(t.rows).toEqual([['A', '50%', ''], ['B', '', 'x'], ['C', '1', 'a | b']]);
+  });
+});

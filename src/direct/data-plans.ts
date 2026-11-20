@@ -141,7 +141,7 @@ export const DATA_PLANS: Record<string, PlanStep[]> = {
   ],
   'scan-cmdb': [
     { key: 'cmdb_health_dashboard', tool: 'cmdb_health_dashboard', args: () => ({}), limit: 4000 },
-    { key: 'data_foundations', tool: 'get_cmdb_data_foundations', args: () => ({ limit: 5 }), limit: 12000 },
+    { key: 'data_foundations', tool: 'get_cmdb_data_foundations', args: () => ({ limit: 5 }), limit: 26000 },
     { key: 'csdm_health', tool: 'get_csdm_health', args: () => ({ limit: 8 }), limit: 9000 },
     { key: 'ci_classes', stats: (c) => ({ table: 'cmdb_ci', query: c.args.ci_class ? `sys_class_name=${safeArg(c.args.ci_class)}` : '', groupBy: 'sys_class_name' }) },
     { key: 'duplicates', tool: 'cmdb_find_duplicates', args: (c) => ({ ci_class: c.args.ci_class || 'cmdb_ci_server', limit: 300 }), limit: 4000 },
@@ -310,7 +310,7 @@ export const DATA_PLANS: Record<string, PlanStep[]> = {
     { key: 'same_order_collisions', stats: (c) => ({ table: 'sys_script', query: `collection=${tableOr(c, 'incident')}^active=true`, groupBy: 'when,order' }), limit: 3000 },
   ],
   'csdm-data-foundations': [
-    { key: 'data_foundations', tool: 'get_cmdb_data_foundations', args: () => ({ limit: 5 }), limit: 14000 },
+    { key: 'data_foundations', tool: 'get_cmdb_data_foundations', args: () => ({ limit: 5 }), limit: 26000 },
     { key: 'csdm_health', tool: 'get_csdm_health', args: () => ({ limit: 8 }), limit: 10000 },
     { key: 'life_cycle_by_stage', stats: { table: 'cmdb_ci', groupBy: 'life_cycle_stage' } },
     { key: 'install_status_mix', stats: { table: 'cmdb_ci', groupBy: 'install_status' } },
@@ -434,7 +434,7 @@ export async function gatherPlan(
         const rows = await client.runStats(st.table, { query: st.query, groupBy: st.groupBy, avgFields: st.avgFields, sumFields: st.sumFields, displayValue: true });
         const out = rows.map((r: any) => {
           const o: Record<string, unknown> = {};
-          for (const g of r.groupby_fields || []) o[g.field] = g.display_value ?? g.value ?? '';
+          for (const g of r.groupby_fields || []) o[g.field] = g.display_value || g.value || '';
           o.count = Number(r.stats?.count ?? 0);
           for (const [k, v] of Object.entries(r.stats?.avg || {})) o[`avg_${k}`] = Math.round((Number(v) || 0) * 100) / 100;
           for (const [k, v] of Object.entries(r.stats?.sum || {})) o[`sum_${k}`] = Number(v) || 0;
