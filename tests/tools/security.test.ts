@@ -6,6 +6,8 @@ const mockClient: any = {
   getRecord: vi.fn(),
   updateRecord: vi.fn(),
   queryRecords: vi.fn(),
+  attachRecordUrl: (_t: string, r: any) => r,
+  recordUrl: (t: string, id: string) => `https://x.service-now.com/${t}.do?sys_id=${id}`,
 };
 
 beforeEach(() => {
@@ -61,9 +63,10 @@ describe('Security Operations tools', () => {
     it('lists vulnerabilities with state filter', async () => {
       mockClient.queryRecords.mockResolvedValue({ count: 5, records: [] });
       await executeSecurityToolCall(mockClient, 'list_vulnerabilities', { state: 'open', severity: 'critical' });
+      // Vulnerable items carry the per-CI state and risk rating; the CVE library does not.
       expect(mockClient.queryRecords).toHaveBeenCalledWith(expect.objectContaining({
-        table: 'sn_vul_entry',
-        query: 'state=open^severity=critical',
+        table: 'sn_vul_vulnerable_item',
+        query: 'state=1^risk_rating=1',
       }));
     });
   });
@@ -88,7 +91,7 @@ describe('Security Operations tools', () => {
       mockClient.queryRecords.mockResolvedValue({ count: 0, records: [] });
       await executeSecurityToolCall(mockClient, 'get_threat_intelligence', { query: '1.2.3.4', type: 'ip_address' });
       expect(mockClient.queryRecords).toHaveBeenCalledWith(expect.objectContaining({
-        query: 'type=ip_address^valueCONTAINS1.2.3.4',
+        query: 'valueCONTAINS1.2.3.4^type.value=ip_address^ORtype.name=ip_address',
       }));
     });
   });
