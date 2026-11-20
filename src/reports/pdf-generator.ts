@@ -13,6 +13,14 @@ export async function generatePdf(data: ReportData, outputPath: string): Promise
   const { writeFileSync } = await import('fs');
 
   // pdfmake v0.3: CJS module, use .default from ESM dynamic import
+  // pdfmake's browser build probes localStorage. On Node 25+ the global's getter prints a
+  // "--localstorage-file" warning when read, so shadow it with a plain undefined first.
+  try {
+    const desc = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    if (desc && typeof desc.get === 'function') {
+      Object.defineProperty(globalThis, 'localStorage', { value: undefined, configurable: true, writable: true });
+    }
+  } catch { /* leave it as is */ }
   const pdfmake = (await import('pdfmake/build/pdfmake.js')).default;
   const vfsFonts = (await import('pdfmake/build/vfs_fonts.js')).default;
 
