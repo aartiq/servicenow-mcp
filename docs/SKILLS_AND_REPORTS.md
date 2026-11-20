@@ -38,6 +38,9 @@ Before the model is called, NowAIKit runs the skill's data plan: the read-only t
 | `atf-coverage` | ATF code coverage per script, recently changed scripts with no tests, suites and results, and the tests to write first |
 | `table-execution-order` | Everything that runs for one table operation in order (ACLs, data policies, business rules, engines, notifications, flows, workflows), with a Mermaid diagram |
 | `process-insights` | Process Mining projects and findings plus reassignment and reopen data: bottlenecks, automation candidates and a plan |
+| `zero-day-response` | One named threat from intel to closure: the CVEs and their CISA KEV deadline, vulnerable items and services, remediation tasks, changes, exceptions and the security incident, with next actions |
+| `kev-compliance-report` | CISA KEV items against their due dates: fixed on time, late, open and overdue, by group and CVE, with the trend |
+| `vuln-exposure-brief` | A one-page CISO brief: posture, KEV position, a named threat, exposed services and the decisions needed |
 
 Existing skills now cover more: `scan-upgrade` reads the release from `glide.buildtag.last` and checks the known Australia and Brazil changes, `review-acls` and `scan-security` cover Deny Unless ACLs and ACLs whose role no longer exists, and `scan-cmdb` uses Data Foundations and the CSDM life cycle fields.
 
@@ -45,7 +48,12 @@ Existing skills now cover more: `scan-upgrade` reads the release from `glide.bui
 nowaikit run ai-governance-audit -i demo2 -p claude-cli -o ai-governance.md
 nowaikit run table-execution-order -i demo2 -t incident --arg operation=insert
 nowaikit report csdm-data-foundations -i demo2 -p claude-cli --brand-company "Acme"
+nowaikit report zero-day-response -i demo2 -p claude-cli --arg threat=PHP2Shell --arg cve=CVE-2026-109618,CVE-2026-109619
 ```
+
+Record links in a report always come from the gathered data. If the model writes a link to a record that is not in the data (for example a garbled sys_id), NowAIKit turns it back into plain text.
+
+With `-p claude-cli`, the call runs with no tools and at low effort, since the data is already gathered. Set `NOWAIKIT_CLAUDE_EFFORT` (low, medium, high) and `NOWAIKIT_LLM_TIMEOUT_MS` (default 10 minutes) to change that.
 
 ## Instance Scan skills
 

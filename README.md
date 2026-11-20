@@ -21,7 +21,7 @@
 
 ## Coming next (unreleased)
 
-- **New assessments:** AI governance, CSDM and Data Foundations, integration authentication (Basic auth restriction), MCP and A2A exposure, ATF coverage, what runs when, and process insights.
+- **New assessments:** AI governance, CSDM and Data Foundations, integration authentication (Basic auth restriction), MCP and A2A exposure, ATF coverage, what runs when, process insights, and for security teams a zero-day response report, KEV compliance and a one-page CISO brief.
 - **Grounded reports:** every skill gathers its data first, links each record, scores 0 to 100, and writes a findings register next to the PDF.
 - **Platform Analytics dashboards, Deny Unless ACLs, CSDM life cycle** and the LLM provider behind each Otto skill.
 
@@ -127,7 +127,7 @@ Set `SN_PERSONA` (or `--persona`) to a short name, or `MCP_TOOL_PACKAGE` to the 
 
 | `SN_PERSONA` | `MCP_TOOL_PACKAGE` | Tools |
 |--------------|--------------------|------:|
-| `full` | `full` (default) | 578 |
+| `full` | `full` (default) | 581 |
 | `itsm` | `service_desk` | 27 |
 | `change` | `change_coordinator` | 21 |
 | `knowledge` | `knowledge_author` | 14 |

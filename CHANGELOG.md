@@ -29,8 +29,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   order, with a Mermaid diagram), `get_atf_code_coverage`, `list_process_mining_projects`,
   `get_process_mining_findings`, `get_integration_auth_posture`, `get_csdm_health`,
   `get_cmdb_data_foundations` and `get_mcp_exposure`.
-- **Seven new Apex skills:** `ai-governance-audit`, `csdm-data-foundations`, `integration-auth-audit`,
-  `mcp-exposure-review`, `atf-coverage`, `table-execution-order` and `process-insights`.
+- **Ten new Apex skills:** `ai-governance-audit`, `csdm-data-foundations`, `integration-auth-audit`,
+  `mcp-exposure-review`, `atf-coverage`, `table-execution-order`, `process-insights`, and for security
+  teams `zero-day-response`, `kev-compliance-report` and `vuln-exposure-brief`.
+- **Security tools.** `get_threat_status` (one named threat across CVEs, vulnerable items, services,
+  remediation tasks, changes, exceptions and security incidents), `get_kev_compliance` (KEV items against
+  their CISA due dates) and `create_change_from_remediation_task` (Vulnerability Response's own Create
+  Change, so the change and its links stay in sync).
 - **Grounded direct mode.** `nowaikit run` and `nowaikit report` gather each skill's data with read-only
   tool calls before the model runs, link every record, and list anything they could not gather. New
   `--arg key=value` passes skill arguments such as an incident or change number.

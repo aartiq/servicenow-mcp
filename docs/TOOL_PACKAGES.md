@@ -37,7 +37,7 @@ picks the package for you.
 
 | Package | `SN_PERSONA` | Target role | Tools |
 |---------|--------------|-------------|------:|
-| `full` | `full` | All roles (default) | 578 |
+| `full` | `full` | All roles (default) | 581 |
 | `service_desk` | `itsm` | IT help desk agent | 27 |
 | `change_coordinator` | `change` | Change manager | 21 |
 | `knowledge_author` | `knowledge` | KB content creator | 14 |
@@ -77,7 +77,7 @@ npx -y nowaikit --persona itsm
 ## Package definitions
 
 ### full
-All 578 tools. Default when `MCP_TOOL_PACKAGE` is not set.
+All 581 tools. Default when `MCP_TOOL_PACKAGE` is not set.
 
 ### service_desk
 Tools for IT help desk agents handling incidents, requests, and approvals.
