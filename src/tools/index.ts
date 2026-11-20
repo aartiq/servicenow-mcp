@@ -435,6 +435,12 @@ const LEAN_CORE_TOOL_NAMES = new Set([
 /** Everyday ServiceNow words → the terms tool names and descriptions actually use. */
 const SEARCH_SYNONYMS: Record<string, string[]> = {
   ticket: ['incident', 'task', 'request'],
+  remediation: ['vulnerability', 'remediation'],
+  vul: ['vulnerability'],
+  vit: ['vulnerability'],
+  'zero-day': ['threat', 'vulnerability'],
+  zeroday: ['threat', 'vulnerability'],
+  exploit: ['vulnerability', 'security'],
   tickets: ['incident', 'task', 'request'],
   rfc: ['change'],
   cr: ['change'],
@@ -497,6 +503,12 @@ function searchTerms(query: string): string[] {
     out.add(term);
     if (term.length > 3 && term.endsWith('s')) out.add(term.slice(0, -1)); // incidents → incident
     for (const syn of SEARCH_SYNONYMS[term] || []) out.add(syn);
+    // Record numbers (VUL0019001, INC0010062, CHG0030001): also search on their prefix.
+    const prefix = /^([a-z]{2,4})\d{4,}$/.exec(term)?.[1];
+    if (prefix) {
+      out.add(prefix);
+      for (const syn of SEARCH_SYNONYMS[prefix] || []) out.add(syn);
+    }
   }
   return [...out];
 }
