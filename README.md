@@ -19,11 +19,16 @@
 
 ---
 
-## Coming next (unreleased)
+## What's new in 5.1
 
-- **New assessments:** AI governance, CSDM and Data Foundations, integration authentication (Basic auth restriction), MCP and A2A exposure, ATF coverage, what runs when, process insights, and for security teams a zero-day response report, KEV compliance and a one-page CISO brief.
-- **Grounded reports:** every skill gathers its data first, links each record, scores 0 to 100, and writes a findings register next to the PDF.
-- **Platform Analytics dashboards, Deny Unless ACLs, CSDM life cycle** and the LLM provider behind each Otto skill.
+- **Zero-day and KEV response.** `get_threat_status` follows one named threat across CVEs, vulnerable items, services, remediation tasks, changes, exceptions and security incidents. `get_kev_compliance` checks KEV items against their CISA due dates, and `create_change_from_remediation_task` uses Vulnerability Response's own Create Change.
+- **Ten new Apex skills**, including `zero-day-response`, `kev-compliance-report`, `vuln-exposure-brief`, `ai-governance-audit`, `csdm-data-foundations` and `mcp-exposure-review`.
+- **Australia and Brazil ready:** Platform Analytics dashboards, Deny Unless ACLs with a check for missing roles, CSDM life cycle in the CMDB tools, and `get_release_info`.
+- **AI platform insight:** the model provider behind each Otto skill, who can run each AI agent, runtime metrics and external agent runs.
+- **Grounded reports:** every skill gathers its data first, links each record, scores 0 to 100, and writes a CSV and JSON findings register next to the PDF.
+- `trace_table_operation` shows everything that runs for one table operation, in order, with a diagram.
+
+Read the full write-up: [NowAIKit 5.1](https://nowaikit.com/blog/nowaikit-5-1).
 
 ---
 
@@ -200,3 +205,7 @@ Providing NowAIKit as a hosted or managed service, reselling it, or embedding it
 ---
 
 © 2026 NowAIKit · Source available under the [Elastic License 2.0](LICENSE)
+
+---
+
+NowAIKit is an independent product and is not affiliated with, endorsed by or sponsored by ServiceNow, Inc. ServiceNow, Now Assist, Otto and related marks are trademarks of ServiceNow, Inc., used here only to describe compatibility.
