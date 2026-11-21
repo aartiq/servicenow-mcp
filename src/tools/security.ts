@@ -87,7 +87,7 @@ export function getSecurityToolDefinitions() {
     },
     {
       name: 'get_vulnerability',
-      description: 'Get a vulnerability record by reference: VIT... (vulnerable item), VUL... (remediation task, sn_vul_vulnerability, with its items), CVE-... (CVE library entry with KEV and EPSS), or a sys_id (vulnerable item first, then the library entry)',
+      description: 'Get a vulnerability record. Pass number_or_sysid: VIT... (vulnerable item), VUL... (remediation task, sn_vul_vulnerability, with its items), CVE-... (CVE library entry with KEV and EPSS), or a sys_id (vulnerable item first, then the library entry)',
       inputSchema: {
         type: 'object',
         properties: {
@@ -404,8 +404,10 @@ export async function executeSecurityToolCall(
       return { ...resp, records: resp.records.map((r: any) => client.attachRecordUrl('sn_vul_vulnerable_item', r)) };
     }
     case 'get_vulnerability': {
-      if (!args.number_or_sysid) throw new ServiceNowError('number_or_sysid is required', 'INVALID_REQUEST');
-      const ref = classifyVulnRef(String(args.number_or_sysid));
+      // Accept the names models commonly reach for, not only number_or_sysid.
+      const given = args.number_or_sysid ?? args.reference ?? args.number ?? args.id ?? args.sys_id ?? args.cve;
+      if (!given) throw new ServiceNowError('number_or_sysid is required (a VIT, VUL or CVE- reference, or a sys_id)', 'INVALID_REQUEST');
+      const ref = classifyVulnRef(String(given));
       const one = async (table: string, query: string) => {
         const r = await client.queryRecords({ table, query, limit: 1, displayValue: 'all' });
         return r.records[0] ? client.attachRecordUrl(table, r.records[0]) : undefined;
