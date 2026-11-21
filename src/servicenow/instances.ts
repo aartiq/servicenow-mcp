@@ -294,6 +294,9 @@ export class InstanceManager {
 
   /** Return client for named instance (or current instance if no name given). */
   getClient(name?: string): ServiceNowClient {
+    if (this.instances.size === 0) {
+      throw new Error('No ServiceNow instance is configured. Run `nowaikit setup`, or set SERVICENOW_INSTANCE_URL (and credentials) or SN_INSTANCES_CONFIG, then restart your MCP client.');
+    }
     const target = name ? name.toLowerCase() : this.currentName;
     const entry = this.instances.get(target);
     if (!entry) {

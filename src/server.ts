@@ -51,8 +51,9 @@ const hasConfig = !!process.env.SN_INSTANCES_CONFIG;
 // `nowaikit setup` stores instances here; the instance manager reads it, so a bare `npx nowaikit` works after setup.
 const hasWizardStore = existsSync(join(homedir(), '.config', 'nowaikit', 'instances.json'));
 if (!hasLegacy && !hasMulti && !hasConfig && !hasWizardStore) {
-  logger.error('No ServiceNow instance configured. Run `nowaikit setup`, or set SERVICENOW_INSTANCE_URL or SN_INSTANCES_CONFIG.');
-  process.exit(1);
+  // Keep serving so MCP clients and directories (Glama, the MCP Registry) can list the tools. Any
+  // tool call returns a clear "not configured" error until an instance is set up.
+  logger.warn('No ServiceNow instance configured. Tools are listed, but calls will fail until you run `nowaikit setup` or set SERVICENOW_INSTANCE_URL or SN_INSTANCES_CONFIG.');
 }
 
 // ─── Create MCP Server ───────────────────────────────────────────────────────
