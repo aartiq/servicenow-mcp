@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-11-21
+
 ### Added
 - **Platform Analytics dashboards.** `list_pa_dashboards` and `get_pa_dashboard` read Platform Analytics
   dashboards (`par_dashboard`) as well as the legacy Core UI ones, with a `source` field on each result
@@ -50,6 +52,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `scan-upgrade` reads the release from `glide.buildtag.last` and checks the known Australia and Brazil
   changes. `review-acls` and `scan-security` cover Deny Unless ACLs and missing roles, and `scan-cmdb`
   uses Data Foundations and the CSDM life cycle fields.
+
+### Fixed
+- `query_records` now says when a query names a field the table doesn't have. ServiceNow answers that
+  with the same 403 it uses for an unreadable field, so agents used to tell users they lacked access.
+- A refused read of `sn_vul_remediation_task` points at `sn_vul_vulnerability`, where Vulnerability
+  Response keeps remediation tasks (VUL numbers) on current releases.
 
 ## [5.0.0] - 2026-11-19
 
