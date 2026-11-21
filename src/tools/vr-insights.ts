@@ -233,7 +233,7 @@ export async function getKevCompliance(c: ServiceNowClient, args: Record<string,
     by_group: tally('group'),
     by_cve: tally('cve'),
     weekly_closures: [...weeks.entries()].sort().map(([week, closed]) => ({ week, closed })),
-    average_days_to_close: (ttr as any[]).map((r) => ({ kev: String(r.groupby_fields?.[0]?.value) === 'true', items: Number(r.stats?.count ?? 0), avg_days: Math.round(Number(r.stats?.avg?.age_closed ?? 0)) })),
+    average_days_to_close: (ttr as any[]).map((r) => ({ kev: /^(true|1|yes)$/i.test(String(r.groupby_fields?.[0]?.value ?? '')), items: Number(r.stats?.count ?? 0), avg_days: Math.round(Number(r.stats?.avg?.age_closed ?? 0)) })),
     overdue_items: rows.filter((r) => r.status === 'open_overdue').slice(0, max).map(({ open: _o, ...r }) => r),
     note: 'Due dates are the CISA KEV federal due dates on each CVE (sn_vul_entry.due_date). An item counts as on time when it was closed on or before that date.',
   };

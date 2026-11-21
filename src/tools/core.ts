@@ -677,7 +677,7 @@ export function queryFieldNames(query: string | undefined): string[] {
 }
 
 /** Turn a "Field(s) present in the query do not have permission" 403 into an unknown-field error when that's what it is. */
-async function explainUnknownFields(client: ServiceNowClient, params: QueryRecordsParams, err: unknown): Promise<unknown> {
+export async function explainUnknownFields(client: ServiceNowClient, params: QueryRecordsParams, err: unknown): Promise<unknown> {
   const msg = err instanceof Error ? err.message : String(err);
   if (!/Field\(s\) present in the query do not have permission/i.test(msg)) return err;
   const wanted = [...new Set([...queryFieldNames(params.query), ...String(params.fields || '').split(',').map((f) => f.trim().split('.')[0].toLowerCase()).filter(Boolean)])];

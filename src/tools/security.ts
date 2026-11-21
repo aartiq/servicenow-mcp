@@ -2,6 +2,7 @@
  * Security Operations (SecOps) tools — security incidents, vulnerabilities, and GRC.
  * Read tools: Tier 0. Write tools: Tier 1 (WRITE_ENABLED=true).
  */
+import { explainUnknownFields } from './core.js';
 import type { ServiceNowClient } from '../servicenow/client.js';
 import { ServiceNowError } from '../utils/errors.js';
 import { requireWrite } from '../utils/permissions.js';
@@ -77,6 +78,7 @@ export function getSecurityToolDefinitions() {
           kev: { type: 'boolean', description: 'Only items whose CVE is on the CISA KEV list' },
           active: { type: 'boolean', description: 'Only active items (true) or inactive ones (false)' },
           source: { type: 'string', enum: ['items', 'library'], description: 'items (default: vulnerable items) or library (CVE library entries in sn_vul_entry, filtered by cve or query)' },
+          search: { type: 'string', description: 'Free text to find CVE library entries by ID, name or summary (for example PHP2Shell). Used with source=library' },
           limit: { type: 'number', description: 'Max records to return (default 25)' },
           query: { type: 'string', description: 'Additional encoded query string' },
         },
@@ -369,8 +371,17 @@ export async function executeSecurityToolCall(
       if (args.source === 'library') {
         if (args.cve) parts.push(`id=${String(args.cve).trim().toUpperCase()}`);
         if (args.kev) parts.push('cisa_exists=true');
+        if (args.search) {
+          const t = String(args.search).trim();
+          parts.push(`idLIKE${t}^ORnameLIKE${t}^ORsummaryLIKE${t}`);
+        }
         if (args.query) parts.push(args.query);
-        return await withPlugin('Vulnerability Response', () => client.queryRecords({ table: 'sn_vul_entry', query: parts.join('^') || '', limit: args.limit ?? 25, fields: 'sys_id,id,name,summary,cisa_exists,due_date,epss_score,epss_percentile,risk_score,sys_class_name' }));
+        const params = { table: 'sn_vul_entry', query: parts.join('^') || '', limit: args.limit ?? 25, fields: 'sys_id,id,name,summary,cisa_exists,due_date,epss_score,epss_percentile,risk_score,sys_class_name' };
+        try {
+          return await withPlugin('Vulnerability Response', () => client.queryRecords(params));
+        } catch (err) {
+          throw await explainUnknownFields(client, params, err);
+        }
       }
       if (args.state) {
         // "open" means any item still being worked (active), as people use it; the Open state itself is 1.
