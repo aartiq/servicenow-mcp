@@ -118,8 +118,10 @@ export async function getThreatStatus(c: ServiceNowClient, args: Record<string, 
     return {
       number: disp(i.number), cve, ci: disp(i.cmdb_ci), state: disp(i.state), open, risk: disp(i.risk_rating),
       group: disp(i.assignment_group) || null, target: disp(i.ttr_target_date) || null, cisa_due: due || null,
-      // past_cisa_due: still open and past the CISA date. closed_after_cisa_due: fixed, but late.
-      past_cisa_due: open && !!due && due < today, closed_at: disp(i.closed_at) || null,
+      // past_cisa_due: the CISA date was missed, either still open after it or closed after it.
+      // closed_after_cisa_due: fixed, but late.
+      past_cisa_due: !!due && (open ? due < today : !!val(i.closed_at) && String(val(i.closed_at)).slice(0, 10) > due),
+      closed_at: disp(i.closed_at) || null,
       closed_after_cisa_due: !open && !!due && !!val(i.closed_at) && String(val(i.closed_at)).slice(0, 10) > due,
       record_url: url(c, 'sn_vul_vulnerable_item', i.sys_id),
     };
@@ -143,7 +145,7 @@ export async function getThreatStatus(c: ServiceNowClient, args: Record<string, 
       remediated_items: rows.length - open,
       remediated_pct: rows.length ? Math.round(((rows.length - open) / rows.length) * 1000) / 10 : null,
       affected_cis: byCi.size,
-      open_past_cisa_due: rows.filter((r) => r.past_cisa_due).length,
+      open_past_cisa_due: rows.filter((r) => r.open && r.past_cisa_due).length,
       kev: library.records.some((e: any) => String(val(e.cisa_exists)) === 'true'),
       remediation_tasks: tasks.records.length,
       changes: changeLinks.records.length,
